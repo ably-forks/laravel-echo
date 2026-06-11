@@ -25,7 +25,7 @@ describe('AblyPrivateChannel', () => {
         echo = new Echo({
             broadcaster: 'ably',
             useTls: true,
-            environment: 'sandbox',
+            endpoint: 'nonprod:sandbox',
             requestTokenFn: mockAuthServer.getSignedToken,
             echoMessages: true, // https://docs.ably.io/client-lib-development-guide/features/#TO3h
         });

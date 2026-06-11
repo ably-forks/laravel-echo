@@ -25,7 +25,7 @@ describe('AblyPresenceChannel', () => {
         echo = new Echo({
             broadcaster: 'ably',
             useTls: true,
-            environment: 'sandbox',
+            endpoint: 'nonprod:sandbox',
             requestTokenFn: mockAuthServer.getSignedToken,
         });
     });

@@ -1,10 +1,10 @@
 import { beforeChannelAttach } from './attach';
 import { toTokenDetails, parseJwt, fullUrl, httpRequestAsync } from './utils';
 import { SequentialAuthTokenRequestExecuter } from './token-request';
-import { AblyChannel } from '../ably-channel';
+import type { AblyChannel } from '../ably-channel';
 import { AblyConnector } from '../../connector/ably-connector';
 import { AblyPresenceChannel } from '../ably-presence-channel';
-import { AblyRealtime, AuthOptions, ChannelStateChange, ClientOptions, TokenDetails } from '../../../typings/ably';
+import type { AblyRealtime, AuthOptions, ChannelStateChange, ClientOptions, TokenDetails } from '../../../typings/ably';
 
 export class AblyAuth {
     authEndpoint: string;
@@ -69,7 +69,7 @@ export class AblyAuth {
 
     enableAuthorizeBeforeChannelAttach = () => {
         const ablyClient = this.ablyClient()
-        ablyClient.auth.getTimestamp(this.options.queryTime, () => void 0); // generates serverTimeOffset in the background
+        ablyClient.getTimestamp(this.options.queryTime).catch(() => void 0); // generates serverTimeOffset in the background
 
         beforeChannelAttach(ablyClient, (realtimeChannel, errorCallback) => {
             const channelName = realtimeChannel.name;
@@ -84,7 +84,7 @@ export class AblyAuth {
                 const capability = parseJwt(tokenDetails.token).payload['x-ably-capability'];
                 const tokenHasChannelCapability = capability.includes(`${channelName}"`);
                 // checks with server time using offset, otherwise local time
-                if (tokenHasChannelCapability && tokenDetails.expires > ablyClient.auth.getTimestampUsingOffset()) {
+                if (tokenHasChannelCapability && tokenDetails.expires > ablyClient.getTimestampUsingOffset()) {
                     errorCallback(null);
                     return;
                 }
@@ -119,7 +119,6 @@ export class AblyAuth {
         const connectionFailedCallback = stateChange => {
             if (stateChange.reason.code == 40102) { // 40102 denotes mismatched clientId
                 ablyConnection.off(connectionFailedCallback);
-                console.warn("User login detected, re-connecting again!")
                 this.onClientIdChanged();
             }
         }
@@ -135,13 +134,18 @@ export class AblyAuth {
      */
     onClientIdChanged = () => {
         this.ablyClient().connect();
-        for (const ablyChannel of Object.values(this.ablyConnector.channels)) {
-            ablyChannel.channel.attach(ablyChannel._alertErrorListeners);
-        }
+        setTimeout(() => {
+            for (const ablyChannel of Object.values(this.ablyConnector.channels)) {
+                ablyChannel.channel.attach().catch(ablyChannel._alertErrorListeners);
+            }
+        }, 0);
     }
 
     tryAuthorizeOnSameConnection = (authOptions?: AuthOptions, callback?: (error, TokenDetails) => void) => {
-        this.ablyClient().auth.authorize(null, authOptions, callback)
+        this.ablyClient().auth
+            .authorize(null, authOptions)
+            .then((tokenDetails) => callback?.(null, tokenDetails))
+            .catch((err) => callback?.(err, null));
     }
 
     onChannelFailed = (echoAblyChannel: AblyChannel) => (stateChange: ChannelStateChange) => {
@@ -171,7 +175,7 @@ export class AblyAuth {
                             echoAblyChannel.channel.once('attached', () => {
                                 (echoAblyChannel as any).skipAuth = false;
                             });
-                            echoAblyChannel.channel.attach(echoAblyChannel._alertErrorListeners);
+                            echoAblyChannel.channel.attach().catch(echoAblyChannel._alertErrorListeners);
                         }
                     }
                 );

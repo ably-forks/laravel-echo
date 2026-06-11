@@ -47,7 +47,7 @@ describe('AblyUserRestPublishing', () => {
         const guestUser = new Echo({
             broadcaster: 'ably',
             useTls: true,
-            environment: 'sandbox',
+            endpoint: 'nonprod:sandbox',
             requestTokenFn: mockAuthServer.getSignedToken
         });
         echoInstances.push(guestUser);
@@ -63,7 +63,7 @@ describe('AblyUserRestPublishing', () => {
         const loggedInUser = new Echo({
             broadcaster: 'ably',
             useTls: true,
-            environment: 'sandbox',
+            endpoint: 'nonprod:sandbox',
             requestTokenFn: mockAuthServer.getSignedToken
         });
         echoInstances.push(loggedInUser);
