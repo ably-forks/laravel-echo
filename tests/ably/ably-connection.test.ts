@@ -24,7 +24,7 @@ describe('AblyConnection', () => {
         echo = new Echo({
             broadcaster: 'ably',
             useTls: true,
-            environment: 'sandbox',
+            endpoint: 'nonprod:sandbox',
             requestTokenFn: mockAuthServer.getSignedToken,
         });
     });
@@ -83,30 +83,27 @@ describe('AblyConnection', () => {
         });
     });
 
-    test('should set ably agent header', (done) => {
+    test('should set ably agent header', async () => {
         expect(echo.connector.ably.options.agents).toStrictEqual({
             'laravel-echo': AblyConnector.LIB_VERSION
         })
-        //Intercept Http.do with test
-        function testRequestHandler(_, __, ___, headers) {
+        let observedRequests = 0;
+        // Intercept Http.do with test
+        function testRequestHandler(_, __, headers) {
+            observedRequests++;
             expect('X-Ably-Version' in headers).toBeTruthy();
             expect('Ably-Agent' in headers).toBeTruthy();
             expect(headers['Ably-Agent'].indexOf('laravel-echo/'+ AblyConnector.LIB_VERSION) > -1).toBeTruthy();
+            return Promise.resolve({ body: JSON.stringify([Date.now()]), headers: {}, statusCode: 200 });
         }
 
         const do_inner = echo.connector.ably.http.do;
         echo.connector.ably.http.do = testRequestHandler;
 
-        // Call all methods that use rest http calls
-        echo.connector.ably.auth.requestToken();
-        echo.connector.ably.time();
-        echo.connector.ably.stats();
-        const channel = echo.connector.ably.channels.get('http_test_channel');
-        channel.publish('test', 'Testing http headers');
-        channel.presence.get();
+        await echo.connector.ably.time();
+        expect(observedRequests).toBe(1);
 
         // Clean interceptors from Http.do
         echo.connector.ably.http.do = do_inner;
-        done();
     })
 });

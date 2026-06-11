@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Breaking changes
+
+- Updated the Ably dependency range to `ably@^2.0`; `ably@1.x` is no longer supported.
+- Consumers using Ably APIs directly through `echo.connector.ably` must use Ably v2 promise APIs instead of v1 callback APIs, for example `await echo.connector.ably.time()` instead of `echo.connector.ably.time(callback)`.
+- Removed compatibility with the Ably v1 `ably/promises` entry point; import from `ably` instead.
+
 ## [v1.0.6](https://github.com/ably-forks/laravel-echo/tree/ably-echo-1.0.6)
 
 [Full Changelog](https://github.com/ably-forks/laravel-echo/compare/ably-echo-1.0.5...ably-echo-1.0.6)

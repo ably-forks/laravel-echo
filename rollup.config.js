@@ -1,13 +1,17 @@
 import babel from '@rollup/plugin-babel';
+import { nodeResolve } from '@rollup/plugin-node-resolve';
 import typescript from 'rollup-plugin-typescript2';
 
 const plugins = [
+    nodeResolve({
+        extensions: ['.js', '.ts'],
+    }),
     typescript(),
     babel({
         babelHelpers: 'bundled',
         exclude: 'node_modules/**',
         extensions: ['.ts'],
-        presets: ['@babel/preset-env'],
+        presets: ['@babel/preset-env', '@babel/preset-typescript'],
         plugins: [
             ['@babel/plugin-proposal-decorators', { legacy: true }],
             '@babel/plugin-proposal-function-sent',
