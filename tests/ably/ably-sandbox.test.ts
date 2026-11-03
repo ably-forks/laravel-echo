@@ -1,6 +1,5 @@
 import { setup, tearDown } from './setup/sandbox';
 import * as Ably from 'ably';
-import safeAssert from './setup/utils';
 
 jest.setTimeout(20000);
 describe('AblySandbox', () => {
@@ -21,16 +20,11 @@ describe('AblySandbox', () => {
         expect(apiKey).toBeTruthy();
     });
 
-    test('rest time should work', (done) => {
+    test('rest time should work', async () => {
         const apiKey = testApp.keys[0].keyStr;
         const restClient = new Ably.Rest(apiKey);
         expect.assertions(1);
-        restClient.time((err, time) => {
-            if (err) {
-                done(err);
-                return;
-            }
-            safeAssert(() => expect(typeof time).toBe('number'), done, true);
-        });
+        const time = await restClient.time();
+        expect(typeof time).toBe('number');
     });
 });

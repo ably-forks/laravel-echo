@@ -1,7 +1,7 @@
 import { Connector } from './connector';
 
 import { AblyChannel, AblyPrivateChannel, AblyPresenceChannel, AblyAuth } from './../channel';
-import { AblyRealtime, TokenDetails } from '../../typings/ably';
+import type { AblyRealtime } from '../../typings/ably';
 import { toBase64UrlEncoded } from '../channel/ably/utils';
 
 /**

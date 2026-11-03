@@ -1,5 +1,6 @@
 import { Connector } from './connector';
-import { NullChannel, NullPrivateChannel, NullPresenceChannel, PresenceChannel } from './../channel';
+import { NullChannel, NullPrivateChannel, NullPresenceChannel } from './../channel';
+import type { PresenceChannel } from './../channel';
 
 /**
  * This class creates a null connector.

@@ -1,4 +1,4 @@
-import { Channel, PresenceChannel } from './channel';
+import type { Channel, PresenceChannel } from './channel';
 import { AblyConnector, Connector, PusherConnector, SocketIoConnector, NullConnector } from './connector';
 
 /**

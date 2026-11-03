@@ -1,4 +1,4 @@
-import { AblyRealtime, AblyRealtimeChannel } from '../../typings/ably';
+import type { AblyRealtime, AblyRealtimeChannel } from '../../typings/ably';
 import { EventFormatter } from '../util';
 import { Channel } from './channel';
 
@@ -78,7 +78,7 @@ export class AblyChannel extends Channel {
                 this._alertErrorListeners(stateChange);
             }
         });
-        this.channel.attach(this._alertErrorListeners);
+        this.channel.attach().catch(this._alertErrorListeners);
     }
 
     /**
@@ -90,7 +90,7 @@ export class AblyChannel extends Channel {
         this.unregisterError();
         this.unregisterSubscribed();
         this.channel.off();
-        this.channel.detach();
+        this.channel.detach().catch(this._alertErrorListeners);
     }
 
     /**
@@ -98,7 +98,9 @@ export class AblyChannel extends Channel {
      */
     listen(event: string, callback: Function): AblyChannel {
         this.callbacks.set(callback, ({ data, ...metaData }) => callback(data, metaData));
-        this.channel.subscribe(this.eventFormatter.format(event), this.callbacks.get(callback) as any);
+        this.channel
+            .subscribe(this.eventFormatter.format(event), this.callbacks.get(callback) as any)
+            .catch(this._alertErrorListeners);
         return this;
     }
 
@@ -113,7 +115,7 @@ export class AblyChannel extends Channel {
 
             callback(formattedEvent, data, metaData);
         });
-        this.channel.subscribe(this.callbacks.get(callback) as any);
+        this.channel.subscribe(this.callbacks.get(callback) as any).catch(this._alertErrorListeners);
         return this;
     }
 

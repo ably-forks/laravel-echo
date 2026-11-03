@@ -26,7 +26,7 @@ describe('AblyUserLogin', () => {
         echo = new Echo({
             broadcaster: 'ably',
             useTls: true,
-            environment: 'sandbox',
+            endpoint: 'nonprod:sandbox',
             requestTokenFn: mockAuthServer.getSignedToken,
             echoMessages: true, // https://docs.ably.io/client-lib-development-guide/features/#TO3h
         });
@@ -102,7 +102,7 @@ describe('AblyUserLogin', () => {
 
         // Since new clientId is returned in the new token, ably returns mismatched error for given auth request
         const privateChannelErr : Error = await new Promise(resolve => privateChannel.error(resolve));
-        expect(privateChannelErr.message).toContain('Mismatched clientId for existing connection');
+        expect(privateChannelErr.message.toLowerCase()).toContain('mismatched clientid for existing connection');
 
         // Reconnects again and starts explicit attach for all channels
         await waitForExpect(() => {
@@ -166,9 +166,9 @@ describe('AblyUserLogin', () => {
         const privateChannel1Err = await privateChannel1ErrPromise as any;
         const privateChannel2Err = await new Promise((resolve) => privateChannel2.error(resolve)) as any;
 
-        const errMsg = 'Mismatched clientId for existing connection'
-        expect(privateChannel1Err.message).toContain(errMsg);
-        expect(privateChannel2Err.message).toContain(errMsg);
+        const errMsg = 'mismatched clientid for existing connection'
+        expect(privateChannel1Err.message.toLowerCase()).toContain(errMsg);
+        expect(privateChannel2Err.message.toLowerCase()).toContain(errMsg);
 
         await waitForExpect(() => {
             expect(privateChannelStates).toStrictEqual(['attaching', 'attached', 'failed']);

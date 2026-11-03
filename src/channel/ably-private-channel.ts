@@ -11,11 +11,10 @@ export class AblyPrivateChannel extends AblyChannel {
      * Send a whisper event to other clients in the channel.
      */
     whisper(eventName: string, data: any, callback?: Function): AblyPrivateChannel {
-        if (callback) {
-            this.channel.publish(`client-${eventName}`, data, callback as any);
-        } else {
-            this.channel.publish(`client-${eventName}`, data);
-        }
+        this.channel
+            .publish(`client-${eventName}`, data)
+            .then(() => callback?.(null))
+            .catch((err) => callback ? callback(err) : this._alertErrorListeners(err));
         return this;
     }
 }

@@ -1,4 +1,4 @@
-import { TokenDetails } from '../../../typings/ably';
+import type { TokenDetails } from '../../../typings/ably';
 
 export const isNullOrUndefined = (obj) => obj == null || obj === undefined;
 export const isEmptyString = (stringToCheck, ignoreSpaces = true) =>
@@ -86,20 +86,14 @@ function httpRequest(options, callback) {
         httpClient = new Ably.Rest.Platform.Http();
     }
     // Automatically set by browser
+    options.method = options.method.toLowerCase();
     if (isBrowser) {
         delete options.headers['Content-Length']; // XHR warning - Refused to set unsafe header "Content-Length"
-    } else {
-        options.method = options.method.toLowerCase();
     }
-    httpClient.doUri(
-        options.method,
-        null,
-        options.uri,
-        options.headers,
-        options.body,
-        options.paramsIfNoHeaders || {},
-        callback
-    );
+    httpClient
+        .doUri(options.method, options.uri, options.headers, options.body, options.paramsIfNoHeaders || {})
+        .then((result) => callback(result.error, result.body))
+        .catch(callback);
 }
 
 export const httpRequestAsync = (options): Promise<any> => {
