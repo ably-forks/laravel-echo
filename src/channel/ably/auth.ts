@@ -45,7 +45,14 @@ export class AblyAuth {
             },
             body: postData,
         };
-        return await httpRequestAsync(postOptions);
+        const response = await httpRequestAsync(postOptions);
+        if (typeof response?.token !== 'string') {
+            const error: any = new Error(`Auth endpoint ${this.authEndpoint} returned a response without a token`);
+            error.statusCode = 500;
+            error.code = 50000;
+            throw error;
+        }
+        return response;
     };
 
     constructor(ablyConnector: AblyConnector, options) {

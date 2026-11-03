@@ -2,7 +2,7 @@ import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import { AblyChannel, AblyPrivateChannel } from '../../src/channel';
-import * as Ably from 'ably';
+import * as Ably from '@ably/pubsub-device';
 import waitForExpect from 'wait-for-expect';
 
 jest.setTimeout(30000);
@@ -100,8 +100,15 @@ describe('AblyUserLogin', () => {
         mockAuthServer.clientId = 'sacOO7@github.com';
         const privateChannel = echo.private('test') as AblyPrivateChannel; // requests new token for channel `test`
 
+        // Register listeners up front, since reconnect and re-attach can complete before the error is observed
+        const privateChannelErrPromise : Promise<Error> = new Promise(resolve => privateChannel.error(resolve));
+        const channelsReattached = Promise.all([
+            new Promise(resolve => publicChannel.subscribed(resolve)),
+            new Promise(resolve => privateChannel.subscribed(resolve))
+        ]);
+
         // Since new clientId is returned in the new token, ably returns mismatched error for given auth request
-        const privateChannelErr : Error = await new Promise(resolve => privateChannel.error(resolve));
+        const privateChannelErr = await privateChannelErrPromise;
         expect(privateChannelErr.message.toLowerCase()).toContain('mismatched clientid for existing connection');
 
         // Reconnects again and starts explicit attach for all channels
@@ -110,10 +117,7 @@ describe('AblyUserLogin', () => {
         });
 
         // Attaches both public and private channel
-        await Promise.all([ 
-            new Promise(resolve => publicChannel.subscribed(resolve)),
-            new Promise(resolve => privateChannel.subscribed(resolve))
-        ]);
+        await channelsReattached;
 
         await waitForExpect(() => {
             expect(connectionStates).toStrictEqual(['failed', 'connecting', 'connected']);

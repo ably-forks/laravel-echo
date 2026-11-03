@@ -80,40 +80,89 @@ export const fullUrl = (url: string) => {
     return url;
 };
 
-let httpClient: any;
-function httpRequest(options, callback) {
-    if (!httpClient) {
-        httpClient = new Ably.Rest.Platform.Http();
-    }
-    // Automatically set by browser
-    options.method = options.method.toLowerCase();
-    if (isBrowser) {
-        delete options.headers['Content-Length']; // XHR warning - Refused to set unsafe header "Content-Length"
-    }
-    httpClient
-        .doUri(options.method, options.uri, options.headers, options.body, options.paramsIfNoHeaders || {})
-        .then((result) => callback(result.error, result.body))
-        .catch(callback);
-}
+/**
+ * Default timeout for HTTP requests, matching ably-js's default `httpRequestTimeout`.
+ */
+export const HTTP_REQUEST_TIMEOUT_MS = 10000;
 
-export const httpRequestAsync = (options): Promise<any> => {
-    return new Promise((resolve, reject) => {
-        httpRequest(options, function (err: any, res: any) {
-            if (err) {
-                reject(err);
-            } else {
-                if (typeof res === 'string') {
-                    resolve(JSON.parse(res));
-                } else if (!isBrowser && Buffer.isBuffer(res)) {
-                    try {
-                        resolve(JSON.parse(res.toString()));
-                    } catch (e) {
-                        resolve(res);
-                    }
-                } else {
-                    resolve(res);
-                }
-            }
+const httpError = (message: string, statusCode: number, code: number, cause?: any): Error => {
+    const error: any = new Error(message);
+    error.statusCode = statusCode;
+    error.code = code;
+    if (cause !== undefined) {
+        error.cause = cause;
+    }
+    return error;
+};
+
+const hasHeader = (headers: Record<string, any>, name: string) =>
+    Object.keys(headers).some((key) => key.toLowerCase() === name.toLowerCase());
+
+/**
+ * Sends an HTTP request using `fetch` and resolves with the parsed JSON response body, or `null` if the body is empty.
+ *
+ * Rejects with an error carrying `statusCode` and `code` if:
+ * - the request fails at the network level or does not complete within `timeoutMs` (code 50003 for a timeout, 50000 otherwise);
+ * - the response status is not 2xx (`code` is taken from an Ably-style `error.code` in the body, otherwise `statusCode * 100`);
+ * - a 2xx response body is not valid JSON (code 50000).
+ *
+ * Credentials (cookies) are sent cross-origin when an `Authorization` header is set, as ably-js's XHR client did.
+ */
+export const httpRequestAsync = async (
+    options: {
+        uri: string;
+        method: string;
+        headers?: Record<string, any>;
+        body?: string;
+    },
+    timeoutMs = HTTP_REQUEST_TIMEOUT_MS
+): Promise<any> => {
+    const headers = { ...options.headers };
+    delete headers['Content-Length']; // computed by fetch; setting it explicitly is refused by browsers
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let response: Response;
+    let text: string;
+    try {
+        response = await fetch(options.uri, {
+            method: options.method.toUpperCase(),
+            headers,
+            body: options.body,
+            credentials: hasHeader(headers, 'Authorization') ? 'include' : 'same-origin',
+            signal: controller.signal,
         });
-    });
+        text = await response.text();
+    } catch (err) {
+        if (controller.signal.aborted) {
+            throw httpError(`Request to ${options.uri} timed out after ${timeoutMs}ms`, 500, 50003, err);
+        }
+        throw httpError(`Request to ${options.uri} failed: ${err?.message ?? err}`, 500, 50000, err);
+    } finally {
+        clearTimeout(timer);
+    }
+
+    let body: any = null;
+    let parseError: any;
+    if (text !== '') {
+        try {
+            body = JSON.parse(text);
+        } catch (err) {
+            parseError = err;
+        }
+    }
+
+    if (!response.ok) {
+        const errorDetails = body?.error ?? body;
+        const message = errorDetails?.message ?? (text !== '' && parseError ? text : response.statusText);
+        throw httpError(`HTTP ${response.status}: ${message}`, response.status, errorDetails?.code ?? response.status * 100);
+    }
+    if (parseError) {
+        throw httpError(
+            `Expected a JSON response from ${options.uri} (HTTP ${response.status}), got: ${text.slice(0, 100)}`,
+            500,
+            50000,
+            parseError
+        );
+    }
+    return body;
 };

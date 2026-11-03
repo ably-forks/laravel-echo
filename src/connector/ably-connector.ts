@@ -41,7 +41,7 @@ export class AblyConnector extends Connector {
                 this.options.agents = {};
             }
             this.options.agents['laravel-echo'] = AblyConnector.LIB_VERSION;
-            this.ably = new Ably.Realtime({ ...this.ablyAuth.options, ...this.options });
+            this.ably = Ably.createClient({ ...this.ablyAuth.options, ...this.options });
             this.ablyAuth.enableAuthorizeBeforeChannelAttach();
             this.ablyAuth.allowReconnectOnUserLogin()
         }

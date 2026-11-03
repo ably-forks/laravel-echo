@@ -1,5 +1,5 @@
 import { isNullOrUndefinedOrEmpty, parseJwt, fromBase64UrlEncoded } from '../../../src/channel/ably/utils';
-import * as Ably from 'ably';
+import { createHttpClient, type PubSubHttpClient } from '@ably/pubsub-server';
 import * as jwt from 'jsonwebtoken';
 
 type channels = Array<string>;
@@ -12,7 +12,7 @@ type channels = Array<string>;
 export class MockAuthServer {
     keyName: string;
     keySecret: string;
-    ablyClient: Ably.Rest;
+    ablyClient: PubSubHttpClient;
     clientId: string | null = 'sacOO7@github.com';
 
     shortLived: channels;
@@ -24,7 +24,7 @@ export class MockAuthServer {
         const keys = apiKey.split(':');
         this.keyName = keys[0];
         this.keySecret = keys[1];
-        this.ablyClient = new Ably.Rest({ key: apiKey, endpoint });
+        this.ablyClient = createHttpClient({ key: apiKey, endpoint });
     }
 
     /**

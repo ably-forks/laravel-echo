@@ -1,19 +1,19 @@
 ## Introduction
 This repository is a fork of https://github.com/laravel/echo. It adheres to public interface methods from base repository. It will be synced regularly with the base repository to make sure all the code is up to date.
-Ably-specific implementation is added to support native [ably-js](https://github.com/ably/ably-js).
+Ably-specific implementation is added to support native [ably-js](https://github.com/ably/ably-js) via the [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) package.
 
 ## Installation 
- Install `@ably/laravel-echo` (wrapper for pluggable lib) and latest version of `ably` (pluggable lib) using npm.
+ Install `@ably/laravel-echo` (wrapper for pluggable lib) and `@ably/pubsub-device` v3 (pluggable lib) using npm.
 
 ```bash
-npm install @ably/laravel-echo ably@2.x
+npm install @ably/laravel-echo @ably/pubsub-device@3.x
 ```
 
 Once Echo is installed, you are ready to create a fresh Echo instance in your application's JavaScript. A great place to do this is at the bottom of the `resources/js/bootstrap.js` file that is included with the Laravel framework. By default, an example Echo configuration is already included in this file; however, the default configuration in the `bootstrap.js` file is intended for Pusher. You may copy the configuration below to transition your configuration to Ably.
 
 ```js
 import Echo from '@ably/laravel-echo';
-import * as Ably from 'ably';
+import * as Ably from '@ably/pubsub-device';
 
 window.Ably = Ably; // make globally accessible to Echo
 window.Echo = new Echo({
