@@ -2,7 +2,7 @@ import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import { AblyChannel, AblyPrivateChannel } from '../../src/channel';
-import * as Ably from 'ably';
+import * as Ably from '@ably/pubsub-device';
 import waitForExpect from 'wait-for-expect';
 import { fromBase64UrlEncoded } from '../../src/channel/ably/utils';
 

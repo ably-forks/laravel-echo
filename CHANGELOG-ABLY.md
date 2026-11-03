@@ -4,9 +4,10 @@
 
 ### Breaking changes
 
-- Updated the Ably dependency range to `ably@^2.0`; `ably@1.x` is no longer supported.
-- Consumers using Ably APIs directly through `echo.connector.ably` must use Ably v2 promise APIs instead of v1 callback APIs, for example `await echo.connector.ably.time()` instead of `echo.connector.ably.time(callback)`.
-- Removed compatibility with the Ably v1 `ably/promises` entry point; import from `ably` instead.
+- Replaced the `ably` dependency with `@ably/pubsub-device@^3.0`; `ably@1.x` and `ably@2.x` are no longer supported. Install `@ably/pubsub-device` and expose it globally with `import * as Ably from '@ably/pubsub-device'; window.Ably = Ably;`. Echo creates its client with `Ably.createClient()`.
+- `echo.connector.ably` is now a `PubSubClient` from `@ably/pubsub-device`, which uses promise-based APIs, for example `await echo.connector.ably.time()` instead of `echo.connector.ably.time(callback)`.
+- Requests to `authEndpoint` are now sent with the global `fetch` instead of Ably's internal HTTP client, so the runtime must provide `fetch` (all modern browsers, Node.js 22+, which `@ably/pubsub-device` requires).
+- `@ably/pubsub-device` declares connections as device traffic. On accounts billed by monthly active users, connections must carry a client ID, so guest tokens issued without one are rejected.
 
 ## [v1.0.6](https://github.com/ably-forks/laravel-echo/tree/ably-echo-1.0.6)
 

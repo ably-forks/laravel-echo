@@ -3,7 +3,7 @@ import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import safeAssert from './setup/utils';
 import { AblyChannel, AblyPrivateChannel } from '../../src/channel';
-import * as Ably from 'ably';
+import * as Ably from '@ably/pubsub-device';
 
 jest.setTimeout(20000);
 describe('AblyPrivateChannel', () => {
