@@ -30,6 +30,7 @@
         "postpublish": "npm run use:baseReadme",
         "release": "npm run test && standard-version && git push --follow-tags && npm publish",
         "test": "jest",
+        "test:bundles": "jest -c jest.bundles.config.js",
         "test:browser-build": "jest -c jest.browser.config.js"
     },
     "devDependencies": {
