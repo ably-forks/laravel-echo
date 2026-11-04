@@ -13,6 +13,26 @@ export class AblyConnector extends Connector {
      * The laravel-echo library version.
      */
     static LIB_VERSION = '1.0.6';
+
+    /**
+     * Echo-only option keys, never passed to createClient (review P4): bearer and CSRF tokens, the auth endpoint and
+     * other Echo settings would otherwise be copied into the Ably client options and its debug logs. `token` is the
+     * initial token for Echo's own token requests (AblyAuth); Ably authenticates through Echo's authCallback.
+     */
+    static ECHO_ONLY_KEYS = [
+        'broadcaster',
+        'authEndpoint',
+        'auth',
+        'userAuthentication',
+        'namespace',
+        'csrfToken',
+        'bearerToken',
+        'host',
+        'requestTokenFn',
+        'client',
+        'withoutInterceptors',
+        'token',
+    ];
     
     /**
      * The Ably instance.
@@ -52,11 +72,21 @@ export class AblyConnector extends Connector {
                             : '')
                 );
             }
-            this.ably = AblyLib.createClient({ ...this.ablyAuth.options, ...this.options });
+            this.ably = AblyLib.createClient({ ...this.ablyAuth.options, ...this.clientOptions() });
             this.ablyAuth.enableAuthorizeBeforeChannelAttach();
             this.ablyAuth.allowReconnectOnUserLogin();
         }
         this.reattachChannelsAfterConnectionFailure();
+    }
+
+    /**
+     * The options passed to createClient: Echo's options without the Echo-only keys (P4). `this.options` is not
+     * modified, so Echo keeps reading its own settings from it.
+     */
+    clientOptions(): any {
+        const clientOptions = { ...this.options };
+        AblyConnector.ECHO_ONLY_KEYS.forEach((key) => delete clientOptions[key]);
+        return clientOptions;
     }
 
     /**

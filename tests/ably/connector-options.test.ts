@@ -4,6 +4,7 @@
  */
 import * as AblyDevice from '@ably/pubsub-device';
 import Echo from '../../src/echo';
+import { AblyConnector } from '../../src/connector/ably-connector';
 import { FakeEmitter, makeFakeAbly } from '../parity/fake-ably';
 
 const baseOptions = { broadcaster: 'ably', autoConnect: false, requestTokenFn: async () => ({ token: 'x' }) };
@@ -37,6 +38,64 @@ describe('R4: resolving the Ably library global', () => {
 
     test('no global at all gives the same clear error', () => {
         expect(() => new Echo({ ...baseOptions })).toThrow(/requires @ably\/pubsub-device v3/);
+    });
+});
+
+describe('P4: Echo-only options are kept out of the Ably client options', () => {
+    test('createClient gets every Ably option and none of the Echo-only keys; Echo keeps its own options', () => {
+        const createClient = jest.fn((options) => AblyDevice.createClient(options));
+        (globalThis as any).Ably = { ...AblyDevice, createClient };
+        const echo = new Echo({
+            ...baseOptions,
+            key: 'appId.keyId:secret',
+            clientId: 'user-1',
+            endpoint: 'nonprod:sandbox',
+            disconnectedRetryTimeout: 12345,
+            authEndpoint: '/custom/auth',
+            csrfToken: 'csrf-1',
+            bearerToken: 'bt-1',
+            host: 'echo-host',
+            token: 'seed-token',
+            withoutInterceptors: true,
+        });
+        const passed = createClient.mock.calls[0][0];
+        AblyConnector.ECHO_ONLY_KEYS.forEach((key) => expect(passed).not.toHaveProperty(key));
+        expect([...AblyConnector.ECHO_ONLY_KEYS].sort()).toEqual([
+            'auth',
+            'authEndpoint',
+            'bearerToken',
+            'broadcaster',
+            'client',
+            'csrfToken',
+            'host',
+            'namespace',
+            'requestTokenFn',
+            'token',
+            'userAuthentication',
+            'withoutInterceptors',
+        ]);
+
+        expect(passed).toMatchObject({
+            key: 'appId.keyId:secret',
+            clientId: 'user-1',
+            endpoint: 'nonprod:sandbox',
+            disconnectedRetryTimeout: 12345,
+            agents: { 'laravel-echo': AblyConnector.LIB_VERSION },
+        });
+        expect(typeof passed.authCallback).toBe('function'); // Echo's own auth options still reach the client
+        const options = echo.connector.options;
+        expect(options).toMatchObject({
+            broadcaster: 'ably',
+            authEndpoint: '/custom/auth',
+            csrfToken: 'csrf-1',
+            bearerToken: 'bt-1',
+            host: 'echo-host',
+            token: 'seed-token',
+            namespace: 'App.Events',
+        });
+        expect(options.auth.headers).toMatchObject({ 'X-CSRF-TOKEN': 'csrf-1', Authorization: 'Bearer bt-1' });
+        expect(typeof options.requestTokenFn).toBe('function');
+        echo.disconnect();
     });
 });
 
