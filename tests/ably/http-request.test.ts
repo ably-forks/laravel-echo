@@ -58,6 +58,19 @@ describe('httpRequestAsync', () => {
         await expect(post()).rejects.toMatchObject({ statusCode: 403, code: 40300, message: 'HTTP 403: Forbidden page' });
     });
 
+    test('rejects a Laravel-style {"message"} error body with the message and a status-derived code', async () => {
+        handler = (_, res) => {
+            res.statusCode = 403;
+            res.setHeader('content-type', 'application/json');
+            res.end(JSON.stringify({ message: 'This action is unauthorized.' }));
+        };
+        await expect(post()).rejects.toMatchObject({
+            statusCode: 403,
+            code: 40300,
+            message: 'HTTP 403: This action is unauthorized.',
+        });
+    });
+
     test('rejects with a timeout error when the server does not respond', async () => {
         handler = () => undefined; // never responds
         await expect(post(100)).rejects.toMatchObject({ statusCode: 500, code: 50003 });
