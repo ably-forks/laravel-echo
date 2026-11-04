@@ -1,6 +1,7 @@
 import { AblyChannel } from './ably-channel';
 import { AblyAuth } from './ably/auth';
 import type { PresenceChannel } from './presence-channel';
+import { safeInvoke } from './ably/utils';
 
 /**
  * This class represents an Ably presence channel.
@@ -71,8 +72,10 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
     enter(data: any, callback?: Function): AblyPresenceChannel {
         this.channel.presence
             .enter(data)
-            .then(() => callback?.(null))
-            .catch((err) => callback ? callback(err) : this._alertErrorListeners(err));
+            .then(
+                () => safeInvoke(callback, null),
+                (err) => (callback ? safeInvoke(callback, err) : this._alertErrorListeners(err))
+            );
 
         return this;
     }
@@ -86,8 +89,10 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
     leave(data: any, callback?: Function): AblyPresenceChannel {
         this.channel.presence
             .leave(data)
-            .then(() => callback?.(null))
-            .catch((err) => callback ? callback(err) : this._alertErrorListeners(err));
+            .then(
+                () => safeInvoke(callback, null),
+                (err) => (callback ? safeInvoke(callback, err) : this._alertErrorListeners(err))
+            );
 
         return this;
     }
@@ -101,8 +106,10 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
     update(data: any, callback?: Function): AblyPresenceChannel {
         this.channel.presence
             .update(data)
-            .then(() => callback?.(null))
-            .catch((err) => callback ? callback(err) : this._alertErrorListeners(err));
+            .then(
+                () => safeInvoke(callback, null),
+                (err) => (callback ? safeInvoke(callback, err) : this._alertErrorListeners(err))
+            );
 
         return this;
     }
@@ -113,8 +120,10 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
     whisper(eventName: string, data: any, callback?: Function): AblyPresenceChannel {
         this.channel
             .publish(`client-${eventName}`, data)
-            .then(() => callback?.(null))
-            .catch((err) => callback ? callback(err) : this._alertErrorListeners(err));
+            .then(
+                () => safeInvoke(callback, null),
+                (err) => (callback ? safeInvoke(callback, err) : this._alertErrorListeners(err))
+            );
         return this;
     }
 }
