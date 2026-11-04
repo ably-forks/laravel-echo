@@ -87,6 +87,16 @@ describe('httpRequestAsync', () => {
             expect(fetchMock.mock.calls[0][1].credentials).toBe('include');
         });
 
+        test('uses same-origin credentials for a capitalised Authorization header (XHR parity)', async () => {
+            await post(undefined, { Authorization: 'Bearer x' });
+            expect(fetchMock.mock.calls[0][1].credentials).toBe('same-origin');
+        });
+
+        test('drops content-length in any case', async () => {
+            await post(undefined, { 'content-length': 999, 'CONTENT-LENGTH': 1 });
+            expect(Object.keys(fetchMock.mock.calls[0][1].headers).map((k) => k.toLowerCase())).not.toContain('content-length');
+        });
+
         test('uses same-origin credentials otherwise, and drops Content-Length', async () => {
             await post(undefined, { 'Content-Length': 2 });
             const init = fetchMock.mock.calls[0][1];

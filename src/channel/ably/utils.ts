@@ -136,8 +136,10 @@ export const httpError = (message: string, statusCode: number, code: number, cau
     return error;
 };
 
-const hasHeader = (headers: Record<string, any>, name: string) =>
-    Object.keys(headers).some((key) => key.toLowerCase() === name.toLowerCase());
+const deleteHeader = (headers: Record<string, any>, name: string) =>
+    Object.keys(headers)
+        .filter((key) => key.toLowerCase() === name.toLowerCase())
+        .forEach((key) => delete headers[key]);
 
 /**
  * Sends an HTTP request using `fetch` and resolves with the parsed JSON response body, or `null` if the body is empty.
@@ -147,7 +149,8 @@ const hasHeader = (headers: Record<string, any>, name: string) =>
  * - the response status is not 2xx (`code` is taken from an Ably-style `error.code` in the body, otherwise `statusCode * 100`);
  * - a 2xx response body is not valid JSON (code 50000).
  *
- * Credentials (cookies) are sent cross-origin when an `Authorization` header is set, as ably-js's XHR client did.
+ * Credentials (cookies) are sent cross-origin only when the headers contain the exact lowercase key `authorization`,
+ * as ably-js's XHR client (`"authorization" in headers`) did. A capitalised `Authorization` header uses `same-origin`.
  */
 export const httpRequestAsync = async (
     options: {
@@ -159,7 +162,7 @@ export const httpRequestAsync = async (
     timeoutMs = HTTP_REQUEST_TIMEOUT_MS
 ): Promise<any> => {
     const headers = { ...options.headers };
-    delete headers['Content-Length']; // computed by fetch; setting it explicitly is refused by browsers
+    deleteHeader(headers, 'Content-Length'); // computed by fetch; any casing (Node fetch rejects/stalls on a wrong value)
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
@@ -169,7 +172,7 @@ export const httpRequestAsync = async (
             method: options.method.toUpperCase(),
             headers,
             body: options.body,
-            credentials: hasHeader(headers, 'Authorization') ? 'include' : 'same-origin',
+            credentials: Object.prototype.hasOwnProperty.call(headers, 'authorization') ? 'include' : 'same-origin',
             signal: controller.signal,
         });
         text = await response.text();

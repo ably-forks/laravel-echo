@@ -40,7 +40,6 @@ export class AblyAuth {
             headers: {
                 Accept: 'application/json',
                 'Content-Type': 'application/json',
-                'Content-Length': postData.length,
                 ...this.authHeaders,
             },
             body: postData,
