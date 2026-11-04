@@ -146,7 +146,7 @@ const deleteHeader = (headers: Record<string, any>, name: string) =>
  *
  * Rejects with an error carrying `statusCode` and `code` if:
  * - the request fails at the network level or does not complete within `timeoutMs` (code 50003 for a timeout, 50000 otherwise);
- * - the response status is not 2xx (`code` is taken from an Ably-style `error.code` in the body, otherwise `statusCode * 100`);
+ * - the response status is not 2xx (`code` is always `statusCode * 100`; body codes are never adopted, see R9);
  * - a 2xx response body is not valid JSON (code 50000).
  *
  * Credentials (cookies) are sent cross-origin only when the headers contain the exact lowercase key `authorization`,
@@ -197,8 +197,9 @@ export const httpRequestAsync = async (
 
     if (!response.ok) {
         const errorDetails = body?.error ?? body;
-        const message = errorDetails?.message ?? (text !== '' && parseError ? text : response.statusText);
-        throw httpError(`HTTP ${response.status}: ${message}`, response.status, errorDetails?.code ?? response.status * 100);
+        const m = errorDetails?.message;
+        const message = (typeof m === 'string' && m) || text.slice(0, 200) || response.statusText;
+        throw httpError(`HTTP ${response.status}: ${message}`, response.status, response.status * 100);
     }
     if (parseError) {
         throw httpError(

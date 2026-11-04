@@ -42,12 +42,12 @@ describe('httpRequestAsync', () => {
         await expect(post()).rejects.toMatchObject({ statusCode: 500, code: 50000 });
     });
 
-    test('rejects a non-2xx response using the Ably error code from the body', async () => {
+    test('ignores an error code in the body of a non-2xx response and derives the code from the status (R9)', async () => {
         handler = (_, res) => {
             res.statusCode = 401;
             res.end(JSON.stringify({ error: { message: 'nope', code: 40160 } }));
         };
-        await expect(post()).rejects.toMatchObject({ statusCode: 401, code: 40160, message: 'HTTP 401: nope' });
+        await expect(post()).rejects.toMatchObject({ statusCode: 401, code: 40100, message: 'HTTP 401: nope' });
     });
 
     test('rejects a non-2xx response without an Ably error, deriving the code from the status', async () => {
