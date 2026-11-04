@@ -64,4 +64,48 @@ describe('Utils', () => {
             expect(fromBase64UrlEncoded('wo7Dh2R3w6_DrHbDhw')).toBe('\x8EÇdwïìvÇ');
         });
     });
+
+    describe('P8: UTF-8 base64 in browsers', () => {
+        const text = 'Zoë 日本';
+
+        // utils.ts decides browser vs Node once, at import time: load fresh copies of the modules with a `window` global
+        const requireInBrowser = (path: string) => {
+            let loaded: any;
+            (globalThis as any).window = {};
+            try {
+                jest.isolateModules(() => {
+                    loaded = require(path);
+                });
+            } finally {
+                delete (globalThis as any).window;
+            }
+            return loaded;
+        };
+
+        test('the browser path round-trips non-Latin-1 text and matches the Node (Buffer) encoding', () => {
+            const browser = requireInBrowser('../../src/channel/ably/utils');
+            const encoded = browser.toBase64UrlEncoded(text);
+            expect(encoded).toBe(toBase64UrlEncoded(text)); // Node path: Buffer
+            expect(browser.fromBase64UrlEncoded(encoded)).toBe(text);
+            expect(fromBase64UrlEncoded(encoded)).toBe(text);
+            expect(browser.toBase64UrlEncoded('Hello, 世界! 🌍')).toBe('SGVsbG8sIOS4lueVjCEg8J-MjQ');
+            expect(browser.fromBase64UrlEncoded('SGVsbG8sIOS4lueVjCEg8J-MjQ')).toBe('Hello, 世界! 🌍');
+        });
+
+        test('socketId() works for a non-Latin-1 clientId in a browser', () => {
+            const { AblyConnector } = requireInBrowser('../../src/connector/ably-connector');
+            const socketId = AblyConnector.prototype.socketId.call({
+                ably: { connection: { key: 'conn-key' }, auth: { clientId: text } },
+            });
+            expect(JSON.parse(fromBase64UrlEncoded(socketId))).toEqual({ connectionKey: 'conn-key', clientId: text });
+        });
+
+        test('a JWT with a non-Latin-1 clientId decodes in a browser', () => {
+            const browser = requireInBrowser('../../src/channel/ably/utils');
+            const payload = toBase64UrlEncoded(JSON.stringify({ 'x-ably-clientId': text, exp: 2, iat: 1 }));
+            const jwt = `${toBase64UrlEncoded(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${payload}.sig`;
+            expect(browser.toTokenDetails(jwt).clientId).toBe(text);
+        });
+    });
 });
+

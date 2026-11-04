@@ -75,7 +75,8 @@ export const fromBase64UrlEncoded = (base64: string): string => {
     const base64WithPadding = base64Encoded + padding;
 
     if (isBrowser) {
-        return atob(base64WithPadding);
+        // P8: atob yields bytes (Latin-1 chars); decode them as UTF-8
+        return new TextDecoder().decode(Uint8Array.from(atob(base64WithPadding), (c) => c.charCodeAt(0)));
     }
     return Buffer.from(base64WithPadding, 'base64').toString();
 };
@@ -89,7 +90,8 @@ export const fromBase64UrlEncoded = (base64: string): string => {
 export const toBase64UrlEncoded = (text: string): string => {
     let encoded = ''
     if (isBrowser) {
-        encoded = btoa(text);
+        // P8: btoa only accepts Latin-1; encode the UTF-8 bytes instead
+        encoded = btoa(String.fromCharCode(...new TextEncoder().encode(text)));
     } else {
         encoded = Buffer.from(text).toString('base64');
     }
