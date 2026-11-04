@@ -29,7 +29,8 @@
         "prepublishOnly": "run-s build use:ablyReadme",
         "postpublish": "npm run use:baseReadme",
         "release": "npm run test && standard-version && git push --follow-tags && npm publish",
-        "test": "jest"
+        "test": "jest",
+        "test:browser-build": "jest -c jest.browser.config.js"
     },
     "devDependencies": {
         "@ably/pubsub-device": "^3.0.0",
@@ -50,6 +51,7 @@
         "@typescript-eslint/parser": "^5.14.0",
         "eslint": "^8.11.0",
         "jest": "^27.5.1",
+        "jest-environment-node": "^27.5.1",
         "jsonwebtoken": "^8.5.1",
         "move-cli": "^2.0.0",
         "npm-run-all": "^4.1.5",
