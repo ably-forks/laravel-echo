@@ -195,3 +195,15 @@ describe('P3: options.client (no AblyAuth)', () => {
         expect(echo.connector.channels).toEqual({});
     });
 });
+
+describe('P6: encryptedPrivate()', () => {
+    test('throws a clear error for the Ably broadcaster', () => {
+        (globalThis as any).Ably = AblyDevice;
+        const echo = new Echo({ ...baseOptions });
+        expect(() => echo.encryptedPrivate('p6')).toThrow(
+            new Error('Encrypted private channels are not supported with the Ably broadcaster')
+        );
+        expect(echo.connector.channels).toEqual({});
+        echo.disconnect();
+    });
+});

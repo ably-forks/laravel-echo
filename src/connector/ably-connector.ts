@@ -195,6 +195,13 @@ export class AblyConnector extends Connector {
     }
 
     /**
+     * Encrypted private channels are a Pusher feature with no Ably equivalent (review P6).
+     */
+    encryptedPrivateChannel(): never {
+        throw new Error('Encrypted private channels are not supported with the Ably broadcaster');
+    }
+
+    /**
      * Leave the given channel, as well as its private and presence variants.
      */
     leave(name: string): void {
