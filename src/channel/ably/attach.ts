@@ -10,6 +10,19 @@ const PROBE_CHANNEL = 'dummy';
 
 /**
  * Modifies existing channel attach with custom authz implementation, for the given client only.
+ *
+ * Only attaches that go through RealtimeChannel._attach are authorized first: channel.attach() (and so subscribe(),
+ * presence.subscribe(), presence.enter() on an initialized channel, Echo's 40160 recovery), a suspended channel
+ * re-attached when the connection becomes active, and ably's decode-failure recovery. ably re-attaches some
+ * channels internally without _attach, so they send ATTACH with the connection's current token and skip this step:
+ * - attached channels when the connection becomes active again, resumed or not (Channels.onTransportActive);
+ * - attaching channels re-sending their ATTACH after a reconnect (checkPendingState);
+ * - a server DETACHED on an attached or suspended channel (RTL13a);
+ * - the retry timer of a suspended channel (RTL13b);
+ * - channel.setOptions() that needs a re-attach (RTL16a).
+ * ably's re-entry of its own presence members after a re-attach (RTP17) is not an attach. If the token no longer
+ * has the channel's capability, such a re-attach fails with 40160 and AblyAuth.onChannelFailed re-authorizes
+ * private and presence channels.
  */
 export const beforeChannelAttach = (ablyClient, authorize: Function) => {
     const probeExisted = !!ablyClient.channels.all?.[PROBE_CHANNEL];
