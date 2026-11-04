@@ -1,8 +1,8 @@
 /**
- * Patched _attach (beforeChannelAttach): callers queued while a channel is authorizing (review T18 / P1).
- * Authorization succeeds but the ATTACH itself then fails (40160, attach timeout, DETACHED) while an ably-internal
- * fire-and-forget attach() is queued: v3 presence.enter()/update() on an 'initialized' channel calls
- * channel.attach() without a handler, so a queued caller must never be rejected.
+ * Patched _attach (beforeChannelAttach): callers queued while a channel is authorizing (review P1, T18, CodeRabbit CR-3).
+ * They settle with the outcome of that authorization and ATTACH. One of them can be ably's own fire-and-forget
+ * attach(): v3 presence.enter()/update() on an 'initialized' channel calls channel.attach() without a handler, so a
+ * queued attach() promise must never become an unhandled rejection, while a caller that awaits it gets the error.
  * Own file: attach.ts patches the RealtimeChannel prototype once per module instance.
  */
 import { AblyAuth } from '../../src/channel/ably/auth';
@@ -38,7 +38,12 @@ class FakeRealtimeChannel {
     }
 }
 
-const makeClient = () => {
+const makeClient = (
+    requestTokenFn: () => Promise<any> = async () => {
+        await wait(20);
+        return { token: makeJwt({ 'presence:*': ['*'] }) };
+    }
+) => {
     const channels: Record<string, FakeRealtimeChannel> = {};
     const client: any = {
         channels: { get: (n: string) => (channels[n] = channels[n] || Object.assign(new FakeRealtimeChannel(n), { client })) },
@@ -52,54 +57,76 @@ const makeClient = () => {
     const auth = new AblyAuth(connector, {
         authEndpoint: 'http://localhost/broadcasting/auth',
         auth: { headers: {} },
-        requestTokenFn: async () => {
-            await wait(20);
-            return { token: makeJwt({ 'presence:*': ['*'] }) };
-        },
+        requestTokenFn,
     });
     auth.enableAuthorizeBeforeChannelAttach();
     return { client };
 };
 
-describe('T18 patched _attach: callers queued while authorizing', () => {
-    test('authorization succeeds, the ATTACH fails: a queued ably-internal attach() is not rejected', async () => {
+const outcome = (p: Promise<any>) => {
+    const o = { state: 'pending', error: undefined as any };
+    p.then(
+        () => (o.state = 'resolved'),
+        (e) => {
+            o.state = 'rejected';
+            o.error = e;
+        }
+    );
+    return o;
+};
+
+describe('T18 / CR-3 patched _attach: callers queued while authorizing', () => {
+    test('authorization succeeds, the ATTACH fails: an awaited queued attach() is rejected, a fire-and-forget one raises nothing', async () => {
         const t = trackUnhandledRejections();
         try {
             const { client } = makeClient();
             const ch: any = client.channels.get('presence:deny');
-            ch.failWith = Object.assign(new Error('denied'), { code: 40160 });
-            let first = 'pending';
-            ch.attach().then(
-                () => (first = 'resolved'),
-                () => (first = 'rejected')
-            ); // Echo's own attach (handled)
+            const err = Object.assign(new Error('denied'), { code: 40160 });
+            ch.failWith = err;
+            const first = outcome(ch.attach()); // Echo's own attach
             ch.attach(); // what v3 presence.enter()/update() does on an 'initialized' channel: no handler
+            const awaited = outcome(ch.attach()); // a user's (or ably's subscribe()) awaited attach, queued
             await wait(100);
-            expect(first).toBe('rejected');
+            expect(first).toEqual({ state: 'rejected', error: err });
+            expect(awaited).toEqual({ state: 'rejected', error: err });
             expect(t.rejections).toEqual([]);
-            expect(ch._pendingAttachCbs).toHaveLength(1); // kept for the next attempt
+            expect(ch._pendingAttachCbs).toHaveLength(0);
         } finally {
             t.stop();
         }
     });
 
-    test('a caller kept after a failed ATTACH resolves on the next successful attach', async () => {
+    test('the authorization fails: queued attach() callers are rejected with its error, without unhandled rejections', async () => {
+        const t = trackUnhandledRejections();
+        try {
+            const err = Object.assign(new Error('auth endpoint 403'), { statusCode: 403 });
+            const { client } = makeClient(async () => {
+                await wait(20);
+                throw err;
+            });
+            const ch: any = client.channels.get('presence:authfail');
+            const first = outcome(ch.attach());
+            ch.attach(); // fire-and-forget, queued
+            const awaited = outcome(ch.attach());
+            await wait(100);
+            expect(first.state).toBe('rejected');
+            expect(awaited).toEqual({ state: 'rejected', error: first.error });
+            expect(ch.authorizing).toBe(false);
+            expect(t.rejections).toEqual([]);
+            expect(ch._pendingAttachCbs).toHaveLength(0);
+        } finally {
+            t.stop();
+        }
+    });
+
+    test('an attach() that is not queued is returned unchanged (its rejection is not pre-handled)', async () => {
         const { client } = makeClient();
-        const ch: any = client.channels.get('presence:retry');
+        const ch: any = client.channels.get('presence:initiator');
         ch.failWith = Object.assign(new Error('denied'), { code: 40160 });
-        ch.attach().catch(() => undefined);
-        let queued = 'pending';
-        ch.attach().then(
-            () => (queued = 'resolved'),
-            () => (queued = 'rejected')
-        );
-        await wait(100);
-        expect(queued).toBe('pending');
+        const first = ch.attach();
+        await expect(first).rejects.toMatchObject({ code: 40160 });
         ch.failWith = null;
-        await ch.attach();
-        await wait(20);
-        expect(queued).toBe('resolved');
-        expect(ch._pendingAttachCbs).toHaveLength(0);
+        await expect(ch.attach()).resolves.toBeUndefined();
     });
 
     test('authorization and ATTACH succeed: the queued attach resolves (P1)', async () => {

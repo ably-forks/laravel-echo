@@ -62,30 +62,23 @@ export const beforeChannelAttach = (ablyClient, authorize: Function) => {
                 this.cancelAuthorizedAttach = false;
                 error = error ?? new Error(`Attach of ${this.name} cancelled: the channel was left while authorizing`);
             }
+            // Callers queued meanwhile settle with this attempt's outcome. Their attach() promises already have a
+            // rejection handler (see the attach() wrapper below), so an ably-internal fire-and-forget attach()
+            // (presence.enter/update on an 'initialized' channel, RTP8d) can't become an unhandled rejection (T18).
+            const pending = this._pendingAttachCbs ?? [];
+            this._pendingAttachCbs = [];
             if (error) {
-                // Only the attach that started this authorization gets the error. Callbacks queued meanwhile stay
-                // queued for the next attempt (as before the fix): some come from ably-internal fire-and-forget
-                // attach() calls (e.g. presence.enter() on an 'initialized' channel, v3 node.js:8630), and
-                // rejecting those raises an unhandled promise rejection.
                 if (errCallback) {
                     errCallback(error);
                 } else {
                     console.error(`channel ${this.name} auth error => ${error}`);
                 }
+                pending.forEach((cb) => cb?.(error));
                 return;
             }
-            const pending = this._pendingAttachCbs ?? [];
-            this._pendingAttachCbs = [];
             internalAttach.call(this, forceReattach, attachReason, errCallback);
-            // while 'attaching', internalAttach only registers another once-listener; no second ATTACH is sent.
-            // Queued callers are only ever resolved: some are ably-internal fire-and-forget attach() calls
-            // (presence.enter/update on an 'initialized' channel, RTP8d) whose rejection would be unhandled.
-            // On an attach failure keep them queued for the next attempt, as on an authorization failure.
-            pending.forEach((cb) =>
-                internalAttach.call(this, false, attachReason, (err, result) =>
-                    err ? (this._pendingAttachCbs ??= []).push(cb) : cb?.(null, result)
-                )
-            );
+            // while 'attaching', internalAttach only registers another once-listener; no second ATTACH is sent
+            pending.forEach((cb) => internalAttach.call(this, false, attachReason, cb));
         };
         try {
             authorizeChannel(this, done);
@@ -95,5 +88,20 @@ export const beforeChannelAttach = (ablyClient, authorize: Function) => {
         }
     }
     prototype._attach = customInternalAttach;
+
+    // An attach() called while its channel authorizes is queued (above). Give its promise a rejection handler before
+    // returning it: callers that await it still get the rejection, but a caller that ignores it, like ably's own
+    // presence.enter/update on an 'initialized' channel, can't raise an unhandled rejection (T18).
+    const internalAttachPromise = prototype.attach;
+    if (typeof internalAttachPromise === 'function') {
+        prototype.attach = function attach(...args) {
+            const queued = !!this.authorizing && authorizers.has(this.client);
+            const result = internalAttachPromise.apply(this, args);
+            if (queued && typeof result?.catch === 'function') {
+                result.catch(() => undefined);
+            }
+            return result;
+        };
+    }
     patchedPrototypes.add(prototype);
 };
