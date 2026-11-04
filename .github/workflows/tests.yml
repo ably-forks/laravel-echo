@@ -44,11 +44,7 @@ jobs:
 
   browser-build:
     # tests/ably against @ably/pubsub-device's browser build (dist/index.js), which users actually ship (R15).
-    # Non-blocking for now: the live-sandbox suite has a documented intermittent flake
-    # (AblyChannel > stop listening to a event). Once the job has a clean track record in CI, drop
-    # continue-on-error and make it a required check.
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - name: Checkout code
