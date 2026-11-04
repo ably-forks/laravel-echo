@@ -121,8 +121,13 @@ export const resolveAblyLib = (): any => {
     return candidates.find((lib) => typeof lib?.createClient === 'function');
 };
 
-const httpError = (message: string, statusCode: number, code: number, cause?: any): Error => {
-    const error: any = new Error(message);
+/**
+ * Builds an error for Echo's auth path (R6). Uses the resolved library's `ErrorInfo` when available, so `instanceof
+ * Ably.ErrorInfo` and `toString()` are consistent in every runtime; falls back to a plain `Error`.
+ */
+export const httpError = (message: string, statusCode: number, code: number, cause?: any): Error => {
+    const ErrorInfo = resolveAblyLib()?.ErrorInfo;
+    const error: any = typeof ErrorInfo === 'function' ? new ErrorInfo(message, code, statusCode) : new Error(message);
     error.statusCode = statusCode;
     error.code = code;
     if (cause !== undefined) {
