@@ -3,6 +3,7 @@ import { Connector } from './connector';
 import { AblyChannel, AblyPrivateChannel, AblyPresenceChannel, AblyAuth } from './../channel';
 import type { AblyRealtime } from '../../typings/ably';
 import { toBase64UrlEncoded, resolveAblyLib } from '../channel/ably/utils';
+import { version } from '../../package.json';
 
 /**
  * This class creates a connector to Ably.
@@ -12,7 +13,7 @@ export class AblyConnector extends Connector {
     /**
      * The laravel-echo library version.
      */
-    static LIB_VERSION = '1.0.6';
+    static LIB_VERSION = version;
 
     /**
      * Echo-only option keys, never passed to createClient (review P4): bearer and CSRF tokens, the auth endpoint and
