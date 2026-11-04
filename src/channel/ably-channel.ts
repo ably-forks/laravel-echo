@@ -48,6 +48,16 @@ export class AblyChannel extends Channel {
     callbacks: Map<Function, Function>;
 
     /**
+     * listen() wrappers, per formatted event name, then per user callback (a callback may be registered more than once).
+     */
+    eventCallbacks: Map<string, Map<Function, Function[]>> = new Map();
+
+    /**
+     * listenToAll() wrappers per user callback.
+     */
+    allCallbacks: Map<Function, Function[]> = new Map();
+
+    /**
      * Create a new class instance.
      */
     constructor(ably: any, name: string, options: any, autoSubscribe = true) {
@@ -89,6 +99,8 @@ export class AblyChannel extends Channel {
     unsubscribe(): void {
         this.channel.unsubscribe();
         this.callbacks.clear();
+        this.eventCallbacks.clear();
+        this.allCallbacks.clear();
         if ((this.channel as any).authorizing) {
             // T17: the patched _attach must not attach the channel once the pending authorization completes
             (this.channel as any).cancelAuthorizedAttach = true;
@@ -103,10 +115,13 @@ export class AblyChannel extends Channel {
      * Listen for an event on the channel instance.
      */
     listen(event: string, callback: Function): AblyChannel {
-        this.callbacks.set(callback, ({ data, ...metaData }) => callback(data, metaData));
-        this.channel
-            .subscribe(this.eventFormatter.format(event), this.callbacks.get(callback) as any)
-            .catch(this._alertSubscribeError);
+        const name = this.eventFormatter.format(event);
+        const wrapper = ({ data, ...metaData }) => callback(data, metaData);
+        const byCallback = this.eventCallbacks.get(name) ?? new Map<Function, Function[]>();
+        this.eventCallbacks.set(name, byCallback);
+        byCallback.set(callback, [...(byCallback.get(callback) ?? []), wrapper]);
+        this.callbacks.set(callback, wrapper); // kept for backwards compatibility of the public field
+        this.channel.subscribe(name, wrapper as any).catch(this._alertSubscribeError);
         return this;
     }
 
@@ -114,14 +129,16 @@ export class AblyChannel extends Channel {
      * Listen for all events on the channel instance.
      */
     listenToAll(callback: Function): AblyChannel {
-        this.callbacks.set(callback, ({ name, data, ...metaData }) => {
+        const wrapper = ({ name, data, ...metaData }) => {
             let namespace = this.options.namespace.replace(/\./g, '\\');
 
             let formattedEvent = name.startsWith(namespace) ? name.substring(namespace.length + 1) : '.' + name;
 
             callback(formattedEvent, data, metaData);
-        });
-        this.channel.subscribe(this.callbacks.get(callback) as any).catch(this._alertSubscribeError);
+        };
+        this.allCallbacks.set(callback, [...(this.allCallbacks.get(callback) ?? []), wrapper]);
+        this.callbacks.set(callback, wrapper); // kept for backwards compatibility of the public field
+        this.channel.subscribe(wrapper as any).catch(this._alertSubscribeError);
         return this;
     }
 
@@ -129,11 +146,16 @@ export class AblyChannel extends Channel {
      * Stop listening for an event on the channel instance.
      */
     stopListening(event: string, callback?: Function): AblyChannel {
+        const name = this.eventFormatter.format(event);
         if (callback) {
-            this.channel.unsubscribe(this.eventFormatter.format(event), this.callbacks.get(callback) as any);
+            // T13: never call channel.unsubscribe(name, undefined): ably treats it as "remove every listener for name"
+            const wrappers = this.eventCallbacks.get(name)?.get(callback) ?? [];
+            wrappers.forEach((wrapper) => this.channel.unsubscribe(name, wrapper as any));
+            this.eventCallbacks.get(name)?.delete(callback);
             this.callbacks.delete(callback);
         } else {
-            this.channel.unsubscribe(this.eventFormatter.format(event));
+            this.channel.unsubscribe(name);
+            this.eventCallbacks.delete(name);
         }
 
         return this;
@@ -143,12 +165,13 @@ export class AblyChannel extends Channel {
      * Stop listening for all events on the channel instance.
      */
     stopListeningToAll(callback?: Function): AblyChannel {
-        if (callback) {
-            this.channel.unsubscribe(this.callbacks.get(callback) as any);
-            this.callbacks.delete(callback);
-        } else {
-            this.channel.unsubscribe();
-        }
+        // T13: remove only listenToAll() wrappers (PusherChannel: unbind_global), never channel.unsubscribe(undefined)
+        const callbacks = callback ? [callback] : [...this.allCallbacks.keys()];
+        callbacks.forEach((cb) => {
+            (this.allCallbacks.get(cb) ?? []).forEach((wrapper) => this.channel.unsubscribe(wrapper as any));
+            this.allCallbacks.delete(cb);
+            this.callbacks.delete(cb);
+        });
 
         return this;
     }
