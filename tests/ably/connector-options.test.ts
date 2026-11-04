@@ -1,9 +1,10 @@
 /**
- * AblyConnector.connect(): library resolution (R4) and legacy host-option mapping (R5).
- * No network: clients are created with autoConnect: false.
+ * AblyConnector.connect(): library resolution (R4), legacy host-option mapping (R5) and the
+ * failed-connection re-attach latch (R3). No network: clients are created with autoConnect: false or faked.
  */
 import * as AblyDevice from '@ably/pubsub-device';
 import Echo from '../../src/echo';
+import { FakeEmitter, makeFakeAbly } from '../parity/fake-ably';
 
 const baseOptions = { broadcaster: 'ably', autoConnect: false, requestTokenFn: async () => ({ token: 'x' }) };
 
@@ -83,5 +84,42 @@ describe('R5: environment / realtimeHost / restHost are mapped to endpoint', () 
         expect(echo.connector.options).not.toHaveProperty('endpoint');
         expect(console.warn).not.toHaveBeenCalled();
         echo.disconnect();
+    });
+});
+
+describe('R3: re-attach channels after the connection failed (installed from connect(), so options.client is covered)', () => {
+    const makeClient = () => {
+        const connection = new FakeEmitter();
+        const fake: any = { ...makeFakeAbly(), connection, close: jest.fn(), auth: {} };
+        return { fake, connection };
+    };
+
+    test('on the first connected after failed, re-attaches channels that are not attached/attaching, once', () => {
+        jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        const { fake, connection } = makeClient();
+        const echo = new Echo({ broadcaster: 'ably', client: fake });
+        const states = { a: 'failed', b: 'initialized', c: 'attached', d: 'attaching', e: 'detached' };
+        Object.entries(states).forEach(([n, state]) => {
+            const ch = echo.channel(n) as any;
+            ch.channel.state = state;
+            ch.channel.attach.mockClear();
+        });
+        connection.emit('failed', { current: 'failed', reason: { code: 40330, message: 'clientId required' } });
+        connection.emit('connecting', { current: 'connecting' });
+        connection.emit('connected', { current: 'connected' });
+        connection.emit('connected', { current: 'connected' }); // e.g. a later reconnect: no second re-attach
+        const attachCalls = Object.keys(states).map((n) => echo.connector.channels[`public:${n}`].channel.attach.mock.calls.length);
+        expect(attachCalls).toEqual([1, 1, 0, 0, 1]);
+        expect(console.error).not.toHaveBeenCalled(); // Echo does not log connection failures itself
+    });
+
+    test('a connected without a preceding failed re-attaches nothing', () => {
+        const { fake, connection } = makeClient();
+        const echo = new Echo({ broadcaster: 'ably', client: fake });
+        const ch = echo.channel('x') as any;
+        ch.channel.state = 'detached';
+        ch.channel.attach.mockClear();
+        connection.emit('connected', { current: 'connected' });
+        expect(ch.channel.attach).not.toHaveBeenCalled();
     });
 });

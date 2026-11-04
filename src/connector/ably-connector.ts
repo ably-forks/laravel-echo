@@ -54,8 +54,9 @@ export class AblyConnector extends Connector {
             }
             this.ably = AblyLib.createClient({ ...this.ablyAuth.options, ...this.options });
             this.ablyAuth.enableAuthorizeBeforeChannelAttach();
-            this.ablyAuth.allowReconnectOnUserLogin()
+            this.ablyAuth.allowReconnectOnUserLogin();
         }
+        this.reattachChannelsAfterConnectionFailure();
     }
 
     /**
@@ -91,6 +92,31 @@ export class AblyConnector extends Connector {
                 this.options.endpoint ?? 'default'
             }').`
         );
+    }
+
+    /**
+     * R3 (Echo-side resilience): v3 never re-attaches channels that went `failed`, and a connection never goes
+     * straight from `failed` to `connected` (failed -> connecting -> connected). Remember that the connection failed
+     * and, on the next `connected`, re-attach every Echo channel that is not attached/attaching (this includes
+     * `initialized` channels whose authorize failed). Installed here, not in AblyAuth, so it also covers `options.client`.
+     */
+    reattachChannelsAfterConnectionFailure(): void {
+        let connectionFailed = false;
+        this.ably.connection.on('failed', () => {
+            connectionFailed = true;
+        });
+        this.ably.connection.on('connected', () => {
+            if (!connectionFailed) {
+                return;
+            }
+            connectionFailed = false;
+            for (const echoChannel of Object.values(this.channels)) {
+                const state = echoChannel.channel.state;
+                if (state !== 'attached' && state !== 'attaching') {
+                    echoChannel.channel.attach().catch(echoChannel._alertErrorListeners);
+                }
+            }
+        });
     }
 
     /**
