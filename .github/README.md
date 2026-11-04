@@ -27,6 +27,13 @@ window.Echo.connector.ably.connection.on(stateChange => {
 });
 ```
 
+- Use `import * as Ably from '@ably/pubsub-device'`. `@ably/pubsub-device` has no default export, so `import Ably from '@ably/pubsub-device'` is a build error in Vite, rollup, webpack 5 and Node ESM.
+- **Script tag / CDN:** the v3 CDN bundle exposes `AblyPubSub`, not `Ably`:
+```html
+<script src="https://cdn.ably.com/lib/ably.min-3.js"></script>
+<script>window.Ably = AblyPubSub;</script>
+```
+
 - Take a look at [laravel broadcasting auth-endpoint doc](https://laravel.com/docs/broadcasting#customizing-the-authorization-endpoint) for customizing authEndpoint.
 ```
     broadcaster: 'ably',

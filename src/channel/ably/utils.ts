@@ -109,6 +109,18 @@ export const fullUrl = (url: string) => {
  */
 export const HTTP_REQUEST_TIMEOUT_MS = 10000;
 
+/**
+ * Resolves the Ably library global (R4): the bare `Ably` (webpack ProvidePlugin friendly) or the CDN's `AblyPubSub`,
+ * whichever has `createClient`. Returns undefined when neither does.
+ */
+export const resolveAblyLib = (): any => {
+    const candidates = [
+        typeof Ably !== 'undefined' ? Ably : undefined,
+        typeof AblyPubSub !== 'undefined' ? AblyPubSub : undefined,
+    ];
+    return candidates.find((lib) => typeof lib?.createClient === 'function');
+};
+
 const httpError = (message: string, statusCode: number, code: number, cause?: any): Error => {
     const error: any = new Error(message);
     error.statusCode = statusCode;
