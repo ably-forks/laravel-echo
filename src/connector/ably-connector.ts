@@ -53,6 +53,9 @@ export class AblyConnector extends Connector {
      * Create a fresh Ably connection.
      */
     connect(): void {
+        if (this.ably) {
+            this.releaseClient(); // P7: connect() called again
+        }
         if (typeof this.options.client !== 'undefined') {
             // P3: a user-supplied client gets no AblyAuth, so the pre-attach authorize (and the 40160 re-authorize of
             // private and presence channels) is not installed; its own auth must grant the channel capabilities.
@@ -79,6 +82,18 @@ export class AblyConnector extends Connector {
             this.ablyAuth.allowReconnectOnUserLogin();
         }
         this.reattachChannelsAfterConnectionFailure();
+    }
+
+    /**
+     * P7: leave the existing Echo channels, so none stays bound to this client, and close the client (unless it is the
+     * user-supplied client, which may be reused). Channels are not re-bound: callers re-subscribe after reconnecting.
+     * Called when connect() is called again, and by Echo.connect() before it replaces this connector.
+     */
+    releaseClient(): void {
+        Object.keys(this.channels).forEach((name) => this.leaveChannel(name));
+        if (this.ably && this.ably !== this.options.client) {
+            this.ably.close();
+        }
     }
 
     /**

@@ -207,3 +207,60 @@ describe('P6: encryptedPrivate()', () => {
         echo.disconnect();
     });
 });
+
+describe('P7: connect() called again', () => {
+    const makeClient = (): any => ({ ...makeFakeAbly(), connection: new FakeEmitter(), close: jest.fn(), auth: {} });
+
+    test('leaves the Echo channels, closes the previous client, and new channels bind to the new client', () => {
+        const first = makeClient();
+        const second = makeClient();
+        const echo = new Echo({ broadcaster: 'ably', client: first });
+        const publicChannel = echo.channel('p7') as any;
+        echo.private('p7');
+        echo.connector.options.client = second;
+        echo.connector.connect();
+        expect(first.close).toHaveBeenCalledTimes(1);
+        expect(second.close).not.toHaveBeenCalled();
+        expect(echo.connector.channels).toEqual({});
+        expect(publicChannel.channel.unsubscribe).toHaveBeenCalled();
+        expect(echo.connector.ably).toBe(second);
+        expect((echo.private('p7') as any).channel).toBe(second.channels.get('private:p7'));
+    });
+
+    test('the same user-supplied client is reused, not closed', () => {
+        const client = makeClient();
+        const echo = new Echo({ broadcaster: 'ably', client });
+        echo.channel('p7');
+        echo.connector.connect();
+        expect(client.close).not.toHaveBeenCalled();
+        expect(echo.connector.channels).toEqual({});
+        expect(echo.connector.ably).toBe(client);
+    });
+
+    test('a client Echo created is closed and replaced', () => {
+        (globalThis as any).Ably = AblyDevice;
+        const echo = new Echo({ ...baseOptions });
+        const previous = echo.connector.ably;
+        echo.connector.connect();
+        expect(['closing', 'closed']).toContain(previous.connection.state);
+        expect(echo.connector.ably).not.toBe(previous);
+        expect(echo.connector.ably.connection.state).toBe('initialized');
+        echo.disconnect();
+    });
+
+    test('Echo.connect() called again releases the previous connector: its channels are left and its client closed', () => {
+        (globalThis as any).Ably = AblyDevice;
+        const echo = new Echo({ ...baseOptions });
+        const previousConnector = echo.connector;
+        const previous = previousConnector.ably;
+        echo.channel('p7');
+        echo.connect();
+        expect(echo.connector).not.toBe(previousConnector);
+        expect(previousConnector.channels).toEqual({});
+        expect(['closing', 'closed']).toContain(previous.connection.state);
+        expect(echo.connector.ably).not.toBe(previous);
+        expect(echo.connector.ably.connection.state).toBe('initialized');
+        expect((echo.private('p7') as any).channel).toBe(echo.connector.ably.channels.get('private:p7'));
+        echo.disconnect();
+    });
+});
