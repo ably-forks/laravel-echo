@@ -74,5 +74,10 @@
     },
     "peerDependencies": {
         "@ably/pubsub-device": "^3.0.0"
+    },
+    "peerDependenciesMeta": {
+        "@ably/pubsub-device": {
+            "optional": true
+        }
     }
 }
