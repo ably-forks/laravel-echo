@@ -60,6 +60,7 @@ export class AblyChannel extends Channel {
         this.subscribedListeners = [];
         this.errorListeners = [];
         this.channel = ably.channels.get(name);
+        (this.channel as any).cancelAuthorizedAttach = false; // T17: re-joined before a cancelled authorization finished
         this.callbacks = new Map();
 
         if (autoSubscribe) {
@@ -88,6 +89,10 @@ export class AblyChannel extends Channel {
     unsubscribe(): void {
         this.channel.unsubscribe();
         this.callbacks.clear();
+        if ((this.channel as any).authorizing) {
+            // T17: the patched _attach must not attach the channel once the pending authorization completes
+            (this.channel as any).cancelAuthorizedAttach = true;
+        }
         this.unregisterError();
         this.unregisterSubscribed();
         this.channel.off();
@@ -101,7 +106,7 @@ export class AblyChannel extends Channel {
         this.callbacks.set(callback, ({ data, ...metaData }) => callback(data, metaData));
         this.channel
             .subscribe(this.eventFormatter.format(event), this.callbacks.get(callback) as any)
-            .catch(this._alertErrorListeners);
+            .catch(this._alertSubscribeError);
         return this;
     }
 
@@ -116,7 +121,7 @@ export class AblyChannel extends Channel {
 
             callback(formattedEvent, data, metaData);
         });
-        this.channel.subscribe(this.callbacks.get(callback) as any).catch(this._alertErrorListeners);
+        this.channel.subscribe(this.callbacks.get(callback) as any).catch(this._alertSubscribeError);
         return this;
     }
 
@@ -199,6 +204,16 @@ export class AblyChannel extends Channel {
     _alertErrorListeners = (err: any) => {
         if (err) {
             this.errorListeners.forEach((listener) => safeInvoke(listener, err));
+        }
+    };
+
+    /**
+     * subscribe() implicitly attaches; an attach failure is already reported through the channel state change and
+     * attach().catch, so only forward errors raised while attached (e.g. v3 90009: attached without subscribe mode).
+     */
+    _alertSubscribeError = (err: any) => {
+        if (this.channel.state === 'attached') {
+            this._alertErrorListeners(err);
         }
     };
 }
