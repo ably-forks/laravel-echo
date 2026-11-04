@@ -8,6 +8,7 @@ import { makeJwt, settle } from './fake-ably';
 /** Stands in for ably's RealtimeChannel class: attach.ts patches `_attach` on its prototype. */
 class FakeRealtimeChannel {
     name: string;
+    client?: any;
     authorizing?: boolean;
     static internalAttachCalls: any[] = [];
     constructor(name: string) {
@@ -21,7 +22,7 @@ class FakeRealtimeChannel {
 
 const makeAuth = (requestTokenFn: Function, authorize: jest.Mock = jest.fn((_, opts) => Promise.resolve(opts.token))) => {
     const client: any = {
-        channels: { get: (n: string) => new FakeRealtimeChannel(n) },
+        channels: { get: (n: string) => Object.assign(new FakeRealtimeChannel(n), { client }) },
         getTimestamp: jest.fn(() => Promise.resolve(Date.now())),
         getTimestampUsingOffset: () => Date.now(),
         auth: { tokenDetails: null, authorize, clientId: 'user1' },
@@ -112,7 +113,7 @@ describe('tryAuthorizeOnSameConnection', () => {
 describe('beforeChannelAttach (patched RealtimeChannel._attach)', () => {
     const attachVia = (auth: AblyAuth, name: string) => {
         auth.enableAuthorizeBeforeChannelAttach();
-        const ch = new FakeRealtimeChannel(name);
+        const ch = Object.assign(new FakeRealtimeChannel(name), { client: auth.ablyClient() });
         const cb = jest.fn();
         ch._attach(false, null, cb);
         return { ch, cb };
@@ -156,7 +157,7 @@ describe('beforeChannelAttach (patched RealtimeChannel._attach)', () => {
     test('a second _attach while authorizing is not silently dropped (its callback eventually fires)', async () => {
         const { auth } = makeAuth(async () => ({ token: makeJwt() }));
         auth.enableAuthorizeBeforeChannelAttach();
-        const ch = new FakeRealtimeChannel('private:z');
+        const ch = Object.assign(new FakeRealtimeChannel('private:z'), { client: auth.ablyClient() });
         const cb1 = jest.fn();
         const cb2 = jest.fn();
         ch._attach(false, null, cb1);
@@ -173,7 +174,7 @@ describe('beforeChannelAttach (patched RealtimeChannel._attach)', () => {
         const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64').replace(/=+$/, '');
         client.auth.tokenDetails = { token: `${b64u({ alg: 'HS256' })}.${b64u({ iat: now, exp: now + 3600 })}.s`, expires: Date.now() + 3600e3 };
         auth.enableAuthorizeBeforeChannelAttach();
-        const ch = new FakeRealtimeChannel('private:w');
+        const ch = Object.assign(new FakeRealtimeChannel('private:w'), { client });
         const cb = jest.fn();
         try {
             ch._attach(false, null, cb);

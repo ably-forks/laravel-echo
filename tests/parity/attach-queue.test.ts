@@ -41,7 +41,7 @@ class FakeRealtimeChannel {
 const makeClient = () => {
     const channels: Record<string, FakeRealtimeChannel> = {};
     const client: any = {
-        channels: { get: (n: string) => (channels[n] = channels[n] || new FakeRealtimeChannel(n)) },
+        channels: { get: (n: string) => (channels[n] = channels[n] || Object.assign(new FakeRealtimeChannel(n), { client })) },
         getTimestamp: jest.fn(() => Promise.resolve(Date.now())),
         getTimestampUsingOffset: () => Date.now(),
         auth: { tokenDetails: null, authorize: jest.fn((_, o) => Promise.resolve(o.token)), clientId: 'user1' },

@@ -26,7 +26,9 @@ class FakeRealtimeChannel {
 
 test('T18 a synchronous throw from the internal attach rejects attach() and resets `authorizing`', async () => {
     const ch: any = new FakeRealtimeChannel('public:x');
-    beforeChannelAttach({ channels: { get: () => ch } }, (_c, done) => done(null));
+    const client = { channels: { get: () => ch } };
+    ch.client = client; // the patched _attach looks the authorizer up per client
+    beforeChannelAttach(client, (_c, done) => done(null));
     let outcome = 'pending';
     ch.attach().then(
         () => (outcome = 'resolved'),
