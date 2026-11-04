@@ -21,13 +21,15 @@ export class AblyAuth {
         queryTime: true,
         useTokenAuth: true,
         authCallback: async (_, callback) => {
+            let tokenDetails;
             try {
                 const { token } = await this.authRequestExecuter.request(null);
-                const tokenDetails = toTokenDetails(token);
-                callback(null, tokenDetails);
+                tokenDetails = toTokenDetails(token);
             } catch (error) {
                 callback(error, null);
+                return;
             }
+            callback(null, tokenDetails);
         },
         echoMessages: false, // https://docs.ably.io/client-lib-development-guide/features/#TO3h
     };

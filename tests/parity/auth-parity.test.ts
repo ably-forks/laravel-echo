@@ -72,9 +72,7 @@ describe('authCallback (ably-facing, callback style since 1.0.6)', () => {
         const { auth } = makeAuth(() => Promise.reject(new Error('x')));
         await expect((auth.options.authCallback as any)({}, () => undefined)).resolves.toBeUndefined();
     });
-
-    // Deferred to Phase 2: fixed by the combined token-path design (review §9.1: T6, T7, T10). Un-skip there.
-    test.skip('if the ably callback throws on success it is not called a second time with that exception', async () => {
+    test('if the ably callback throws on success it is not called a second time with that exception', async () => {
         const { auth } = makeAuth(async () => ({ token: makeJwt() }));
         const cb = jest.fn((err) => {
             if (!err) throw new Error('internal');
