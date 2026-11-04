@@ -20,6 +20,8 @@ export class MockAuthServer {
 
     userInfo = { id: 'sacOO7@github.com', name: 'sacOO7' }; // Used for presence
 
+    tokenExpiry = 60; // seconds, mirrors AblyBroadcaster's `token_expiry` config
+
     constructor(apiKey: string, endpoint = 'nonprod:sandbox') {
         const keys = apiKey.split(':');
         this.keyName = keys[0];
@@ -70,7 +72,7 @@ export class MockAuthServer {
             capabilities = JSON.parse(payload['x-ably-capability']);
         } else {
             iat = Math.round(serverTime / 1000);
-            exp = iat + 60; /* time of expiration in seconds */
+            exp = iat + this.tokenExpiry; /* time of expiration in seconds */
         }
         if (!isNullOrUndefinedOrEmpty(channelName)) {
             capabilities[channelName] = ['*'];
