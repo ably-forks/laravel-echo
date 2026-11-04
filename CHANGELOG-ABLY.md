@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased (next release: 2.0.0)
+## [v2.0.0](https://github.com/ably-forks/laravel-echo/tree/ably-echo-2.0.0)
+
+[Full Changelog](https://github.com/ably-forks/laravel-echo/compare/ably-echo-1.0.6...ably-echo-2.0.0)
 
 Echo's API is unchanged. See "Upgrading to 2.0" in the README.
 
