@@ -5,6 +5,7 @@ import { createServer, Server } from 'http';
 import { AddressInfo } from 'net';
 import * as AblyDevice from '@ably/pubsub-device';
 import { AblyAuth } from '../../src/channel/ably/auth';
+import * as attach from '../../src/channel/ably/attach';
 import { httpError, httpRequestAsync, toTokenDetails } from '../../src/channel/ably/utils';
 import { TOKEN_REQUEST_TIMEOUT_MS } from '../../src/channel/ably/token-request';
 
@@ -131,5 +132,51 @@ describe('auth token path (review §9.1 combined design)', () => {
         });
         await (auth.options.authCallback as any)(null, cb).catch(() => undefined);
         expect(cb).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('review §8.3: the cached token is used only if its capability has the channel as a key', () => {
+    const authorizeWithCachedToken = async (capability: string, channelName: string) => {
+        let authorize: Function;
+        const spy = jest.spyOn(attach, 'beforeChannelAttach').mockImplementation((_client, fn) => {
+            authorize = fn;
+        });
+        const requestTokenFn = jest.fn().mockRejectedValue(new Error('new token requested'));
+        const ably = {
+            auth: { tokenDetails: { token: jwt({ 'x-ably-capability': capability, exp: 9e9, iat: 1 }), expires: Date.now() + 60000 } },
+            getTimestamp: () => Promise.resolve(Date.now()),
+            getTimestampUsingOffset: () => Date.now(),
+        };
+        const auth = new AblyAuth({ options: {}, ably, channels: {} } as any, {
+            authEndpoint: 'http://127.0.0.1:1/broadcasting/auth',
+            auth: { headers: {} },
+            requestTokenFn,
+        });
+        try {
+            auth.enableAuthorizeBeforeChannelAttach();
+        } finally {
+            spy.mockRestore();
+        }
+        const errorCallback = jest.fn();
+        authorize({ name: channelName }, errorCallback);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return { requestTokenFn, errorCallback };
+    };
+
+    test('a capability for the exact channel uses the cached token', async () => {
+        const { requestTokenFn, errorCallback } = await authorizeWithCachedToken('{"private:foo":["*"]}', 'private:foo');
+        expect(errorCallback).toHaveBeenCalledWith(null);
+        expect(requestTokenFn).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        ['private:foo vs private:foobar', '{"private:foobar":["*"]}', 'private:foo'],
+        ['private:foobar vs private:foo', '{"private:foo":["*"]}', 'private:foobar'],
+        ['a channel name that ends another key', '{"private:team-private:foo":["*"]}', 'private:foo'],
+        ['invalid capability JSON', 'not json', 'private:foo'],
+    ])('%s requests a new token', async (_, capability, channelName) => {
+        const { requestTokenFn, errorCallback } = await authorizeWithCachedToken(capability, channelName);
+        expect(requestTokenFn).toHaveBeenCalledTimes(1);
+        expect(errorCallback).toHaveBeenCalledWith(expect.objectContaining({ message: 'new token requested' }));
     });
 });

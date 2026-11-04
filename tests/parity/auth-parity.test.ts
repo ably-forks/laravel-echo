@@ -167,10 +167,9 @@ describe('beforeChannelAttach (patched RealtimeChannel._attach)', () => {
 
     test('a synchronous exception while authorizing does not leave the channel stuck in `authorizing`', async () => {
         const { auth, client } = makeAuth(async () => ({ token: makeJwt() }));
-        // cached token without x-ably-capability -> parseJwt(...).payload['x-ably-capability'].includes throws TypeError
-        const now = Math.floor(Date.now() / 1000);
-        const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64').replace(/=+$/, '');
-        client.auth.tokenDetails = { token: `${b64u({ alg: 'HS256' })}.${b64u({ iat: now, exp: now + 3600 })}.s`, expires: Date.now() + 3600e3 };
+        // a cached token that is not a JWT -> parseJwt throws a TypeError synchronously
+        client.auth.tokenDetails = { token: 'not-a-jwt', expires: Date.now() + 3600e3 };
+
         auth.enableAuthorizeBeforeChannelAttach();
         const ch = Object.assign(new FakeRealtimeChannel('private:w'), { client });
         const cb = jest.fn();

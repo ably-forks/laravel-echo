@@ -91,7 +91,14 @@ export class AblyAuth {
             const tokenDetails = this.existingToken();
             if (tokenDetails && !this.isExpired(channelName)) {
                 const capability = parseJwt(tokenDetails.token).payload['x-ably-capability'];
-                const tokenHasChannelCapability = capability.includes(`${channelName}"`);
+                // review §8.3: the channel must be a key of the capability, not a substring of its JSON
+                let tokenHasChannelCapability = false;
+                try {
+                    tokenHasChannelCapability = Object.prototype.hasOwnProperty.call(JSON.parse(capability), channelName);
+                } catch (e) {
+                    tokenHasChannelCapability = false; // invalid capability JSON: request a new token
+                }
+
                 // checks with server time using offset, otherwise local time
                 if (tokenHasChannelCapability && tokenDetails.expires > ablyClient.getTimestampUsingOffset()) {
                     errorCallback(null);
