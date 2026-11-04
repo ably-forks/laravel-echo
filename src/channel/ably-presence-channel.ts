@@ -30,8 +30,10 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
             .subscribe(['enter', 'update', 'leave'], () =>
                 this.channel.presence
                     .get()
-                    .then((members) => callback(members.map(({ data }) => data), null))
-                    .catch((err) => callback([], err))
+                    .then(
+                        (members) => safeInvoke(callback, members.map(({ data }) => data), null),
+                        (err) => safeInvoke(callback, [], err)
+                    )
             )
             .catch(this._alertErrorListeners);
         return this;
