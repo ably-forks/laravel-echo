@@ -169,7 +169,21 @@ describe('R3: re-attach channels after the connection failed (installed from con
         connection.emit('connected', { current: 'connected' }); // e.g. a later reconnect: no second re-attach
         const attachCalls = Object.keys(states).map((n) => echo.connector.channels[`public:${n}`].channel.attach.mock.calls.length);
         expect(attachCalls).toEqual([1, 1, 0, 0, 1]);
-        expect(console.error).not.toHaveBeenCalled(); // Echo does not log connection failures itself
+        expect(console.error).toHaveBeenCalledTimes(1); // the MAU hint
+        expect((console.error as jest.Mock).mock.calls[0][0]).toContain('MAU-billed');
+        expect((console.error as jest.Mock).mock.calls[0][0]).toContain('clientId');
+    });
+
+    test('a 40102 clientId mismatch logs no MAU hint; other failures log it once', () => {
+        jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        const { fake, connection } = makeClient();
+        new Echo({ broadcaster: 'ably', client: fake });
+        connection.emit('failed', { current: 'failed', reason: { code: 40102, message: 'mismatched clientId' } });
+        expect(console.error).not.toHaveBeenCalled();
+        connection.emit('failed', { current: 'failed', reason: { code: 40330, message: 'clientId required' } });
+        connection.emit('failed', { current: 'failed', reason: { code: 40330, message: 'clientId required' } });
+        expect(console.error).toHaveBeenCalledTimes(1);
+        expect((console.error as jest.Mock).mock.calls[0][0]).toContain('MAU-billed');
     });
 
     test('a connected without a preceding failed re-attaches nothing', () => {
