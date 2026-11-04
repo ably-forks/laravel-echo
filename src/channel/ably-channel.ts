@@ -1,6 +1,7 @@
 import type { AblyRealtime, AblyRealtimeChannel } from '../../typings/ably';
 import { EventFormatter } from '../util';
 import { Channel } from './channel';
+import { safeInvoke } from './ably/utils';
 
 /**
  * This class represents an Ably channel.
@@ -73,7 +74,7 @@ export class AblyChannel extends Channel {
         this.channel.on((stateChange) => {
             const { previous, current, reason } = stateChange;
             if (previous !== 'attached' && current == 'attached') {
-                this.subscribedListeners.forEach((listener) => listener());
+                this.subscribedListeners.forEach((listener) => safeInvoke(listener));
             } else if (reason) {
                 this._alertErrorListeners(stateChange);
             }
@@ -197,7 +198,7 @@ export class AblyChannel extends Channel {
 
     _alertErrorListeners = (err: any) => {
         if (err) {
-            this.errorListeners.forEach((listener) => listener(err));
+            this.errorListeners.forEach((listener) => safeInvoke(listener, err));
         }
     };
 }
