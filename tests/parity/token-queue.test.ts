@@ -58,9 +58,7 @@ describe('SequentialAuthTokenRequestExecuter', () => {
         await expect(p2).resolves.toMatchObject({ token: 't2' });
         expect(fn.mock.calls[1]).toEqual(['b', 't0']); // cached token kept after a failure
     });
-
-    // Deferred to Phase 2: fixed by the combined token-path design (review §9.1: T6, T7, T10). Un-skip there.
-    test.skip('requestTokenFn resolving without a token string rejects, and does not overwrite the cached token', async () => {
+    test('requestTokenFn resolving without a token string rejects, and does not overwrite the cached token', async () => {
         // T7: a custom requestTokenFn result must be validated before caching; otherwise the executer caches `undefined`
         // and callers later fail in parseJwt with an opaque TypeError.
         const fn = jest.fn().mockResolvedValueOnce({}).mockResolvedValueOnce({ token: 't2' });
@@ -68,9 +66,7 @@ describe('SequentialAuthTokenRequestExecuter', () => {
         await expect(ex.request('a')).rejects.toThrow(/token/);
         expect(ex.cachedToken).toBe('t0');
     });
-
-    // Deferred to Phase 2: fixed by the combined token-path design (review §9.1: T6, T7, T10). Un-skip there.
-    test.skip('a requestTokenFn that never settles does not block every later token request forever', async () => {
+    test('a requestTokenFn that never settles does not block every later token request forever', async () => {
         jest.useFakeTimers();
         try {
             const fn = jest

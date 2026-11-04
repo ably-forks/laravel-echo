@@ -46,7 +46,13 @@ export const parseJwt = (jwtToken: string): { header: any; payload: any } => {
 
 // RSA4f - omitted `capability` property
 export const toTokenDetails = (jwtToken: string): TokenDetails | any => {
-    const { payload } = parseJwt(jwtToken);
+    let payload;
+    try {
+        payload = parseJwt(jwtToken).payload;
+    } catch (e) {
+        // a coded error instead of an opaque SyntaxError/TypeError reaching error() listeners / ably's authCallback
+        throw httpError('Auth token is not a valid JWT', 500, 50000, e);
+    }
     return {
         clientId: payload['x-ably-clientId'],
         expires: payload.exp * 1000, // Convert Seconds to ms

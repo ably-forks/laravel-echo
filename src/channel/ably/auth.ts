@@ -1,6 +1,6 @@
 import { beforeChannelAttach } from './attach';
-import { toTokenDetails, parseJwt, fullUrl, httpRequestAsync } from './utils';
-import { SequentialAuthTokenRequestExecuter } from './token-request';
+import { toTokenDetails, parseJwt, fullUrl, httpRequestAsync, HTTP_REQUEST_TIMEOUT_MS } from './utils';
+import { SequentialAuthTokenRequestExecuter, TOKEN_REQUEST_TIMEOUT_MS } from './token-request';
 import type { AblyChannel } from '../ably-channel';
 import { AblyConnector } from '../../connector/ably-connector';
 import { AblyPresenceChannel } from '../ably-presence-channel';
@@ -44,14 +44,8 @@ export class AblyAuth {
             },
             body: postData,
         };
-        const response = await httpRequestAsync(postOptions);
-        if (typeof response?.token !== 'string') {
-            const error: any = new Error(`Auth endpoint ${this.authEndpoint} returned a response without a token`);
-            error.statusCode = 500;
-            error.code = 50000;
-            throw error;
-        }
-        return response;
+        // the token itself is validated by SequentialAuthTokenRequestExecuter (R12), for both sources
+        return httpRequestAsync(postOptions, this.httpRequestTimeout());
     };
 
     constructor(ablyConnector: AblyConnector, options) {
@@ -64,8 +58,15 @@ export class AblyAuth {
         } = options;
         this.authEndpoint = fullUrl(authEndpoint);
         this.authHeaders = headers;
-        this.authRequestExecuter = new SequentialAuthTokenRequestExecuter(token, requestTokenFn ?? this.requestToken);
+        this.authRequestExecuter = new SequentialAuthTokenRequestExecuter(token, requestTokenFn ?? this.requestToken, {
+            source: requestTokenFn ? 'requestTokenFn' : `Auth endpoint ${this.authEndpoint}`,
+            // T6 queue bound: never shorter than the fetch timeout (R21), so the fetch's own 50003 always wins on the
+            // authEndpoint path and a large httpRequestTimeout is not silently capped by the queue.
+            timeoutMs: Math.max(TOKEN_REQUEST_TIMEOUT_MS, this.httpRequestTimeout() + 1000),
+        });
     }
+
+    httpRequestTimeout = (): number => this.ablyConnector.options?.httpRequestTimeout ?? HTTP_REQUEST_TIMEOUT_MS;
 
     ablyClient = () => this.ablyConnector.ably as AblyRealtime | any;
 
