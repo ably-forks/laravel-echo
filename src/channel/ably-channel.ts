@@ -130,9 +130,11 @@ export class AblyChannel extends Channel {
      */
     listenToAll(callback: Function): AblyChannel {
         const wrapper = ({ name, data, ...metaData }) => {
-            let namespace = this.options.namespace.replace(/\./g, '\\');
+            // T14: `namespace: false` is a supported Echo option (EventFormatter), so don't call .replace on it
+            const namespace = this.options.namespace ? String(this.options.namespace).replace(/\./g, '\\') : '';
 
-            let formattedEvent = name.startsWith(namespace) ? name.substring(namespace.length + 1) : '.' + name;
+            const formattedEvent =
+                namespace && name.startsWith(namespace) ? name.substring(namespace.length + 1) : '.' + name;
 
             callback(formattedEvent, data, metaData);
         };
