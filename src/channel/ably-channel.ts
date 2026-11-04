@@ -1,7 +1,7 @@
 import type { AblyRealtime, AblyRealtimeChannel } from '../../typings/ably';
 import { EventFormatter } from '../util';
 import { Channel } from './channel';
-import { safeInvoke } from './ably/utils';
+import { safeInvoke, isSameError } from './ably/utils';
 
 /**
  * This class represents an Ably channel.
@@ -48,6 +48,13 @@ export class AblyChannel extends Channel {
     callbacks: Map<Function, Function>;
 
     /**
+     * The reason of the last channel state change reported to error() listeners (cleared on attach), and the last
+     * error reported to them. _alertSubscribeError uses both so one failure is reported once.
+     */
+    lastStateChangeReason: any = null;
+    lastAlertedError: any = null;
+
+    /**
      * listen() wrappers, per formatted event name, then per user callback (a callback may be registered more than once).
      */
     eventCallbacks: Map<string, Map<Function, Function[]>> = new Map();
@@ -85,8 +92,10 @@ export class AblyChannel extends Channel {
         this.channel.on((stateChange) => {
             const { previous, current, reason } = stateChange;
             if (previous !== 'attached' && current == 'attached') {
+                this.lastStateChangeReason = null;
                 this.subscribedListeners.forEach((listener) => safeInvoke(listener));
             } else if (reason) {
+                this.lastStateChangeReason = reason;
                 this._alertErrorListeners(stateChange);
             }
         });
@@ -228,16 +237,20 @@ export class AblyChannel extends Channel {
 
     _alertErrorListeners = (err: any) => {
         if (err) {
+            this.lastAlertedError = err;
             this.errorListeners.forEach((listener) => safeInvoke(listener, err));
         }
     };
 
     /**
-     * subscribe() implicitly attaches; an attach failure is already reported through the channel state change and
-     * attach().catch, so only forward errors raised while attached (e.g. v3 90009: attached without subscribe mode).
+     * subscribe() implicitly attaches, so its rejection is often an attach failure that was already reported: by the
+     * channel state change (same reason, or same code and message) or by the attach() that started the same
+     * authorization (same error object). Forward everything else once: v3 90009 while attached, a subscribe on a
+     * `failed` channel, and an authorization failure that changes no state (`initialized` / `detached` channel).
      */
     _alertSubscribeError = (err: any) => {
-        if (this.channel.state === 'attached') {
+        const reportedByStateChange = isSameError(err, this.lastStateChangeReason);
+        if (this.channel.state === 'attached' || !(reportedByStateChange || err === this.lastAlertedError)) {
             this._alertErrorListeners(err);
         }
     };

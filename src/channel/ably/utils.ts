@@ -18,6 +18,12 @@ export const safeInvoke = (fn: Function | undefined | null, ...args: any[]): voi
     }
 };
 
+/**
+ * Whether two ably errors describe the same failure: the same object, or the same code and message.
+ */
+export const isSameError = (a: any, b: any): boolean =>
+    !!a && !!b && (a === b || (a.code !== undefined && a.code === b.code && a.message === b.message));
+
 export const isNullOrUndefined = (obj) => obj == null || obj === undefined;
 export const isEmptyString = (stringToCheck, ignoreSpaces = true) =>
     (ignoreSpaces ? stringToCheck.trim() : stringToCheck) === '';
