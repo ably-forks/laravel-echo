@@ -9,12 +9,19 @@ import { safeInvoke } from './ably/utils';
 export class AblyPresenceChannel extends AblyChannel implements PresenceChannel {
     presenceData: any;
 
+    /**
+     * Outcome of the last enter(): true or false once it settled, undefined while one is in flight. Starts false, so a
+     * client that never entered is treated like one whose enter failed.
+     */
+    lastEnterSucceeded: boolean | undefined = false;
+
     constructor(ably: any, name: string, options: any, auth: AblyAuth) {
         super(ably, name, options, false);
         this.channel.on('failed', auth.onChannelFailed(this));
         this.channel.on('attached', (stateChange) => {
-            // T15: on a resumed attach the server kept our membership and ably re-enters it (RTP17); don't enter twice
-            if (!stateChange?.resumed) {
+            // T15: on a resumed attach the server kept our membership and ably re-enters it (RTP17); don't enter twice.
+            // If the last enter() failed there is no membership to restore, so enter again.
+            if (!stateChange?.resumed || this.lastEnterSucceeded === false) {
                 this.enter(this.presenceData, this._alertErrorListeners);
             }
         });
@@ -77,11 +84,22 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
      * @returns AblyPresenceChannel
      */
     enter(data: any, callback?: Function): AblyPresenceChannel {
+        this.lastEnterSucceeded = undefined;
         this.channel.presence
             .enter(data)
             .then(
-                () => safeInvoke(callback, null),
-                (err) => (callback ? safeInvoke(callback, err) : this._alertErrorListeners(err))
+                () => {
+                    this.lastEnterSucceeded = true;
+                    safeInvoke(callback, null);
+                },
+                (err) => {
+                    this.lastEnterSucceeded = false;
+                    if (callback) {
+                        safeInvoke(callback, err);
+                    } else {
+                        this._alertErrorListeners(err);
+                    }
+                }
             );
 
         return this;
