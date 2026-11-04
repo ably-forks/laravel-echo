@@ -20,11 +20,14 @@ describe('AblyConnection', () => {
     });
 
     beforeEach(() => {
+        // Each test registers its connection listener first and then calls connect(): with autoConnect the
+        // initialized -> connecting event can be emitted before the test body runs (it is on the browser build).
         echo = new Echo({
             broadcaster: 'ably',
             useTls: true,
             endpoint: 'nonprod:sandbox',
             requestTokenFn: mockAuthServer.getSignedToken,
+            autoConnect: false,
         });
     });
 
@@ -59,6 +62,7 @@ describe('AblyConnection', () => {
                 return;
             }
         });
+        echo.connector.ably.connect();
     });
 
     test('should be able to disconnect from server', (done) => {
@@ -80,5 +84,6 @@ describe('AblyConnection', () => {
                 return;
             }
         });
+        echo.connector.ably.connect();
     });
 });
