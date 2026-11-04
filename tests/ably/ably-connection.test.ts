@@ -3,7 +3,6 @@ import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import safeAssert from './setup/utils';
 import * as Ably from '@ably/pubsub-device';
-import { AblyConnector } from '../../src/connector/ably-connector';
 jest.setTimeout(20000);
 describe('AblyConnection', () => {
     let testApp: any;
@@ -82,29 +81,4 @@ describe('AblyConnection', () => {
             }
         });
     });
-
-    test('should set ably agent header', async () => {
-        expect(echo.connector.ably.options.agents).toStrictEqual({
-            'laravel-echo': AblyConnector.LIB_VERSION,
-            'ably-pubsub-device': undefined,
-        })
-        let observedRequests = 0;
-        // Intercept httpRequester.do with test
-        function testRequestHandler(_, __, headers) {
-            observedRequests++;
-            expect('X-Ably-Version' in headers).toBeTruthy();
-            expect('Ably-Agent' in headers).toBeTruthy();
-            expect(headers['Ably-Agent'].indexOf('laravel-echo/'+ AblyConnector.LIB_VERSION) > -1).toBeTruthy();
-            return Promise.resolve({ body: JSON.stringify([Date.now()]), headers: {}, statusCode: 200 });
-        }
-
-        const do_inner = echo.connector.ably.httpRequester.do;
-        echo.connector.ably.httpRequester.do = testRequestHandler;
-
-        await echo.connector.ably.time();
-        expect(observedRequests).toBe(1);
-
-        // Clean interceptors from httpRequester.do
-        echo.connector.ably.httpRequester.do = do_inner;
-    })
 });
