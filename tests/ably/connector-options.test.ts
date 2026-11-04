@@ -182,3 +182,16 @@ describe('R3: re-attach channels after the connection failed (installed from con
         expect(ch.channel.attach).not.toHaveBeenCalled();
     });
 });
+
+describe('P3: options.client (no AblyAuth)', () => {
+    test('private(), join() and leaveChannel() do not throw', () => {
+        const fake: any = { ...makeFakeAbly(), connection: new FakeEmitter(), close: jest.fn(), auth: {} };
+        const echo = new Echo({ broadcaster: 'ably', client: fake });
+        expect(echo.connector.ablyAuth).toBeUndefined();
+        expect(() => echo.private('p3')).not.toThrow();
+        expect(() => echo.join('p3')).not.toThrow();
+        expect(() => echo.leaveChannel('private:p3')).not.toThrow();
+        expect(() => echo.leaveChannel('presence:p3')).not.toThrow();
+        expect(echo.connector.channels).toEqual({});
+    });
+});

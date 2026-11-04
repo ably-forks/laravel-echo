@@ -54,6 +54,8 @@ export class AblyConnector extends Connector {
      */
     connect(): void {
         if (typeof this.options.client !== 'undefined') {
+            // P3: a user-supplied client gets no AblyAuth, so the pre-attach authorize (and the 40160 re-authorize of
+            // private and presence channels) is not installed; its own auth must grant the channel capabilities.
             this.ably = this.options.client;
         } else {
             this.ablyAuth = new AblyAuth(this, this.options);
@@ -214,7 +216,7 @@ export class AblyConnector extends Connector {
         }
         if (this.channels[name]) {
             this.channels[name].unsubscribe();
-            this.ablyAuth.setExpired(name);
+            this.ablyAuth?.setExpired(name); // P3: no AblyAuth with options.client
             delete this.channels[name];
         }
     }
