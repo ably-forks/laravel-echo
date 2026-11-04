@@ -17,7 +17,7 @@ const browserContext = () => {
         setTimeout, clearTimeout, setInterval, clearInterval,
         navigator: { userAgent: 'jest' },
         location: { protocol: 'https:', href: 'https://app.test/', hostname: 'app.test' },
-        TextEncoder, TextDecoder, crypto: globalThis.crypto, fetch: globalThis.fetch, AbortController,
+        TextEncoder, TextDecoder, URL, crypto: globalThis.crypto, fetch: globalThis.fetch, AbortController,
         addEventListener: noop, removeEventListener: noop,
         document: { cookie: '', querySelector: () => null },
         WebSocket: function () { this.close = noop; },

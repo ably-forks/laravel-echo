@@ -1,4 +1,4 @@
-import { fromBase64UrlEncoded, parseJwt, toBase64UrlEncoded, toTokenDetails } from '../../src/channel/ably/utils';
+import { fromBase64UrlEncoded, fullUrl, parseJwt, toBase64UrlEncoded, toTokenDetails } from '../../src/channel/ably/utils';
 
 describe('Utils', () => {
     describe('JWT handling', () => {
@@ -62,6 +62,23 @@ describe('Utils', () => {
             expect(fromBase64UrlEncoded('SGVsbG8rV29ybGQvMTIz')).toBe('Hello+World/123');
             expect(fromBase64UrlEncoded('YQ')).toBe('a');  // No padding in Base64Url
             expect(fromBase64UrlEncoded('wo7Dh2R3w6_DrHbDhw')).toBe('\x8EÇdwïìvÇ');
+        });
+    });
+
+    describe('P9: fullUrl', () => {
+        afterEach(() => {
+            delete (globalThis as any).window;
+        });
+
+        test('resolves a relative auth endpoint against the page URL, keeping the port', () => {
+            (globalThis as any).window = { location: { href: 'http://localhost:8080/app' } };
+            expect(fullUrl('/broadcasting/auth')).toBe('http://localhost:8080/broadcasting/auth');
+            expect(fullUrl('broadcasting/auth')).toBe('http://localhost:8080/broadcasting/auth');
+            expect(fullUrl('https://example.com/auth')).toBe('https://example.com/auth');
+        });
+
+        test('returns the URL unchanged outside a browser', () => {
+            expect(fullUrl('/broadcasting/auth')).toBe('/broadcasting/auth');
         });
     });
 

@@ -101,13 +101,9 @@ export const toBase64UrlEncoded = (text: string): string => {
 const isAbsoluteUrl = (url: string) => (url && url.indexOf('http://') === 0) || url.indexOf('https://') === 0;
 
 export const fullUrl = (url: string) => {
-    if (!isAbsoluteUrl(url) && typeof window != 'undefined') {
-        const host = window?.location?.hostname;
-        const port = window?.location?.port;
-        const protocol = window?.location?.protocol.replace(':', '');
-        if (host && port && protocol) {
-            return protocol + '://' + host + ':' + port + url;
-        }
+    if (!isAbsoluteUrl(url) && typeof window != 'undefined' && window?.location?.href) {
+        // P9: resolve against the page URL, like the browser does (keeps the port, handles paths without a leading /)
+        return new URL(url, window.location.href).href;
     }
     return url;
 };
