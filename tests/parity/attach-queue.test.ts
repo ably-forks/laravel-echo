@@ -119,7 +119,7 @@ describe('T18 / CR-3 patched _attach: callers queued while authorizing', () => {
         }
     });
 
-    test('an attach() that is not queued is returned unchanged (its rejection is not pre-handled)', async () => {
+    test('an attach() that starts the authorization still rejects for a caller that awaits it', async () => {
         const { client } = makeClient();
         const ch: any = client.channels.get('presence:initiator');
         ch.failWith = Object.assign(new Error('denied'), { code: 40160 });
@@ -127,6 +127,35 @@ describe('T18 / CR-3 patched _attach: callers queued while authorizing', () => {
         await expect(first).rejects.toMatchObject({ code: 40160 });
         ch.failWith = null;
         await expect(ch.attach()).resolves.toBeUndefined();
+    });
+
+    test.each([
+        ['the authorization fails', 'auth'],
+        ['the ATTACH fails', 'attach'],
+    ])('ably fire-and-forget attach() that starts the authorization, %s: no unhandled rejection', async (_, failure) => {
+        const t = trackUnhandledRejections();
+        try {
+            const err = Object.assign(new Error(failure === 'auth' ? 'auth endpoint 403' : 'denied'), {
+                code: failure === 'auth' ? 40300 : 40160,
+            });
+            const { client } = makeClient(async () => {
+                await wait(20);
+                if (failure === 'auth') throw err;
+                return { token: makeJwt({ 'presence:*': ['*'] }) };
+            });
+            const ch: any = client.channels.get(`presence:originator-${failure}`);
+            if (failure === 'attach') ch.failWith = err;
+            ch.attach(); // v3 presence.enter()/update() on an 'initialized' or 'detached' channel: no handler
+            await wait(100);
+            expect(ch.authorizing).toBe(false);
+            expect(t.rejections).toEqual([]);
+            // the same channel: an awaited attach that starts the next authorization still gets the error
+            await expect(ch.attach()).rejects.toMatchObject({ code: err.code });
+            await wait(20);
+            expect(t.rejections).toEqual([]);
+        } finally {
+            t.stop();
+        }
     });
 
     test('authorization and ATTACH succeed: the queued attach resolves (P1)', async () => {

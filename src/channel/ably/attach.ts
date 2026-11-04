@@ -89,15 +89,17 @@ export const beforeChannelAttach = (ablyClient, authorize: Function) => {
     }
     prototype._attach = customInternalAttach;
 
-    // An attach() called while its channel authorizes is queued (above). Give its promise a rejection handler before
-    // returning it: callers that await it still get the rejection, but a caller that ignores it, like ably's own
-    // presence.enter/update on an 'initialized' channel, can't raise an unhandled rejection (T18).
+    // An attach() called while its channel authorizes is queued (above), and one that starts an authorization waits
+    // for it. Give either promise a rejection handler before returning it: callers that await it still get the
+    // rejection, but a caller that ignores it, like ably's own presence.enter/update on an 'initialized' or
+    // 'detached' channel, can't raise an unhandled rejection (T18).
     const internalAttachPromise = prototype.attach;
     if (typeof internalAttachPromise === 'function') {
         prototype.attach = function attach(...args) {
-            const queued = !!this.authorizing && authorizers.has(this.client);
+            const wasAuthorizing = !!this.authorizing;
             const result = internalAttachPromise.apply(this, args);
-            if (queued && typeof result?.catch === 'function') {
+            const authorizing = wasAuthorizing || !!this.authorizing; // queued, or started a pending authorization
+            if (authorizing && authorizers.has(this.client) && typeof result?.catch === 'function') {
                 result.catch(() => undefined);
             }
             return result;
