@@ -1,5 +1,23 @@
 import type { TokenDetails } from '../../../typings/ably';
 
+/**
+ * Invokes a user-supplied callback/listener so that an exception it throws (or a promise it rejects) is reported
+ * and never fed back into Echo's own promise chains. ably 1.x behaved the same way: its EventEmitter logged
+ * "Unexpected listener exception" and carried on.
+ */
+export const safeInvoke = (fn: Function | undefined | null, ...args: any[]): void => {
+    if (!fn) return;
+    const report = (e: any) => console.error('laravel-echo: exception in user callback', e);
+    try {
+        const result = fn(...args);
+        if (result && typeof result.then === 'function') {
+            result.then(undefined, report);
+        }
+    } catch (e) {
+        report(e);
+    }
+};
+
 export const isNullOrUndefined = (obj) => obj == null || obj === undefined;
 export const isEmptyString = (stringToCheck, ignoreSpaces = true) =>
     (ignoreSpaces ? stringToCheck.trim() : stringToCheck) === '';
