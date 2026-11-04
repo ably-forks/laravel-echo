@@ -41,6 +41,7 @@ export class AblyConnector extends Connector {
                 this.options.agents = {};
             }
             this.options.agents['laravel-echo'] = AblyConnector.LIB_VERSION;
+            this.mapLegacyHostOptions();
             const AblyLib = resolveAblyLib();
             if (!AblyLib) {
                 throw new Error(
@@ -55,6 +56,41 @@ export class AblyConnector extends Connector {
             this.ablyAuth.enableAuthorizeBeforeChannelAttach();
             this.ablyAuth.allowReconnectOnUserLogin()
         }
+    }
+
+    /**
+     * R5: @ably/pubsub-device v3 silently ignores `environment`, `realtimeHost` and `restHost`. Map them to `endpoint`
+     * (with a warning) instead of silently connecting to the production cluster. `this.options` is a per-connector
+     * copy, so the user's own options object is not mutated.
+     */
+    mapLegacyHostOptions(): void {
+        const { environment, realtimeHost, restHost } = this.options;
+        if (environment == null && realtimeHost == null && restHost == null) {
+            return;
+        }
+        if (this.options.endpoint == null) {
+            if (restHost && realtimeHost && restHost !== realtimeHost) {
+                console.warn('@ably/laravel-echo: restHost and realtimeHost differ; using realtimeHost as endpoint.');
+            }
+            const host = realtimeHost ?? restHost;
+            if (host && !host.includes('.') && !host.includes('::') && host !== 'localhost') {
+                // '::' = IPv6
+                console.warn(
+                    `@ably/laravel-echo: '${host}' has no dot, so @ably/pubsub-device treats it as a routing-policy id, not a hostname.`
+                );
+            }
+            this.options.endpoint =
+                host ?? (environment === 'production' ? undefined : environment === 'sandbox' ? 'nonprod:sandbox' : environment);
+        }
+        // delete so they never reach the client (ably@2 would throw 40106 alongside `endpoint`)
+        delete this.options.environment;
+        delete this.options.realtimeHost;
+        delete this.options.restHost;
+        console.warn(
+            `@ably/laravel-echo: environment/realtimeHost/restHost are not supported by @ably/pubsub-device; use 'endpoint' (now '${
+                this.options.endpoint ?? 'default'
+            }').`
+        );
     }
 
     /**
