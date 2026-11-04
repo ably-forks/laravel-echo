@@ -47,12 +47,20 @@ export const beforeChannelAttach = (ablyClient, authorize: Function) => {
             const pending = this._pendingAttachCbs ?? [];
             this._pendingAttachCbs = [];
             internalAttach.call(this, forceReattach, attachReason, errCallback);
-            // while 'attaching', internalAttach only registers another once-listener; no second ATTACH is sent
-            pending.forEach((cb) => internalAttach.call(this, false, attachReason, cb));
+            // while 'attaching', internalAttach only registers another once-listener; no second ATTACH is sent.
+            // Queued callers are only ever resolved: some are ably-internal fire-and-forget attach() calls
+            // (presence.enter/update on an 'initialized' channel, RTP8d) whose rejection would be unhandled.
+            // On an attach failure keep them queued for the next attempt, as on an authorization failure.
+            pending.forEach((cb) =>
+                internalAttach.call(this, false, attachReason, (err, result) =>
+                    err ? (this._pendingAttachCbs ??= []).push(cb) : cb?.(null, result)
+                )
+            );
         };
         try {
             this.authorizeChannel(this, done);
         } catch (e) {
+            if (settled) throw e; // thrown after done() ran (e.g. by the library's attach): surface it, as before
             done(e); // T8: a sync throw must not leave `authorizing` stuck
         }
     }
