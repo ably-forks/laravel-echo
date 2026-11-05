@@ -12,7 +12,7 @@ Echo's API is unchanged. See "Upgrading to 1.1" in the README.
 - The script-tag build `dist/echo.iife.js` bundles `@ably/pubsub-device`, so it needs no Ably CDN script or global.
 - Installing and building requires Node.js 22 or later and a bundler that understands ES2020 (webpack 5 or Vite; webpack 4 needs transpiling). Both are inherited from `@ably/pubsub-device`, not an Echo API change; browsers are unaffected.
 - On MAU-billed Ably accounts, device connections must carry a client ID, so guest connections without one are rejected with 40161. Set `ABLY_MAU_ACCOUNT=true` in laravel-broadcaster 1.1.0 or later so guests get a client ID, or only connect Echo for signed-in users.
-- The script-tag build `dist/echo.iife.js` now includes `@ably/pubsub-device`: about 487 KB instead of 116 KB (about 101 KB instead of 24 KB gzipped). The ESM and CJS builds are unchanged in size; their bundler or Node resolves `@ably/pubsub-device`.
+- The script-tag build `dist/echo.iife.js` now includes `@ably/pubsub-device`: about 490 KB instead of about 120 KB (about 100 KB instead of about 25 KB gzipped). The ESM and CJS builds don't include it; the app's bundler or Node resolves `@ably/pubsub-device`.
 - During a client ID switch that Echo starts (login, or another user logging in), the transient "mismatched clientId" error (40102) is no longer reported to `error()`: the first one per channel is dropped until the connection is back, or for at most 30 s. Other errors are still reported.
 - The MAU console hint is logged only for 40161, 40168 and 40167, once per code, with a specific explanation for each; 40161 names `ABLY_MAU_ACCOUNT=true` (`broadcasting.connections.ably.mau_account`).
 - Logout: call `Echo.connect()` or create a new Echo instance; Echo then connects as the guest (see the README).
@@ -20,6 +20,7 @@ Echo's API is unchanged. See "Upgrading to 1.1" in the README.
 ### Added
 
 - A client ID switch on the same Echo instance: guest to user, and user to another user, including several switches in one page, now reconnects with the new client ID and re-attaches the channels (on MAU-billed accounts this needs guest client IDs from laravel-broadcaster `ABLY_MAU_ACCOUNT=true`).
+- A logout or login in another tab is picked up at this tab's next token renewal (after up to the token lifetime): the connection reconnects once as the new identity (guest, no client ID or another user) within about a second and re-attaches its channels. Previously it stayed disconnected and then `failed`, or stayed connected with a stale client ID. Call `Echo.connect()` in every tab (for example through a `BroadcastChannel`) to switch at once.
 
 ### Fixed
 
@@ -43,7 +44,6 @@ Echo's API is unchanged. See "Upgrading to 1.1" in the README.
 
 ### Known issues
 
-- When the user logs out in another tab, this page switches its client ID only when its connection token is renewed: a switch to a guest client ID recovers automatically after a brief disconnection (about 20 s), and a switch to no client ID (null) keeps the page connected as an anonymous client (non-MAU accounts; on MAU-billed accounts it fails with 40161). Reload the page or call `Echo.connect()` to switch at once.
 - Access to private and presence channels can be lost briefly when the connection token is renewed after it expires: laravel-broadcaster keeps a token's channel capabilities only while that token is unexpired, so the renewed token has only the `public:*` capability, private and presence channels fail with 40160 and are re-authorized, and messages broadcast in that gap are lost. This needs a laravel-broadcaster fix; the sandbox test for it is skipped until then.
 
 ### Internal changes

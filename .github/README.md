@@ -53,7 +53,15 @@ npm run dev
 ```
 - **Login, user switch and logout in a single-page app.** An Ably connection cannot change its client ID, so when a user logs in, or another user logs in, the next private or presence channel request returns a token for the new client ID and Echo reconnects with it and re-attaches all existing channels (see [Fix clientId mismatch](https://github.com/ably-forks/laravel-echo/pull/38)). This also works for a second switch in the same page. The transient "mismatched clientId" error (40102) of such a switch is not reported to `error()`.
 - **After logout, call `Echo.connect()` or create a new Echo instance.** Echo closes the old connection and connects as a guest; subscribe to your channels again. Private and presence channels are then denied by your broadcaster, as for any guest. On MAU-billed Ably accounts, guests need a client ID: see "Guest users on MAU-billed Ably accounts" below.
-- **When the user logs out in another tab**, this page switches only when its connection token is renewed. A switch to a guest client ID recovers automatically after a brief disconnection (about 20 s); a switch to no client ID (null) keeps the page connected as an anonymous client (non-MAU accounts; on MAU-billed accounts it fails with 40161). Reload the page or call `Echo.connect()` to switch at once.
+- **Logout or login in another tab.** Other open tabs switch to the new identity (a guest, no client ID, or another user) at their next connection token renewal, so after up to the token lifetime (laravel-broadcaster's `token_expiry`). They reconnect once as the new identity, within about a second, and re-attach their channels; private and presence channels are authorized again. After a logout, their `error()` listeners receive the failed re-attach (40160) and then the broadcaster's denial (403). To switch every tab at once, tell the other tabs to call `Echo.connect()`, for example with a [`BroadcastChannel`](https://developer.mozilla.org/docs/Web/API/BroadcastChannel):
+```js
+const authTabs = new BroadcastChannel('auth');
+authTabs.onmessage = () => window.Echo.connect(); // then subscribe to your channels again
+
+// in the tab that logged in or out, once the request has succeeded:
+authTabs.postMessage('identity-changed');
+window.Echo.connect();
+```
 
 ## Upgrading to 1.1
 
