@@ -1,4 +1,5 @@
-import type { Channel, PresenceChannel } from './channel';
+import { Channel } from './channel';
+import type { PresenceChannel } from './channel';
 import { AblyConnector, Connector, PusherConnector, SocketIoConnector, NullConnector } from './connector';
 
 /**
@@ -197,6 +198,7 @@ export default class Echo {
 /**
  * Export channel classes for TypeScript.
  */
-export { Connector, Channel, PresenceChannel };
+export { Connector, Channel };
+export type { PresenceChannel };
 
 export { EventFormatter } from './util';
