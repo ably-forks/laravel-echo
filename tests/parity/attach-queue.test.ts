@@ -63,17 +63,15 @@ const makeClient = (
     return { client };
 };
 
-const outcome = (p: Promise<any>) => {
-    const o = { state: 'pending', error: undefined as any };
+/** Resolves with the outcome of `p` once it settles. */
+const outcomeOf = (p: Promise<any>): Promise<{ state: string; error?: any }> =>
     p.then(
-        () => (o.state = 'resolved'),
-        (e) => {
-            o.state = 'rejected';
-            o.error = e;
-        }
+        () => ({ state: 'resolved' }),
+        (error) => ({ state: 'rejected', error })
     );
-    return o;
-};
+
+/** One macrotask turn: Node reports an unhandled rejection of an already settled promise before it runs. */
+const flushUnhandledRejections = () => new Promise((resolve) => setImmediate(resolve));
 
 describe('T18 / CR-3 patched _attach: callers queued while authorizing', () => {
     test('authorization succeeds, the ATTACH fails: an awaited queued attach() is rejected, a fire-and-forget one raises nothing', async () => {
@@ -83,12 +81,12 @@ describe('T18 / CR-3 patched _attach: callers queued while authorizing', () => {
             const ch: any = client.channels.get('presence:deny');
             const err = Object.assign(new Error('denied'), { code: 40160 });
             ch.failWith = err;
-            const first = outcome(ch.attach()); // Echo's own attach
+            const first = outcomeOf(ch.attach()); // Echo's own attach
             ch.attach(); // what v3 presence.enter()/update() does on an 'initialized' channel: no handler
-            const awaited = outcome(ch.attach()); // a user's (or ably's subscribe()) awaited attach, queued
-            await wait(100);
-            expect(first).toEqual({ state: 'rejected', error: err });
-            expect(awaited).toEqual({ state: 'rejected', error: err });
+            const awaited = outcomeOf(ch.attach()); // a user's (or ably's subscribe()) awaited attach, queued
+            expect(await first).toEqual({ state: 'rejected', error: err });
+            expect(await awaited).toEqual({ state: 'rejected', error: err });
+            await flushUnhandledRejections();
             expect(t.rejections).toEqual([]);
             expect(ch._pendingAttachCbs).toHaveLength(0);
         } finally {
@@ -105,12 +103,13 @@ describe('T18 / CR-3 patched _attach: callers queued while authorizing', () => {
                 throw err;
             });
             const ch: any = client.channels.get('presence:authfail');
-            const first = outcome(ch.attach());
+            const first = outcomeOf(ch.attach());
             ch.attach(); // fire-and-forget, queued
-            const awaited = outcome(ch.attach());
-            await wait(100);
-            expect(first.state).toBe('rejected');
-            expect(awaited).toEqual({ state: 'rejected', error: first.error });
+            const awaited = outcomeOf(ch.attach());
+            const firstOutcome = await first;
+            expect(firstOutcome.state).toBe('rejected');
+            expect(await awaited).toEqual({ state: 'rejected', error: firstOutcome.error });
+            await flushUnhandledRejections();
             expect(ch.authorizing).toBe(false);
             expect(t.rejections).toEqual([]);
             expect(ch._pendingAttachCbs).toHaveLength(0);
@@ -146,12 +145,14 @@ describe('T18 / CR-3 patched _attach: callers queued while authorizing', () => {
             const ch: any = client.channels.get(`presence:originator-${failure}`);
             if (failure === 'attach') ch.failWith = err;
             ch.attach(); // v3 presence.enter()/update() on an 'initialized' or 'detached' channel: no handler
-            await wait(100);
+            // an awaited attach queued behind it settles in the same step, so awaiting it awaits the attempt
+            expect((await outcomeOf(ch.attach())).error).toBe(err);
+            await flushUnhandledRejections();
             expect(ch.authorizing).toBe(false);
             expect(t.rejections).toEqual([]);
             // the same channel: an awaited attach that starts the next authorization still gets the error
             await expect(ch.attach()).rejects.toMatchObject({ code: err.code });
-            await wait(20);
+            await flushUnhandledRejections();
             expect(t.rejections).toEqual([]);
         } finally {
             t.stop();
@@ -162,13 +163,8 @@ describe('T18 / CR-3 patched _attach: callers queued while authorizing', () => {
         const { client } = makeClient();
         const ch: any = client.channels.get('presence:ok');
         const first = ch.attach();
-        let second = 'pending';
-        ch.attach().then(
-            () => (second = 'resolved'),
-            () => (second = 'rejected')
-        );
+        const second = outcomeOf(ch.attach());
         await first;
-        await wait(20);
-        expect(second).toBe('resolved');
+        expect(await second).toEqual({ state: 'resolved' });
     });
 });
