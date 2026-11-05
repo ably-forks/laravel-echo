@@ -117,7 +117,7 @@ export class AblyAuth {
                     const echoChannel = this.getChannel(channelName);
                     this.setPresenceInfo(echoChannel, info);
                     this.tryAuthorizeOnSameConnection(
-                        { ...this.options, token: toTokenDetails(jwtToken) },
+                        this.authOptionsForToken(jwtToken),
                         (err, _tokenDetails) => {
                             if (err) {
                                 errorCallback(err);
@@ -160,6 +160,19 @@ export class AblyAuth {
         }, 0);
     }
 
+    /**
+     * AuthOptions for an in-band authorize() with a new Echo JWT. ably-js keeps the first non-null clientId on the
+     * Auth object for the client's lifetime (RSA15c), so a token for a different identity would fail the client with
+     * 40102 (403) on every reconnect. `clientId: null` (public AuthOptions) clears it: the server still rejects the
+     * in-band AUTH with 40102 (401), and allowReconnectOnUserLogin's fresh connection adopts the new clientId.
+     */
+    authOptionsForToken = (jwtToken: string): AuthOptions => {
+        const token = toTokenDetails(jwtToken);
+        const current = this.ablyClient().auth.clientId; // undefined/null while anonymous
+        const identityChanges = current != null && current !== (token.clientId ?? null);
+        return identityChanges ? { ...this.options, token, clientId: null } : { ...this.options, token };
+    };
+
     tryAuthorizeOnSameConnection = (authOptions?: AuthOptions, callback?: (error, TokenDetails) => void) => {
         this.ablyClient().auth
             .authorize(null, authOptions)
@@ -188,7 +201,7 @@ export class AblyAuth {
             .then(({ token: jwtToken, info }) => {
                 this.setPresenceInfo(echoAblyChannel, info);
                 this.tryAuthorizeOnSameConnection(
-                    { ...this.options, token: toTokenDetails(jwtToken) as any },
+                    this.authOptionsForToken(jwtToken) as any,
                     (err, _tokenDetails) => {
                         if (err) {
                             echoAblyChannel._alertErrorListeners(err);
