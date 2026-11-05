@@ -308,3 +308,164 @@ describe('E3: the identity-switch window', () => {
         });
     });
 });
+
+describe('switchIdentityOnRenewal: a renewed token that carries another clientId', () => {
+    /** Build the AblyAuth on a mutable connector, with a requestTokenFn returning the next queued clientId. */
+    const setup = (clientId: string | null | undefined, connectionId: string | null = 'conn-1') => {
+        jest.useFakeTimers();
+        const client = makeFakeAblyClient(clientId);
+        client.connection.id = connectionId ?? undefined;
+        client.connection.state = 'connected';
+        const connector: any = { options: {}, ably: client, channels: {} };
+        const requestTokenFn = jest.fn(async () => ({ token: tokenFor(next) }));
+        let next: string | null = 'user2';
+        const auth = new AblyAuth(connector, {
+            authEndpoint: 'http://127.0.0.1:1/broadcasting/auth',
+            auth: { headers: {} },
+            requestTokenFn,
+        } as any);
+        const order: string[] = [];
+        client.auth.authorize.mockImplementation(() => {
+            order.push('authorize');
+            return Promise.resolve({});
+        });
+        /** Invoke the authCallback; resolves with the callback arguments. */
+        const renew = (id: string | null) => {
+            next = id;
+            return new Promise<any[]>((resolve) =>
+                (auth.options.authCallback as any)(null, (...args: any[]) => {
+                    order.push('callback');
+                    resolve(args);
+                }),
+            );
+        };
+        const channel = listened(client);
+        return { client, connector, auth, requestTokenFn, order, renew, ...channel };
+    };
+
+    test('no switch on the first token (no connection.id), and the window stays closed', async () => {
+        const { client, renew, fake, errorListener } = setup('user1', null);
+        await renew('user2');
+        jest.advanceTimersByTime(1000);
+        expect(client.auth.authorize).not.toHaveBeenCalled();
+        fake.transition('failed', ablyError('x', SWITCH));
+        expect(errorListener).toHaveBeenCalledTimes(1);
+    });
+
+    test.each([
+        ['null', null],
+        ['undefined', undefined],
+    ])('no switch when the cached clientId is %s (null -> user)', async (_n, cached) => {
+        const { client, renew, fake, errorListener, order } = setup(cached as any);
+        const [error, token] = await renew('user1');
+        jest.advanceTimersByTime(1000);
+        expect(error).toBeNull();
+        expect(token.clientId).toBe('user1');
+        expect(order).toEqual(['callback']);
+        expect(client.auth.authorize).not.toHaveBeenCalled();
+        fake.transition('failed', ablyError('x', SWITCH));
+        expect(errorListener).toHaveBeenCalledTimes(1);
+    });
+
+    test('no switch for the same clientId', async () => {
+        const { client, renew, fake, errorListener } = setup('user1');
+        await renew('user1');
+        jest.advanceTimersByTime(1000);
+        expect(client.auth.authorize).not.toHaveBeenCalled();
+        fake.transition('failed', ablyError('x', SWITCH));
+        expect(errorListener).toHaveBeenCalledTimes(1);
+    });
+
+    test.each([
+        ['another user', 'user2'],
+        ['a guest id', 'guest:abc.def'],
+        ['null', null],
+    ])('user1 -> %s: exactly one authorize, after the callback, carrying the token', async (_n, newId) => {
+        const { client, renew, order, requestTokenFn } = setup('user1');
+        const [error, tokenDetails] = await renew(newId);
+        expect(error).toBeNull();
+        expect(tokenDetails.clientId ?? null).toBe(newId);
+        expect(order).toEqual(['callback']); // not before the timer runs
+        expect(client.auth.authorize).not.toHaveBeenCalled();
+        jest.advanceTimersByTime(0);
+        expect(order).toEqual(['callback', 'authorize']);
+        expect(client.auth.authorize).toHaveBeenCalledTimes(1);
+        const [tokenParams, authOptions] = client.auth.authorize.mock.calls[0];
+        expect(tokenParams).toBeNull();
+        expect(authOptions.clientId).toBeNull();
+        expect(authOptions.token).toBe(tokenDetails);
+        expect(authOptions.token.clientId ?? null).toBe(newId);
+        jest.advanceTimersByTime(60_000);
+        expect(client.auth.authorize).toHaveBeenCalledTimes(1);
+        expect(requestTokenFn).toHaveBeenCalledTimes(1); // authCallback never re-entered
+    });
+
+    test('the window opens synchronously: the first 40102 on a channel is swallowed, the second delivered', async () => {
+        const { renew, fake, errorListener } = setup('user1');
+        await renew('user2'); // authorize() has not run yet
+        fake.transition('failed', ablyError('first', SWITCH));
+        expect(errorListener).not.toHaveBeenCalled();
+        fake.transition('failed', ablyError('second', SWITCH));
+        expect(errorListener).toHaveBeenCalledTimes(1);
+    });
+
+    test('a rejected authorize is swallowed (no unhandled rejection)', async () => {
+        jest.useRealTimers();
+        const { client, renew } = setup('user1');
+        jest.useRealTimers();
+        client.auth.authorize.mockImplementation(() => Promise.reject(ablyError('mismatch', SWITCH)));
+        await renew('user2');
+        await settle();
+        expect(client.auth.authorize).toHaveBeenCalledTimes(1);
+        expect(unhandled.rejections).toEqual([]);
+    });
+
+    test('no authorize when the client was replaced before the timer', async () => {
+        const { client, connector, renew } = setup('user1');
+        await renew('user2');
+        connector.ably = makeFakeAblyClient('user1'); // Echo.connect() replaced the client
+        jest.advanceTimersByTime(1000);
+        expect(client.auth.authorize).not.toHaveBeenCalled();
+        expect(connector.ably.auth.authorize).not.toHaveBeenCalled();
+    });
+
+    test.each(['closing', 'closed'])('no authorize when the connection is %s before the timer', async (state) => {
+        const { client, renew } = setup('user1');
+        await renew('user2');
+        client.connection.state = state;
+        jest.advanceTimersByTime(1000);
+        expect(client.auth.authorize).not.toHaveBeenCalled();
+    });
+
+    test('requestTokenFn is called once per authCallback invocation, across renewals', async () => {
+        const { client, renew, requestTokenFn } = setup('user1');
+        await renew('user2');
+        jest.advanceTimersByTime(1000);
+        expect(requestTokenFn).toHaveBeenCalledTimes(1);
+        client.auth.clientId = null; // ably-js cleared it via authorize({clientId: null})
+        await renew('user2');
+        jest.advanceTimersByTime(1000);
+        expect(requestTokenFn).toHaveBeenCalledTimes(2);
+        expect(client.auth.authorize).toHaveBeenCalledTimes(1);
+    });
+
+    test('a token-request failure calls back with the error and does not switch', async () => {
+        const { client, auth, requestTokenFn, fake, errorListener, order } = setup('user1');
+        requestTokenFn.mockImplementation(async () => {
+            throw ablyError('endpoint down', 40170);
+        });
+        const [error, token] = await new Promise<any[]>((resolve) =>
+            (auth.options.authCallback as any)(null, (...a: any[]) => {
+                order.push('callback');
+                resolve(a);
+            }),
+        );
+        jest.advanceTimersByTime(1000);
+        expect(error).toBeTruthy();
+        expect(token).toBeNull();
+        expect(order).toEqual(['callback']);
+        expect(client.auth.authorize).not.toHaveBeenCalled();
+        fake.transition('failed', ablyError('x', SWITCH));
+        expect(errorListener).toHaveBeenCalledTimes(1);
+    });
+});
