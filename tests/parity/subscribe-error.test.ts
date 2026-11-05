@@ -129,3 +129,22 @@ describe('T4 still holds: one reported failure is not repeated per subscription'
         expect(errorListener.mock.calls).toEqual([[err]]);
     });
 });
+
+describe('T7: the attach rejection does not add a second error() call after a state-change failure', () => {
+    test("subscribe()'s own attach rejection (same error as the state change) is not reported again", async () => {
+        const ably = makeFakeAbly();
+        const fake = ably.channels.get('public:t7');
+        let reject: (e: any) => void = () => undefined;
+        fake.attach.mockImplementation(() => new Promise((_, r) => (reject = r)));
+        const echoChannel = new AblyChannel(ably, 'public:t7', ECHO_OPTIONS); // subscribe() starts the attach
+        const errorListener = jest.fn();
+        echoChannel.error(errorListener);
+        const err = ablyError('denied', 40161);
+        fake.transition('failed', err);
+        expect(errorListener).toHaveBeenCalledTimes(1);
+        reject(err); // the rejection of that same attach()
+        await settle();
+        expect(errorListener).toHaveBeenCalledTimes(1);
+        expect(errorListener.mock.calls[0][0]).toMatchObject({ previous: 'initialized', current: 'failed', reason: err });
+    });
+});
