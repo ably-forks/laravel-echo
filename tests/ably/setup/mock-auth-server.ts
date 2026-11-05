@@ -1,13 +1,18 @@
-import { isNullOrUndefinedOrEmpty, parseJwt, fromBase64UrlEncoded } from '../../../src/channel/ably/utils';
+import { isNullOrUndefinedOrEmpty, parseJwt, fromBase64UrlEncoded, httpError } from '../../../src/channel/ably/utils';
 import { createHttpClient, type PubSubHttpClient } from '@ably/pubsub-server';
 import * as jwt from 'jsonwebtoken';
+import { randomBytes } from 'crypto';
 
 type channels = Array<string>;
 
 /**
  * MockAuthServer mimicks {@link https://github.com/ably/laravel-broadcaster/blob/main/src/AblyBroadcaster.php AblyBroadcaster.php}.
  * Aim is to keep implementation and behaviour in sync with AblyBroadcaster.php, so that it can be tested
- * without running actual PHP server.
+ * without running actual PHP server. It mirrors laravel-broadcaster 1.1:
+ * - `guestClientId` = `ABLY_MAU_ACCOUNT=true`: a request without a user (`clientId` null) is signed with a guest id
+ *   `guest:<random>.<tag>`, stable until `rotateGuestId()` (the broadcaster issues a fresh one after logout);
+ * - a presented token's claims (capability, iat, exp) are reused only for the same clientId (identity-scoped claims);
+ * - private and presence channels are denied (403) when there is no user, also in guest-id mode.
  */
 export class MockAuthServer {
     keyName: string;
@@ -21,6 +26,19 @@ export class MockAuthServer {
     userInfo = { id: 'sacOO7@github.com', name: 'sacOO7' }; // Used for presence
 
     tokenExpiry = 60; // seconds, mirrors AblyBroadcaster's `token_expiry` config
+
+    guestClientId = false; // mirrors laravel-broadcaster's ABLY_MAU_ACCOUNT / mau_account
+    guestId = MockAuthServer.newGuestId();
+
+    static newGuestId = () => `guest:${randomBytes(8).toString('hex')}.${randomBytes(4).toString('hex')}`;
+
+    /** A fresh guest id, as the broadcaster issues after logout. */
+    rotateGuestId = () => {
+        this.guestId = MockAuthServer.newGuestId();
+    };
+
+    /** The clientId the next token is signed with: the user, else the guest id in guest-id mode, else null. */
+    signedClientId = (): string | null => this.clientId ?? (this.guestClientId ? this.guestId : null);
 
     constructor(apiKey: string, endpoint = 'nonprod:sandbox') {
         const keys = apiKey.split(':');
@@ -64,8 +82,18 @@ export class MockAuthServer {
         let capabilities = { 'public:*': ['subscribe', 'history', 'channel-metadata'] };
         let iat = 0;
         let exp = 0;
+        if (this.clientId == null && !isNullOrUndefinedOrEmpty(channelName) && this.isGuardedChannel(channelName)) {
+            // the broadcaster's AccessDeniedHttpException, as Echo's authEndpoint path reports it
+            throw httpError(`HTTP 403: no user for ${channelName}`, 403, 40300);
+        }
+        const clientId = this.signedClientId();
         let serverTime = await this.ablyClient.time();
-        if (!isNullOrUndefinedOrEmpty(token) && !this.tokenInvalidOrExpired(serverTime, token)) {
+        // identity-scoped claims: reuse a presented token's claims only when it was signed for the same clientId
+        if (
+            !isNullOrUndefinedOrEmpty(token) &&
+            !this.tokenInvalidOrExpired(serverTime, token) &&
+            (parseJwt(token).payload['x-ably-clientId'] ?? null) === clientId
+        ) {
             const { payload } = parseJwt(token);
             iat = payload.iat;
             exp = payload.exp;
@@ -80,7 +108,7 @@ export class MockAuthServer {
         let claims = {
             iat,
             exp,
-            'x-ably-clientId': this.clientId,
+            'x-ably-clientId': clientId,
             'x-ably-capability': JSON.stringify(capabilities),
         };
         claims = this.validateShortLivedOrBannedChannels(channelName, claims);
@@ -92,6 +120,8 @@ export class MockAuthServer {
     };
 
     isPresenceChannel = (channelName) => channelName.startsWith('presence:');
+
+    isGuardedChannel = (channelName) => channelName.startsWith('private:') || this.isPresenceChannel(channelName);
 
     setAuthExceptions = (shortLived: channels = [], banned: channels = []) => {
         this.shortLived = shortLived;
