@@ -48,9 +48,11 @@ describe('AblyRenewalSwitch', () => {
         mockAuthServer.publicCapability = ['subscribe', 'history', 'channel-metadata'];
         observer?.close();
         observer = undefined;
-        const client = echo.connector.ably;
-        echo.disconnect();
-        await waitForExpect(() => expect(['closed', 'failed']).toContain(client.connection.state));
+        const client = echo?.connector?.ably;
+        if (client) {
+            echo.disconnect();
+            await waitForExpect(() => expect(['closed', 'failed']).toContain(client.connection.state));
+        }
     });
 
     const makeEcho = () =>
@@ -148,6 +150,7 @@ describe('AblyRenewalSwitch', () => {
         await new Promise((resolve) => publicChannel.subscribed(resolve));
         await new Promise((resolve) => privateChannel.subscribed(resolve));
         await waitForExpect(() => expect(echo.connector.ably.auth.clientId).toBe('user1'));
+        const seen = await observe('public:x');
         const publicErrors = jest.fn();
         const privateErrors: any[] = [];
         publicChannel.error(publicErrors);
@@ -163,6 +166,7 @@ describe('AblyRenewalSwitch', () => {
         console.log(`user1 -> guest recovery: ${ms} ms, states: ${conn.states.join(',')}`);
         expect(ms).toBeLessThan(5000);
         expect(conn.count('failed')).toBe(0);
+        expect(await pagePublishSeenAs(seen, 'public:x')).toBe(mockAuthServer.guestId);
         await expectReceives(publicChannel, 'r1');
         await waitForExpect(() => expect(privateErrors.length).toBeGreaterThanOrEqual(1));
         await sleep(1000);
@@ -193,6 +197,7 @@ describe('AblyRenewalSwitch', () => {
         await recovered(conn, () => null);
 
         console.log(`user1 -> null recovery: ${conn.recoveryMs()} ms, states: ${conn.states.join(',')}`);
+        expect(conn.recoveryMs() ?? Infinity).toBeLessThan(5000);
         expect(echo.connector.ably.auth.clientId).toBeFalsy();
         expect(conn.count('failed')).toBe(0);
         const stamped = await pagePublishSeenAs(seen, 'public:x');
@@ -223,12 +228,18 @@ describe('AblyRenewalSwitch', () => {
         await expectNoUnhandledRejections();
     });
 
-    test('user1 -> user2, public channel only: reconnects as user2 in under 5 s instead of staying failed', async () => {
+    test.each([false, true])('user1 -> user2 (with a private channel: %s): reconnects as user2 in under 5 s instead of staying failed', async (withPrivate) => {
         mockAuthServer.clientId = 'user1';
         echo = makeEcho();
         await connected();
         const publicChannel = echo.channel('r3') as AblyChannel;
         await new Promise((resolve) => publicChannel.subscribed(resolve));
+        const privateChannel = withPrivate ? (echo.private('r3') as AblyPrivateChannel) : undefined;
+        const privateErrors: any[] = [];
+        if (privateChannel) {
+            await new Promise((resolve) => privateChannel.subscribed(resolve));
+            privateChannel.error((e: any) => privateErrors.push(e));
+        }
         await waitForExpect(() => expect(echo.connector.ably.auth.clientId).toBe('user1'));
         const seen = await observe('public:x');
         const errorSpy = jest.fn();
@@ -246,6 +257,13 @@ describe('AblyRenewalSwitch', () => {
         expect(await pagePublishSeenAs(seen, 'public:x')).toBe('user2');
         await expectReceives(publicChannel, 'r3');
         expect(errorSpy).not.toHaveBeenCalled(); // no 40102 reaches the app
+        if (privateChannel) {
+            // ably-js re-attaches it with user2's token, which lacks the channel (40160); Echo re-authorizes it for user2
+            await attached(privateChannel);
+            const codes = privateErrors.map((e) => e?.reason?.code ?? e?.code);
+            console.log(`user1 -> user2 private error() sequence: ${codes.join(',')}`);
+            expect(codes.filter((c) => c !== 40160 && c !== undefined)).toStrictEqual([]); // no 40102, no 403
+        }
         await expectNoUnhandledRejections();
     });
 
