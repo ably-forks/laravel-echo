@@ -17,7 +17,7 @@ Echo's API is unchanged. See "Upgrading to 2.0" in the README.
 
 - Callbacks of `whisper`, `enter`, `update`, `leave` and `here` run exactly once; exceptions in callbacks and listeners no longer become unhandled promise rejections or stop other listeners.
 - One attach failure is reported to `error()` once; subscribe errors that no channel state change reported still reach `error()`.
-- Auth endpoint: cookies are sent cross-origin only for a lowercase `authorization` header, as with ably 1.x and 2.x; error codes come from the HTTP status; invalid tokens are rejected with code 50000 and no longer replace the cached token; a `requestTokenFn` that never settles no longer blocks other token requests forever (each request is bounded by 30 s, or `httpRequestTimeout` + 1 s if longer); `httpRequestTimeout` applies to auth requests.
+- Auth endpoint: cookies are sent cross-origin only for a lowercase `authorization` header, as with ably 1.x and 2.x; error codes come from the HTTP status; invalid tokens are rejected with code 50000 and no longer replace the cached token; a `requestTokenFn` that never settles no longer blocks other token requests forever (each request is bounded by 30 s; an auth-endpoint request by `httpRequestTimeout` + 1 s if that is longer); `httpRequestTimeout` applies to auth requests.
 - `environment`, `realtimeHost` and `restHost` are mapped to `endpoint` with a warning instead of being ignored.
 - The CDN global `AblyPubSub` is detected, and a stale `ably` global gives a clear error.
 - `import { Channel } from '@ably/laravel-echo'` works again.
@@ -29,6 +29,11 @@ Echo's API is unchanged. See "Upgrading to 2.0" in the README.
 - `private()`, `join()` and `leaveChannel()` work with `options.client`; `encryptedPrivate()` throws a clear error with the Ably broadcaster; relative auth endpoints resolve against the page URL; cached-token capabilities are matched by channel name.
 - Calling `Echo.connect()` (or the connector's `connect()`) again leaves the existing Echo channels and closes the previous Ably client (a user-supplied `options.client` is not closed); callers re-subscribe after `connect()` is called again.
 - A connection that fails for a reason other than a client ID change (40102) logs one `console.error` hint that MAU-billed accounts require a client ID for device connections.
+- The `token` option is still passed to the Ably client (as in 1.0.6), so a configured initial token is used before `authCallback`.
+- A hung `requestTokenFn` is bounded by 30 s, independent of `httpRequestTimeout`.
+- `socketId()` works with very large clientIds.
+- A supplied `options.client` no longer keeps Echo's recovery listeners after `Echo.connect()` is called again.
+- A supplied `options.client` that is already `failed` when Echo connects has its channels re-attached when it recovers.
 
 ### Known issues
 
@@ -36,13 +41,15 @@ Echo's API is unchanged. See "Upgrading to 2.0" in the README.
 
 ### Internal changes
 
-- Internal behaviour changes inherited from ably-js v3 (error shapes, MsgPack in browsers, subscribe-capability errors, asynchronous callbacks); see the ably-js v3 migration guide: https://github.com/ably/ably-js/blob/main/docs/migration-guides/v3/lib.md. Pull requests: https://github.com/ably-forks/laravel-echo/pull/50, https://github.com/ably-forks/laravel-echo/pull/51, https://github.com/ably-forks/laravel-echo/pull/52, https://github.com/ably-forks/laravel-echo/pull/53.
+- Internal behaviour changes inherited from ably-js v3 (error shapes, MsgPack in browsers, subscribe-capability errors, asynchronous callbacks, and failures of `whisper`, `enter`, `update` and `leave` called without a callback now reach `error()` listeners); see the ably-js v3 migration guide: https://github.com/ably/ably-js/blob/main/docs/migration-guides/v3/lib.md. Pull requests: https://github.com/ably-forks/laravel-echo/pull/50, https://github.com/ably-forks/laravel-echo/pull/51, https://github.com/ably-forks/laravel-echo/pull/52, https://github.com/ably-forks/laravel-echo/pull/53.
 - CI runs the Ably tests against both the Node and the browser build of `@ably/pubsub-device`; the browser-build job is blocking.
 
 ### Release
 
 - 2.0.0 is published with the `next` dist-tag first (`npm publish --tag next`); install it with `npm install @ably/laravel-echo@next` during the beta period. `latest` stays 1.0.6 until 2.0.0 is promoted with `npm dist-tag add @ably/laravel-echo@2.0.0 latest`, without a second version bump.
 - Rollback: `npm install @ably/laravel-echo@1.0.6 ably@1`.
+- Create Echo only in the browser, for example `if (typeof window !== 'undefined') { window.Echo = new Echo({ broadcaster: 'ably' }); }`: Echo created during server-side rendering opens a device connection from the server.
+- 2.0.0 reflects the switch to `@ably/pubsub-device`, not upstream laravel-echo 2.x features.
 
 ## [v1.0.6](https://github.com/ably-forks/laravel-echo/tree/ably-echo-1.0.6)
 
