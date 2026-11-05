@@ -82,7 +82,7 @@ describe('AblyIdentitySwitch', () => {
         await waitForExpect(() => expect(['closed', 'failed']).toContain(client.connection.state));
     });
 
-    test('T2: guest id -> user1: no error() call, recovers as user1, channels attached, public message received', async () => {
+    test('guest id -> user1: no error() call, recovers as user1, channels attached, public message received', async () => {
         mockAuthServer.guestClientId = true;
         echo = makeEcho();
         await connected();
@@ -111,7 +111,7 @@ describe('AblyIdentitySwitch', () => {
         await expectNoUnhandledRejections();
     });
 
-    test('T3: user1 -> user2 -> user3 in one page: both recover, one failed per switch, one ATTACH per channel per connection', async () => {
+    test('user1 -> user2 -> user3 in one page: both recover, one failed per switch, one ATTACH per channel per connection', async () => {
         mockAuthServer.clientId = 'user1';
         echo = makeEcho();
         await connected();
@@ -154,7 +154,7 @@ describe('AblyIdentitySwitch', () => {
         await expectNoUnhandledRejections();
     });
 
-    test('T4: user1 -> guest id logout via echo.connect(): new guest id, public receives, private re-auth gives 403', async () => {
+    test('user1 -> guest id logout via echo.connect(): new guest id, public receives, private re-auth gives 403', async () => {
         mockAuthServer.guestClientId = true;
         mockAuthServer.clientId = 'user1';
         echo = makeEcho();
@@ -190,7 +190,7 @@ describe('AblyIdentitySwitch', () => {
         await expectNoUnhandledRejections();
     });
 
-    test('T5: non-MAU: null -> user1 recovers, then user1 -> null via echo.connect() recovers with a null clientId', async () => {
+    test('non-MAU: null -> user1 recovers, then user1 -> null via echo.connect() recovers with a null clientId', async () => {
         echo = makeEcho();
         await connected();
         expect(echo.connector.ably.auth.clientId).toBeFalsy();

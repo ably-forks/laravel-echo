@@ -1,6 +1,6 @@
 /**
- * T6: clientId switching without network. E1 authOptionsForToken, E2 re-armable 40102 handler, E3 switch window,
- * E4 error de-dup and the B1 flow.
+ * clientId switching without network. E1 authOptionsForToken, E2 re-armable 40102 handler, E3 switch window,
+ * E4 error de-dup and an MAU 40161 attach failure (no unhandled rejection).
  */
 import { AblyChannel } from '../../src/channel';
 import { AblyAuth } from '../../src/channel/ably/auth';
@@ -30,7 +30,7 @@ const makeAuth = (client: any, echoOptions: any = {}) =>
 const failedWith = (code: number) => ({ previous: 'connecting', current: 'failed', reason: ablyError('x', code) });
 const SWITCH = 40102;
 
-describe('(a) E2: the 40102 handler is re-armed only by `connected`', () => {
+describe('E2: the 40102 handler is re-armed only by `connected`', () => {
     test('one connect() per failure episode', () => {
         const client = makeFakeAblyClient('user1');
         makeAuth(client).allowReconnectOnUserLogin();
@@ -44,7 +44,7 @@ describe('(a) E2: the 40102 handler is re-armed only by `connected`', () => {
     });
 });
 
-describe('(b) E1: authOptionsForToken', () => {
+describe('E1: authOptionsForToken', () => {
     test('unset clientId -> user token: no clientId key', () => {
         const auth = makeAuth(makeFakeAblyClient(undefined));
         const options: any = auth.authOptionsForToken(tokenFor('user1'));
@@ -76,7 +76,7 @@ describe('(b) E1: authOptionsForToken', () => {
     });
 });
 
-describe('(c) E2: a failed state change without a reason', () => {
+describe('E2: a failed state change without a reason', () => {
     test.each([
         ['an undefined reason', { previous: 'connecting', current: 'failed' }],
         ['no argument', undefined],
@@ -89,7 +89,7 @@ describe('(c) E2: a failed state change without a reason', () => {
     });
 });
 
-describe('(d) E4: one error() call for a state change plus the identical attach() rejection', () => {
+describe('E4: one error() call for a state change plus the identical attach() rejection', () => {
     test('payload is the state-change object', async () => {
         const client = makeFakeAblyClient();
         const fake = client.channels.get('public:dedup');
@@ -107,7 +107,7 @@ describe('(d) E4: one error() call for a state change plus the identical attach(
     });
 });
 
-describe('(e) the B1 flow raises no unhandled rejection', () => {
+describe('an MAU 40161 attach failure with listen() raises no unhandled rejection', () => {
     test('a public channel whose attach fails with 40161 (state change and rejection) plus listen()', async () => {
         const client = makeFakeAblyClient();
         const fake = client.channels.get('public:news');
@@ -133,7 +133,7 @@ const listened = (client: any, name = 'public:ch') => {
 };
 
 describe('E3: the identity-switch window', () => {
-    test.each([40161, 80019, 50003])('(f) a real failure with %d inside the window is delivered', (code) => {
+    test.each([40161, 80019, 50003])('a real failure with %d inside the window is delivered', (code) => {
         const client = makeFakeAblyClient('user1');
         const { fake, errorListener } = listened(client);
         beginIdentitySwitch(client);
@@ -143,7 +143,7 @@ describe('E3: the identity-switch window', () => {
         expect(errorListener.mock.calls[0][0].reason).toBe(reason);
     });
 
-    test('(f) also when the window was opened by tryAuthorizeOnSameConnection', async () => {
+    test('also when the window was opened by tryAuthorizeOnSameConnection', async () => {
         const client = makeFakeAblyClient('user1');
         const { fake, errorListener } = listened(client);
         makeAuth(client).tryAuthorizeOnSameConnection({ token: { clientId: 'user2', token: 'x' } as any });
@@ -153,7 +153,7 @@ describe('E3: the identity-switch window', () => {
         expect(errorListener).toHaveBeenCalledTimes(1);
     });
 
-    test('(g) a second 40102 on the same channel inside the window is delivered', () => {
+    test('a second 40102 on the same channel inside the window is delivered', () => {
         const client = makeFakeAblyClient('user1');
         const { fake, errorListener } = listened(client);
         beginIdentitySwitch(client);
@@ -165,7 +165,7 @@ describe('E3: the identity-switch window', () => {
         expect(errorListener.mock.calls[0][0].reason).toBe(second);
     });
 
-    test('(g) the first 40102 is swallowed per channel', () => {
+    test('the first 40102 is swallowed per channel', () => {
         const client = makeFakeAblyClient('user1');
         const a = listened(client, 'public:a');
         const b = listened(client, 'public:b');
@@ -176,7 +176,7 @@ describe('E3: the identity-switch window', () => {
         expect(b.errorListener).not.toHaveBeenCalled();
     });
 
-    test('(h) after the 30 s timeout a 40102 is delivered', () => {
+    test('after the 30 s timeout a 40102 is delivered', () => {
         jest.useFakeTimers();
         const client = makeFakeAblyClient('user1');
         const { fake, errorListener } = listened(client);
@@ -190,7 +190,7 @@ describe('E3: the identity-switch window', () => {
         expect(errorListener).toHaveBeenCalledTimes(1);
     });
 
-    test('(i) a 40102 outside any switch is delivered', () => {
+    test('a 40102 outside any switch is delivered', () => {
         const client = makeFakeAblyClient('user1'); // e.g. options.client: no AblyAuth, no window
         const { fake, errorListener } = listened(client);
         const reason = ablyError('forced mismatch', SWITCH);
@@ -199,7 +199,7 @@ describe('E3: the identity-switch window', () => {
         expect(errorListener.mock.calls[0][0].reason).toBe(reason);
     });
 
-    test('(j) the authorize rejection plus the state change of one switch give 0 calls; later distinct errors 1 each', async () => {
+    test('the authorize rejection plus the state change of one switch give 0 calls; later distinct errors 1 each', async () => {
         // the pre-attach path: the authorize() rejection goes to ably's errorCallback (not to Echo), ably then fails the
         // channel with that same 40102, so Echo sees one 40102 on the channel, which the window swallows
         const client = makeFakeAblyClient('user1');
@@ -218,7 +218,7 @@ describe('E3: the identity-switch window', () => {
         expect(errorListener).toHaveBeenCalledTimes(2);
     });
 
-    test('(j) the 40160 path: the authorize rejection delivered by Echo to a channel is swallowed once', async () => {
+    test('the 40160 path: the authorize rejection delivered by Echo to a channel is swallowed once', async () => {
         const client = makeFakeAblyClient('user1');
         const { errorListener, echoChannel, fake } = listened(client, 'private:room');
         client.auth.authorize.mockImplementation(() => Promise.reject(ablyError('clientId mismatch', SWITCH)));

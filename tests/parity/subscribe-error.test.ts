@@ -130,7 +130,7 @@ describe('T4 still holds: one reported failure is not repeated per subscription'
     });
 });
 
-describe('T7: the attach rejection does not add a second error() call after a state-change failure', () => {
+describe('the attach rejection does not add a second error() call after a state-change failure', () => {
     test("subscribe()'s own attach rejection (same error as the state change) is not reported again", async () => {
         const ably = makeFakeAbly();
         const fake = ably.channels.get('public:t7');
