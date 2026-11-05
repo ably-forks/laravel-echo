@@ -90,8 +90,14 @@ export const fromBase64UrlEncoded = (base64: string): string => {
 export const toBase64UrlEncoded = (text: string): string => {
     let encoded = ''
     if (isBrowser) {
-        // P8: btoa only accepts Latin-1; encode the UTF-8 bytes instead
-        encoded = btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+        // P8: btoa only accepts Latin-1; encode the UTF-8 bytes instead. Build the binary string in chunks: passing
+        // every byte as an argument can exceed the engine's argument limit for large inputs.
+        const bytes = new TextEncoder().encode(text);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000) as unknown as number[]);
+        }
+        encoded = btoa(binary);
     } else {
         encoded = Buffer.from(text).toString('base64');
     }

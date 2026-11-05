@@ -117,6 +117,19 @@ describe('Utils', () => {
             expect(JSON.parse(fromBase64UrlEncoded(socketId))).toEqual({ connectionKey: 'conn-key', clientId: text });
         });
 
+        test('the browser path handles a very large input (no argument-limit error)', () => {
+            const browser = requireInBrowser('../../src/channel/ably/utils');
+            const large = '日本'.repeat(100000); // 200 000 non-Latin-1 characters, 600 000 UTF-8 bytes
+            const encoded = browser.toBase64UrlEncoded(large);
+            expect(encoded).toBe(toBase64UrlEncoded(large)); // Node path: Buffer
+            expect(browser.fromBase64UrlEncoded(encoded)).toBe(large);
+            const { AblyConnector } = requireInBrowser('../../src/connector/ably-connector');
+            const socketId = AblyConnector.prototype.socketId.call({
+                ably: { connection: { key: 'conn-key' }, auth: { clientId: large } },
+            });
+            expect(JSON.parse(fromBase64UrlEncoded(socketId))).toEqual({ connectionKey: 'conn-key', clientId: large });
+        });
+
         test('a JWT with a non-Latin-1 clientId decodes in a browser', () => {
             const browser = requireInBrowser('../../src/channel/ably/utils');
             const payload = toBase64UrlEncoded(JSON.stringify({ 'x-ably-clientId': text, exp: 2, iat: 1 }));
