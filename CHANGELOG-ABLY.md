@@ -1,16 +1,16 @@
 # Changelog
 
-## [v2.0.0](https://github.com/ably-forks/laravel-echo/tree/ably-echo-2.0.0)
+## [v1.1.0](https://github.com/ably-forks/laravel-echo/tree/ably-echo-1.1.0)
 
-[Full Changelog](https://github.com/ably-forks/laravel-echo/compare/ably-echo-1.0.6...ably-echo-2.0.0)
+[Full Changelog](https://github.com/ably-forks/laravel-echo/compare/ably-echo-1.0.6...ably-echo-1.1.0)
 
-Echo's API is unchanged. See "Upgrading to 2.0" in the README.
+Echo's API is unchanged. See "Upgrading to 1.1" in the README.
 
-### Breaking changes
+### Changed
 
 - The peer dependency is now `@ably/pubsub-device@^3` instead of `ably`; `ably@1.x` and `ably@2.x` are no longer supported. Import it with `import * as Ably from '@ably/pubsub-device'; window.Ably = Ably;` (replace `ably` and `ably/promises` imports; there is no default export). `echo.connector.ably` is now a `PubSubClient` with promise-based APIs.
 - With a script tag, the v3 CDN bundle (`https://cdn.ably.com/lib/ably.min-3.js`) exposes `AblyPubSub`; Echo picks it up automatically.
-- Installing and building requires Node.js 22 or later (inherited from `@ably/pubsub-device`); browsers are unaffected.
+- Installing and building requires Node.js 22 or later and a bundler that understands ES2020 (webpack 5 or Vite; webpack 4 needs transpiling). Both are inherited from `@ably/pubsub-device`, not an Echo API change; browsers are unaffected.
 - On MAU-billed Ably accounts, device connections must carry a client ID, so guest connections without one are rejected. Reload the page after login so Echo connects with the user's client ID, or don't connect Echo for guests.
 
 ### Fixed
@@ -46,10 +46,9 @@ Echo's API is unchanged. See "Upgrading to 2.0" in the README.
 
 ### Release
 
-- 2.0.0 is published with the `next` dist-tag first (`npm publish --tag next`); install it with `npm install @ably/laravel-echo@next` during the beta period. `latest` stays 1.0.6 until 2.0.0 is promoted with `npm dist-tag add @ably/laravel-echo@2.0.0 latest`, without a second version bump.
-- Rollback: `npm install @ably/laravel-echo@1.0.6 ably@1`.
+- 1.1.0 is published with the `next` dist-tag first (`npm publish --tag next`); install it with `npm install @ably/laravel-echo@next` during the beta period. `latest` stays 1.0.6, so a `^1.0` range keeps resolving to 1.0.6, until 1.1.0 is promoted with `npm dist-tag add @ably/laravel-echo@1.1.0 latest`, without a second version bump.
+- Rollback: pin the previous release, `npm install @ably/laravel-echo@1.0.6 ably@1`.
 - Create Echo only in the browser, for example `if (typeof window !== 'undefined') { window.Echo = new Echo({ broadcaster: 'ably' }); }`: Echo created during server-side rendering opens a device connection from the server.
-- 2.0.0 reflects the switch to `@ably/pubsub-device`, not upstream laravel-echo 2.x features.
 
 ## [v1.0.6](https://github.com/ably-forks/laravel-echo/tree/ably-echo-1.0.6)
 

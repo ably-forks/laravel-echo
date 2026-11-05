@@ -179,7 +179,7 @@ export class AblyConnector extends Connector {
                         (stateChange?.reason ? ` (${stateChange.reason.code}: ${stateChange.reason.message})` : '') +
                         '. If your Ably account is MAU-billed, device connections require a clientId: connect guests ' +
                         'with a clientId or only connect Echo for signed-in users. See "Guest users on MAU-billed ' +
-                        'Ably accounts" in the README section "Upgrading to 2.0".'
+                        'Ably accounts" in the README section "Upgrading to 1.1".'
                 );
             }
         };

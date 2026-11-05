@@ -59,13 +59,13 @@ npm run dev
 ```
 - If you are using SPA on client side, on user login, new clientId is assigned to the token. So, connection goes into failed state for next channel attach. We have fixed this issue. Now, it immediately reconnects again, reattaching all existing channels. See [Fix clientId mismatch](https://github.com/ably-forks/laravel-echo/pull/38) for more details. On user logout, connection+channels goes into failed state, and doesn't reconnect again. Hence, you need to create a new Echo instance after user logs out.
 
-## Upgrading to 2.0
+## Upgrading to 1.1
 
-`@ably/laravel-echo` 2.0 uses Ably's [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) package instead of `ably`. The Echo API (`channel`, `private`, `join`, `listen`, `whisper`, `here`, `error`, `socketId`, …) is unchanged; you only need to update how Ably is installed and exposed.
+`@ably/laravel-echo` 1.1 uses Ably's [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) package instead of `ably`. The Echo API (`channel`, `private`, `join`, `listen`, `whisper`, `here`, `error`, `socketId`, …) is unchanged; you only need to update how Ably is installed and exposed.
 
 1. **Install and import.**
    ```bash
-   npm install @ably/laravel-echo@2 @ably/pubsub-device@3
+   npm install @ably/laravel-echo@^1.1 @ably/pubsub-device@3
    ```
    ```js
    import * as Ably from '@ably/pubsub-device';
@@ -76,8 +76,6 @@ npm run dev
 3. **Node.js 22 or later** is needed to install and build (it affects build machines and CI, not browsers).
 4. **Guest users on MAU-billed Ably accounts.** Connections must carry a client ID, so guest connections without one are rejected. If your app connects guests, check the [Ably docs](https://ably.com/docs/getting-started/javascript) and your broadcaster's token setup. On MAU-billed accounts, either reload the page after login so Echo connects with the user's client ID, or don't connect Echo for guests.
 5. **Using `echo.connector.ably` directly, or passing Ably client options through Echo** (for example `environment`, now `endpoint`)? See [Getting started with Ably in JavaScript](https://ably.com/docs/getting-started/javascript) and the [ably-js v3 migration guide](https://github.com/ably/ably-js/blob/main/docs/migration-guides/v3/lib.md).
-
-To stay on 1.x: `npm install @ably/laravel-echo@1.0.6 ably@1`.
 
 ## Working with laravel sanctum/ support channel auth using custom implementation
 - There is an explicit section for [Authorizing Private/Presence Broadcast Channels](https://laravel.com/docs/sanctum#authorizing-private-broadcast-channels).
