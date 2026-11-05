@@ -200,4 +200,57 @@ describe('MAU account (mock proxy)', () => {
         expect(hintCalls()).toHaveLength(1);
         expect(String(hintCalls()[0][0])).toContain('ABLY_MAU_ACCOUNT=true');
     });
+
+    describe('renewed token with another identity', () => {
+        beforeEach(() => {
+            mockAuthServer.tokenExpiry = 6;
+        });
+        afterEach(() => {
+            mockAuthServer.tokenExpiry = 60;
+        });
+
+        test('renewal user to guest id reconnects through the proxy as the guest, without a rejection', async () => {
+            if (skipped()) return;
+            mockAuthServer.guestClientId = true;
+            mockAuthServer.clientId = 'user1';
+            echo = connectEcho();
+            await connected(echo);
+            const publicChannel = echo.channel('mau') as AblyChannel;
+            await new Promise((resolve) => publicChannel.subscribed(resolve));
+            await waitForExpect(() => expect(echo?.connector.ably.auth.clientId).toBe('user1'));
+
+            mockAuthServer.clientId = null; // another tab logged out; the next renewed token is the guest's
+            await waitForExpect(
+                () => {
+                    expect(echo?.connector.ably.connection.state).toBe('connected');
+                    expect(echo?.connector.ably.auth.clientId).toBe(mockAuthServer.guestId);
+                },
+                40000,
+                250,
+            );
+            await waitForExpect(() => expect(publicChannel.channel.state).toBe('attached'));
+            const received = new Promise((resolve) => publicChannel.listen('.mau-event', resolve));
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            await mockAuthServer.broadcast('public:mau', 'mau-event', JSON.stringify({ ok: true }));
+            await received;
+            expect(proxy.rejected).toBe(0);
+            expect(hintCalls()).toHaveLength(0);
+        });
+
+        test('renewal user to null without guest ids is rejected with 40161 and the hint is logged once', async () => {
+            if (skipped()) return;
+            mockAuthServer.clientId = 'user1';
+            echo = connectEcho();
+            await connected(echo);
+            await waitForExpect(() => expect(echo?.connector.ably.auth.clientId).toBe('user1'));
+            const client = echo.connector.ably;
+
+            mockAuthServer.clientId = null; // guestClientId stays false: MAU rejects the anonymous reconnect
+            await waitForExpect(() => expect(client.connection.state).toBe('failed'), 40000, 250);
+            expect(client.connection.errorReason?.code).toBe(40161);
+            expect(proxy.rejected).toBeGreaterThanOrEqual(1);
+            expect(hintCalls()).toHaveLength(1);
+            expect(String(hintCalls()[0][0])).toContain('ABLY_MAU_ACCOUNT=true');
+        });
+    });
 });

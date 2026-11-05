@@ -27,6 +27,8 @@ export class MockAuthServer {
 
     tokenExpiry = 60; // seconds, mirrors AblyBroadcaster's `token_expiry` config
 
+    publicCapability = ['subscribe', 'history', 'channel-metadata']; // operations granted on `public:*`; tests may widen it
+
     guestClientId = false; // mirrors laravel-broadcaster's ABLY_MAU_ACCOUNT / mau_account
     guestId = MockAuthServer.newGuestId();
 
@@ -79,7 +81,7 @@ export class MockAuthServer {
             kid: this.keyName,
         };
         // Set capabilities for public channel as per https://ably.com/docs/core-features/authentication#capability-operations
-        let capabilities = { 'public:*': ['subscribe', 'history', 'channel-metadata'] };
+        let capabilities = { 'public:*': [...this.publicCapability] };
         let iat = 0;
         let exp = 0;
         if (this.clientId == null && !isNullOrUndefinedOrEmpty(channelName) && this.isGuardedChannel(channelName)) {
