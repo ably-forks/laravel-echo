@@ -76,9 +76,27 @@ export const beforeChannelAttach = (ablyClient, authorize: Function) => {
                 pending.forEach((cb) => cb?.(error));
                 return;
             }
-            internalAttach.call(this, forceReattach, attachReason, errCallback);
+            // A throw from the library's attach must settle the callers here: after an asynchronous authorization nothing
+            // else would (the authorizer's promise chain only logs it), and the queue is already cleared.
+            try {
+                internalAttach.call(this, forceReattach, attachReason, errCallback);
+            } catch (e) {
+                if (errCallback) {
+                    errCallback(e);
+                } else {
+                    console.error(`channel ${this.name} attach error => ${e}`);
+                }
+                pending.forEach((cb) => cb?.(e));
+                return;
+            }
             // while 'attaching', internalAttach only registers another once-listener; no second ATTACH is sent
-            pending.forEach((cb) => internalAttach.call(this, false, attachReason, cb));
+            pending.forEach((cb) => {
+                try {
+                    internalAttach.call(this, false, attachReason, cb);
+                } catch (e) {
+                    cb?.(e);
+                }
+            });
         };
         try {
             authorizeChannel(this, done);
