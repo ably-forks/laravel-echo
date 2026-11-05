@@ -1,7 +1,7 @@
 import type { AblyRealtime, AblyRealtimeChannel } from '../../typings/ably';
 import { EventFormatter } from '../util';
 import { Channel } from './channel';
-import { safeInvoke, isSameError } from './ably/utils';
+import { safeInvoke, isSameError, consumeSwitchError } from './ably/utils';
 
 /**
  * This class represents an Ably channel.
@@ -240,10 +240,10 @@ export class AblyChannel extends Channel {
     }
 
     _alertErrorListeners = (err: any) => {
-        if (err) {
-            this.lastAlertedError = err;
-            this.errorListeners.forEach((listener) => safeInvoke(listener, err));
-        }
+        if (!err) return;
+        if (consumeSwitchError(this.ably, this.name, err)) return; // expected 40102 of an Echo-initiated identity switch
+        this.lastAlertedError = err;
+        this.errorListeners.forEach((listener) => safeInvoke(listener, err));
     };
 
     /**

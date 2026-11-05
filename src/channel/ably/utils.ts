@@ -118,6 +118,39 @@ export const fullUrl = (url: string) => {
 };
 
 /**
+ * E3: an Echo-initiated identity switch (a token for another clientId, including null -> user) makes the server
+ * reject the in-band AUTH with 40102 while the reconnect is already under way, and the channels then recover by
+ * themselves. Within a per-client switch window, the first 40102 per channel is not reported to error() listeners.
+ * The window closes on the next `connected`, a `failed` other than 40102, releaseClient() or after 30 s.
+ */
+const IDENTITY_SWITCH_TIMEOUT_MS = 30_000;
+const switchWindows = new WeakMap<object, { suppressed: Set<string>; timer: any }>();
+
+export const beginIdentitySwitch = (client: object) => {
+    endIdentitySwitch(client);
+    const timer = setTimeout(() => endIdentitySwitch(client), IDENTITY_SWITCH_TIMEOUT_MS);
+    timer?.unref?.();
+    switchWindows.set(client, { suppressed: new Set(), timer });
+};
+
+export const endIdentitySwitch = (client: object) => {
+    const w = switchWindows.get(client);
+    if (w) {
+        clearTimeout(w.timer);
+        switchWindows.delete(client);
+    }
+};
+
+/** true = swallow (the first 40102 per channel inside an Echo-initiated switch window) */
+export const consumeSwitchError = (client: object, channelName: string, err: any): boolean => {
+    const w = client ? switchWindows.get(client) : undefined;
+    const code = err?.code ?? err?.reason?.code;
+    if (!w || code !== 40102 || w.suppressed.has(channelName)) return false;
+    w.suppressed.add(channelName);
+    return true;
+};
+
+/**
  * Default timeout for HTTP requests, matching ably-js's default `httpRequestTimeout`.
  */
 export const HTTP_REQUEST_TIMEOUT_MS = 10000;

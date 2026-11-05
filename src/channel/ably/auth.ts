@@ -1,5 +1,13 @@
 import { beforeChannelAttach } from './attach';
-import { toTokenDetails, parseJwt, fullUrl, httpRequestAsync, HTTP_REQUEST_TIMEOUT_MS } from './utils';
+import {
+    toTokenDetails,
+    parseJwt,
+    fullUrl,
+    httpRequestAsync,
+    HTTP_REQUEST_TIMEOUT_MS,
+    beginIdentitySwitch,
+    endIdentitySwitch,
+} from './utils';
 import { SequentialAuthTokenRequestExecuter, TOKEN_REQUEST_TIMEOUT_MS } from './token-request';
 import type { AblyChannel } from '../ably-channel';
 import { AblyConnector } from '../../connector/ably-connector';
@@ -143,12 +151,17 @@ export class AblyAuth {
         const connection = this.ablyClient().connection;
         let armed = true;
         const failed = (stateChange?: any) => {
-            if (!armed || stateChange?.reason?.code !== 40102) return;
+            if (stateChange?.reason?.code !== 40102) {
+                endIdentitySwitch(this.ablyClient()); // E3: a real failure ends the switch window
+                return;
+            }
+            if (!armed) return;
             armed = false;
             this.onClientIdChanged();
         };
         const connected = () => {
             armed = true;
+            endIdentitySwitch(this.ablyClient()); // E3: the switch is complete
         };
         connection.on('failed', failed);
         connection.on('connected', connected);
@@ -157,9 +170,10 @@ export class AblyAuth {
 
     releaseClientIdSwitchListeners = () => {
         if (!this.clientIdSwitchListeners) return;
-        const connection = this.ablyClient()?.connection;
-        connection?.off('failed', this.clientIdSwitchListeners.failed);
-        connection?.off('connected', this.clientIdSwitchListeners.connected);
+        const client = this.ablyClient();
+        client?.connection?.off('failed', this.clientIdSwitchListeners.failed);
+        client?.connection?.off('connected', this.clientIdSwitchListeners.connected);
+        if (client) endIdentitySwitch(client);
         this.clientIdSwitchListeners = null;
     };
 
@@ -193,7 +207,14 @@ export class AblyAuth {
     };
 
     tryAuthorizeOnSameConnection = (authOptions?: AuthOptions, callback?: (error, TokenDetails) => void) => {
-        this.ablyClient().auth
+        const client = this.ablyClient();
+        const token = authOptions?.token as TokenDetails;
+        // E3: a token for another identity (including null -> user) opens the switch window before authorize(), since
+        // a channel's 40102 can arrive before the connection's `failed`
+        if (token && typeof token === 'object' && (token.clientId ?? null) !== (client.auth.clientId ?? null)) {
+            beginIdentitySwitch(client);
+        }
+        client.auth
             .authorize(null, authOptions)
             .then(
                 (tokenDetails) => callback?.(null, tokenDetails),
