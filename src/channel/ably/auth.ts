@@ -62,9 +62,12 @@ export class AblyAuth {
         this.authHeaders = headers;
         this.authRequestExecuter = new SequentialAuthTokenRequestExecuter(token, requestTokenFn ?? this.requestToken, {
             source: requestTokenFn ? 'requestTokenFn' : `Auth endpoint ${this.authEndpoint}`,
-            // T6 queue bound: never shorter than the fetch timeout (R21), so the fetch's own 50003 always wins on the
-            // authEndpoint path and a large httpRequestTimeout is not silently capped by the queue.
-            timeoutMs: Math.max(TOKEN_REQUEST_TIMEOUT_MS, this.httpRequestTimeout() + 1000),
+            // T6 queue bound. authEndpoint: never shorter than the fetch timeout (R21), so the fetch's own 50003 always
+            // wins and a large httpRequestTimeout is not silently capped by the queue. A user requestTokenFn does not
+            // use httpRequestTimeout, so it gets the fixed token request timeout.
+            timeoutMs: requestTokenFn
+                ? TOKEN_REQUEST_TIMEOUT_MS
+                : Math.max(TOKEN_REQUEST_TIMEOUT_MS, this.httpRequestTimeout() + 1000),
         });
     }
 

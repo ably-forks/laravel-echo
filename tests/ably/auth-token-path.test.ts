@@ -50,10 +50,18 @@ describe('auth token path (review §9.1 combined design)', () => {
         expect(e.cause.message).toBe('c');
     });
 
-    test('R21+T6: queue bound is never shorter than the fetch timeout', () => {
+    test('R21+T6: authEndpoint queue bound is never shorter than the fetch timeout', () => {
         expect(makeAuth({}).authRequestExecuter.timeoutMs).toBe(TOKEN_REQUEST_TIMEOUT_MS);
         expect(makeAuth({ httpRequestTimeout: 300 }).authRequestExecuter.timeoutMs).toBe(TOKEN_REQUEST_TIMEOUT_MS);
         expect(makeAuth({ httpRequestTimeout: 40000 }).authRequestExecuter.timeoutMs).toBe(41000);
+    });
+
+    test('T6: a requestTokenFn is bounded by the fixed token request timeout, whatever httpRequestTimeout is', () => {
+        const requestTokenFn = async () => ({ token: 'x' });
+        expect(makeAuth({}, { requestTokenFn }).authRequestExecuter.timeoutMs).toBe(TOKEN_REQUEST_TIMEOUT_MS);
+        expect(makeAuth({ httpRequestTimeout: 40000 }, { requestTokenFn }).authRequestExecuter.timeoutMs).toBe(
+            TOKEN_REQUEST_TIMEOUT_MS
+        );
     });
 
     test('R21: httpRequestTimeout reaches fetch, and the fetch 50003 (with URI) wins over the queue timeout', async () => {
@@ -69,12 +77,14 @@ describe('auth token path (review §9.1 combined design)', () => {
     test('T6: a hung requestTokenFn is bounded, error is coded and names the source', async () => {
         jest.useFakeTimers();
         try {
-            const auth = makeAuth({}, { requestTokenFn: () => new Promise(() => undefined) });
+            // a large httpRequestTimeout does not extend the requestTokenFn bound (it is for the authEndpoint fetch)
+            const hung = () => new Promise(() => undefined);
+            const auth = makeAuth({ httpRequestTimeout: 40000 }, { requestTokenFn: hung });
             const p = auth.authRequestExecuter.request('private:a').catch((e) => e);
             jest.advanceTimersByTime(TOKEN_REQUEST_TIMEOUT_MS);
             const err: any = await p;
             expect(err).toMatchObject({ code: 50003, statusCode: 500 });
-            expect(err.message).toContain('requestTokenFn did not complete');
+            expect(err.message).toContain(`requestTokenFn did not complete within ${TOKEN_REQUEST_TIMEOUT_MS}ms`);
         } finally {
             jest.useRealTimers();
         }
