@@ -48,10 +48,12 @@ export class AblyChannel extends Channel {
     callbacks: Map<Function, Function>;
 
     /**
-     * The reason of the last channel state change reported to error() listeners (cleared on attach), and the last
-     * error reported to them. _alertSubscribeError uses both so one failure is reported once.
+     * The reason of the last channel state change reported to error() listeners (cleared on attach), how many such
+     * reasons were reported so far, and the last error reported to them. _alertSubscribeError uses them so one
+     * failure is reported once.
      */
     lastStateChangeReason: any = null;
+    stateChangeReasonCount = 0;
     lastAlertedError: any = null;
 
     /**
@@ -96,6 +98,7 @@ export class AblyChannel extends Channel {
                 this.subscribedListeners.forEach((listener) => safeInvoke(listener));
             } else if (reason) {
                 this.lastStateChangeReason = reason;
+                this.stateChangeReasonCount++;
                 this._alertErrorListeners(stateChange);
             }
         });
@@ -130,7 +133,7 @@ export class AblyChannel extends Channel {
         this.eventCallbacks.set(name, byCallback);
         byCallback.set(callback, [...(byCallback.get(callback) ?? []), wrapper]);
         this.callbacks.set(callback, wrapper); // kept for backwards compatibility of the public field
-        this.channel.subscribe(name, wrapper as any).catch(this._alertSubscribeError);
+        this.channel.subscribe(name, wrapper as any).catch(this._subscribeErrorHandler());
         return this;
     }
 
@@ -149,7 +152,7 @@ export class AblyChannel extends Channel {
         };
         this.allCallbacks.set(callback, [...(this.allCallbacks.get(callback) ?? []), wrapper]);
         this.callbacks.set(callback, wrapper); // kept for backwards compatibility of the public field
-        this.channel.subscribe(wrapper as any).catch(this._alertSubscribeError);
+        this.channel.subscribe(wrapper as any).catch(this._subscribeErrorHandler());
         return this;
     }
 
@@ -247,11 +250,22 @@ export class AblyChannel extends Channel {
      * channel state change (same reason, or same code and message) or by the attach() that started the same
      * authorization (same error object). Forward everything else once: v3 90009 while attached, a subscribe on a
      * `failed` channel, and an authorization failure that changes no state (`initialized` / `detached` channel).
+     * A state change counts only if it was reported during this subscribe()'s attach attempt (after
+     * `stateChangeReasonsBefore`), so an older reason with the same code and message doesn't hide a new failure.
      */
-    _alertSubscribeError = (err: any) => {
-        const reportedByStateChange = isSameError(err, this.lastStateChangeReason);
+    _alertSubscribeError = (err: any, stateChangeReasonsBefore = -1) => {
+        const reportedByStateChange =
+            this.stateChangeReasonCount > stateChangeReasonsBefore && isSameError(err, this.lastStateChangeReason);
         if (this.channel.state === 'attached' || !(reportedByStateChange || err === this.lastAlertedError)) {
             this._alertErrorListeners(err);
         }
+    };
+
+    /**
+     * A subscribe() rejection handler bound to the attach attempt that subscribe() starts now.
+     */
+    _subscribeErrorHandler = () => {
+        const stateChangeReasonsBefore = this.stateChangeReasonCount;
+        return (err: any) => this._alertSubscribeError(err, stateChangeReasonsBefore);
     };
 }

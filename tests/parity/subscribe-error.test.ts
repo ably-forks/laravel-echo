@@ -67,6 +67,25 @@ describe('subscribe() errors that no state change reports are forwarded once', (
     });
 });
 
+describe('an older state-change error does not hide a new attach attempt failure', () => {
+    test('a later authorization failure with the same code and message as an earlier state change is reported', async () => {
+        const ably = makeFakeAbly();
+        const fake = ably.channels.get('private:again');
+        const echoChannel = new AblyChannel(ably, 'private:again', ECHO_OPTIONS);
+        const errorListener = jest.fn();
+        echoChannel.error(errorListener);
+        const earlier = ablyError('auth endpoint 403', 40300);
+        fake.transition('detached', earlier); // reported by the state change
+        await settle();
+        const later = ablyError('auth endpoint 403', 40300); // a new attempt, same code and message, no state change
+        fake.attach.mockImplementation(() => Promise.reject(later));
+        echoChannel.listen('A', () => undefined);
+        await settle();
+        expect(errorListener).toHaveBeenCalledTimes(2);
+        expect(errorListener).toHaveBeenLastCalledWith(later);
+    });
+});
+
 describe('T4 still holds: one reported failure is not repeated per subscription', () => {
     test('an attach failure reported by the state change (same code and message) is not forwarded again', async () => {
         const ably = makeFakeAbly();

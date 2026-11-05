@@ -47,7 +47,7 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
                         (err) => safeInvoke(callback, [], err)
                     )
             )
-            .catch(this._alertSubscribeError);
+            .catch(this._subscribeErrorHandler());
         return this;
     }
 
@@ -59,7 +59,7 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
             .subscribe(['enter', 'update'], ({ data, ...metaData }) => {
                 callback(data, metaData);
             })
-            .catch(this._alertSubscribeError);
+            .catch(this._subscribeErrorHandler());
 
         return this;
     }
@@ -72,7 +72,7 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
             .subscribe('leave', ({ data, ...metaData }) => {
                 callback(data, metaData);
             })
-            .catch(this._alertSubscribeError);
+            .catch(this._subscribeErrorHandler());
 
         return this;
     }
