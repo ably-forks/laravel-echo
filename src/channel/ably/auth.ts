@@ -37,9 +37,37 @@ export class AblyAuth {
                 callback(error, null);
                 return;
             }
+            this.switchIdentityOnRenewal(tokenDetails);
             callback(null, tokenDetails);
         },
         echoMessages: false, // https://docs.ably.io/client-lib-development-guide/features/#TO3h
+    };
+
+    /**
+     * A renewed connection token can carry another identity than the client holds, for example after a logout or
+     * login in another tab. ably-js keeps the first clientId (RSA15c), so it would fail the reconnect with a
+     * client-side 40102 and stay disconnected, then failed. Switch the same way as the in-page path instead: open the
+     * switch window (E3) and clear the cached clientId with an authorize() that carries the token itself, so no token
+     * request is made and this authCallback is not re-entered. The connection then reconnects once as the new
+     * identity, and the channels re-attach (private and presence ones re-authorize).
+     * Skipped for the client's first token, and when no clientId is cached (null -> user already works in ably-js).
+     */
+    switchIdentityOnRenewal = (token: TokenDetails) => {
+        const client = this.ablyClient();
+        const current = client?.auth?.clientId ?? null;
+        if (!client?.connection?.id || current === null || current === (token.clientId ?? null)) {
+            return;
+        }
+        beginIdentitySwitch(client);
+        // after the callback has returned: an authorize() while ably-js still waits for it aborts the connect attempt
+        setTimeout(() => {
+            if (this.ablyClient() !== client || ['closing', 'closed'].includes(client.connection.state)) {
+                return; // Echo.connect() replaced the client, or it was closed
+            }
+            client.auth
+                .authorize(null, { ...this.options, token, clientId: null })
+                .catch(() => undefined); // a failed switch surfaces through the connection state and the 40102 handler
+        }, 0);
     };
 
     requestToken = async (channelName: string, existingToken: string) => {
