@@ -6,6 +6,19 @@ import { toBase64UrlEncoded, resolveAblyLib, warnIfAblyGlobalsIgnored } from '..
 import { version } from '../../package.json';
 
 /**
+ * E5: console hints for the error codes Ably uses on MAU-billed accounts, logged once per code.
+ */
+const MAU_HINTS: Record<number, string> = {
+    40161: 'Your Ably account requires an identified client on every connection (MAU billing), but this guest connected without a clientId. ' +
+        'In laravel-broadcaster set ABLY_MAU_ACCOUNT=true (config broadcasting.connections.ably.mau_account) so guests receive a clientId, ' +
+        'or only connect Echo for signed-in users. See "Guest users on MAU-billed Ably accounts" in the README.',
+    40168: 'Your Ably account is MAU-billed and only accepts the current @ably/pubsub-device (v3) SDK, but an incompatible or older SDK build connected. ' +
+        'Make sure a single, up-to-date @ably/pubsub-device is installed and that no other Ably SDK creates this connection.',
+    40167: 'A server-side Ably client needs the server claim on its token to connect to a MAU-billed account. This is usually a server-side ' +
+        'configuration issue (laravel-broadcaster / token issuing), not a browser issue.',
+};
+
+/**
  * This class creates a connector to Ably.
  */
 export class AblyConnector extends Connector {
@@ -51,9 +64,9 @@ export class AblyConnector extends Connector {
     ablyAuth: AblyAuth;
 
     /**
-     * Whether the MAU hint was logged for this connector (once only).
+     * The MAU hint codes already logged by this connector (each code once).
      */
-    mauHintLogged = false;
+    mauHintsLogged = new Set<number>();
 
     /**
      * The connection listeners of the re-attach latch (R3), so releaseClient() can remove them (P7). No initializer:
@@ -164,17 +177,12 @@ export class AblyConnector extends Connector {
         let connectionFailed = this.ably.connection.state === 'failed';
         const failed = (stateChange) => {
             connectionFailed = true;
-            // MAU hint: Ably has not documented the code it uses to reject clientId-less device connections on
-            // MAU-billed accounts, so log it for any failure except a 40102 clientId mismatch (handled by AblyAuth).
-            if (stateChange?.reason?.code !== 40102 && !this.mauHintLogged) {
-                this.mauHintLogged = true;
-                console.error(
-                    '@ably/laravel-echo: the Ably connection failed' +
-                        (stateChange?.reason ? ` (${stateChange.reason.code}: ${stateChange.reason.message})` : '') +
-                        '. If your Ably account is MAU-billed, device connections require a clientId: connect guests ' +
-                        'with a clientId or only connect Echo for signed-in users. See "Guest users on MAU-billed ' +
-                        'Ably accounts" in the README section "Upgrading to 1.1".'
-                );
+            // E5: a hint only for the MAU codes (40161, 40168, 40167), once per code
+            const code = stateChange?.reason?.code;
+            const hint = code !== undefined ? MAU_HINTS[code] : undefined;
+            if (hint && !this.mauHintsLogged.has(code)) {
+                this.mauHintsLogged.add(code);
+                console.error(`@ably/laravel-echo: the Ably connection failed (${code}: ${stateChange.reason.message}). ${hint}`);
             }
         };
         const connected = () => {

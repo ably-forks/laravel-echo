@@ -158,6 +158,71 @@ describe('R5: environment / realtimeHost / restHost are mapped to endpoint', () 
     });
 });
 
+describe('E5: MAU hints only for 40161, 40168 and 40167, once per code', () => {
+    const makeClient = () => {
+        const connection = new FakeEmitter();
+        const fake: any = { ...makeFakeAbly(), connection, close: jest.fn(), auth: {} };
+        return { fake, connection };
+    };
+    const fail = (connection: FakeEmitter, code: number) =>
+        connection.emit('failed', { current: 'failed', reason: { code, message: `failure ${code}` } });
+    const logged = () => (console.error as jest.Mock).mock.calls.map(([message]) => String(message));
+
+    beforeEach(() => jest.spyOn(console, 'error').mockImplementation(() => undefined));
+
+    test('40161 logs once, naming clientId, ABLY_MAU_ACCOUNT=true and broadcasting.connections.ably.mau_account', () => {
+        const { fake, connection } = makeClient();
+        new Echo({ broadcaster: 'ably', client: fake });
+        fail(connection, 40161);
+        fail(connection, 40161);
+        expect(logged()).toHaveLength(1);
+        ['40161', 'clientId', 'ABLY_MAU_ACCOUNT=true', 'broadcasting.connections.ably.mau_account'].forEach((text) =>
+            expect(logged()[0]).toContain(text)
+        );
+    });
+
+    test('40168 mentions @ably/pubsub-device and v3; 40167 mentions the server claim', () => {
+        const { fake, connection } = makeClient();
+        new Echo({ broadcaster: 'ably', client: fake });
+        fail(connection, 40168);
+        fail(connection, 40167);
+        expect(logged()).toHaveLength(2);
+        expect(logged()[0]).toContain('@ably/pubsub-device');
+        expect(logged()[0]).toContain('v3');
+        expect(logged()[1]).toContain('server claim');
+    });
+
+    test('once per code: 40161 then 40168 logs two hints', () => {
+        const { fake, connection } = makeClient();
+        new Echo({ broadcaster: 'ably', client: fake });
+        fail(connection, 40161);
+        fail(connection, 40168);
+        fail(connection, 40161);
+        expect(logged()).toHaveLength(2);
+    });
+
+    test.each([40102, 40142, 40101, 80019, 50003])('%i logs no hint, and the next connected still re-attaches', (code) => {
+        const { fake, connection } = makeClient();
+        const echo = new Echo({ broadcaster: 'ably', client: fake });
+        const channel = echo.channel('a') as any;
+        channel.channel.state = 'failed';
+        channel.channel.attach.mockClear();
+        fail(connection, code);
+        connection.emit('connected', { current: 'connected' });
+        expect(console.error).not.toHaveBeenCalled();
+        expect(channel.channel.attach).toHaveBeenCalledTimes(1);
+    });
+
+    test('regression: an earlier unrelated failure (80019) does not use up the 40161 hint', () => {
+        const { fake, connection } = makeClient();
+        new Echo({ broadcaster: 'ably', client: fake });
+        fail(connection, 80019);
+        fail(connection, 40161);
+        expect(logged()).toHaveLength(1);
+        expect(logged()[0]).toContain('40161');
+    });
+});
+
 describe('R3: re-attach channels after the connection failed (installed from connect(), so options.client is covered)', () => {
     const makeClient = () => {
         const connection = new FakeEmitter();
@@ -175,27 +240,14 @@ describe('R3: re-attach channels after the connection failed (installed from con
             ch.channel.state = state;
             ch.channel.attach.mockClear();
         });
-        connection.emit('failed', { current: 'failed', reason: { code: 40330, message: 'clientId required' } });
+        connection.emit('failed', { current: 'failed', reason: { code: 40161, message: 'requires an identified client' } });
         connection.emit('connecting', { current: 'connecting' });
         connection.emit('connected', { current: 'connected' });
         connection.emit('connected', { current: 'connected' }); // e.g. a later reconnect: no second re-attach
         const attachCalls = Object.keys(states).map((n) => echo.connector.channels[`public:${n}`].channel.attach.mock.calls.length);
         expect(attachCalls).toEqual([1, 1, 0, 0, 1]);
         expect(console.error).toHaveBeenCalledTimes(1); // the MAU hint
-        expect((console.error as jest.Mock).mock.calls[0][0]).toContain('MAU-billed');
-        expect((console.error as jest.Mock).mock.calls[0][0]).toContain('clientId');
-    });
-
-    test('a 40102 clientId mismatch logs no MAU hint; other failures log it once', () => {
-        jest.spyOn(console, 'error').mockImplementation(() => undefined);
-        const { fake, connection } = makeClient();
-        new Echo({ broadcaster: 'ably', client: fake });
-        connection.emit('failed', { current: 'failed', reason: { code: 40102, message: 'mismatched clientId' } });
-        expect(console.error).not.toHaveBeenCalled();
-        connection.emit('failed', { current: 'failed', reason: { code: 40330, message: 'clientId required' } });
-        connection.emit('failed', { current: 'failed', reason: { code: 40330, message: 'clientId required' } });
-        expect(console.error).toHaveBeenCalledTimes(1);
-        expect((console.error as jest.Mock).mock.calls[0][0]).toContain('MAU-billed');
+        expect((console.error as jest.Mock).mock.calls[0][0]).toContain('40161');
     });
 
     test('a supplied client that is already failed when Echo connects re-attaches on the next connected, once', () => {
