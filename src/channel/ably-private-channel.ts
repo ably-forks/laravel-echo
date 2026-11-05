@@ -5,7 +5,11 @@ import { safeInvoke } from './ably/utils';
 export class AblyPrivateChannel extends AblyChannel {
     constructor(ably: any, name: string, options: any, auth: AblyAuth) {
         super(ably, name, options, false);
-        this.channel.on('failed', auth.onChannelFailed(this));
+        if (auth) {
+            // P3: no AblyAuth with options.client, so no 40160 re-authorize
+            this.channel.on('failed', auth.onChannelFailed(this));
+        }
+
         this.subscribe();
     }
     /**

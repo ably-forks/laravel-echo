@@ -72,9 +72,7 @@ describe('authCallback (ably-facing, callback style since 1.0.6)', () => {
         const { auth } = makeAuth(() => Promise.reject(new Error('x')));
         await expect((auth.options.authCallback as any)({}, () => undefined)).resolves.toBeUndefined();
     });
-
-    // Deferred to Phase 2: fixed by the combined token-path design (review §9.1: T6, T7, T10). Un-skip there.
-    test.skip('if the ably callback throws on success it is not called a second time with that exception', async () => {
+    test('if the ably callback throws on success it is not called a second time with that exception', async () => {
         const { auth } = makeAuth(async () => ({ token: makeJwt() }));
         const cb = jest.fn((err) => {
             if (!err) throw new Error('internal');
@@ -169,10 +167,9 @@ describe('beforeChannelAttach (patched RealtimeChannel._attach)', () => {
 
     test('a synchronous exception while authorizing does not leave the channel stuck in `authorizing`', async () => {
         const { auth, client } = makeAuth(async () => ({ token: makeJwt() }));
-        // cached token without x-ably-capability -> parseJwt(...).payload['x-ably-capability'].includes throws TypeError
-        const now = Math.floor(Date.now() / 1000);
-        const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64').replace(/=+$/, '');
-        client.auth.tokenDetails = { token: `${b64u({ alg: 'HS256' })}.${b64u({ iat: now, exp: now + 3600 })}.s`, expires: Date.now() + 3600e3 };
+        // a cached token that is not a JWT -> parseJwt throws a TypeError synchronously
+        client.auth.tokenDetails = { token: 'not-a-jwt', expires: Date.now() + 3600e3 };
+
         auth.enableAuthorizeBeforeChannelAttach();
         const ch = Object.assign(new FakeRealtimeChannel('private:w'), { client });
         const cb = jest.fn();

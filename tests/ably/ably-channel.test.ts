@@ -125,35 +125,51 @@ describe('AblyChannel', () => {
                 .listen('.testEvent', eventHandler3);
         });
 
-        execute(() => mockAuthServer.broadcast('public:test', 'testEvent', 'Hello there'), 4);
-
-        await waitForExpect(() => {
-            expect(eventHandler1).toBeCalledTimes(4);
-            expect(eventHandler2).toBeCalledTimes(4);
-            expect(eventHandler3).toBeCalledTimes(4);
+        // Sentinel: a raw listener for every message, which stopListening('.testEvent') does not remove. ably calls
+        // all listeners of a message synchronously, so once the sentinel has seen n testEvents, every handler still
+        // subscribed has been called for them as well.
+        let delivered = 0;
+        let onDelivered: () => void;
+        await publicChannel.channel.subscribe((message) => {
+            if (message.name === 'testEvent') {
+                delivered++;
+                onDelivered?.();
+            }
         });
+        const broadcastAndWaitForDelivery = async (times: number) => {
+            delivered = 0;
+            const allDelivered = new Promise<void>((resolve) => {
+                onDelivered = () => delivered >= times && resolve();
+            });
+            await Promise.all(
+                Array.from({ length: times }, () => mockAuthServer.broadcast('public:test', 'testEvent', 'Hello there'))
+            );
+            await allDelivered;
+        };
+
+        await broadcastAndWaitForDelivery(4);
+
+        expect(eventHandler1).toBeCalledTimes(4);
+        expect(eventHandler2).toBeCalledTimes(4);
+        expect(eventHandler3).toBeCalledTimes(4);
 
         jest.clearAllMocks();
         publicChannel.stopListening('.testEvent', eventHandler1);
 
-        execute(() => mockAuthServer.broadcast('public:test', 'testEvent', 'Hello there'), 3);
+        await broadcastAndWaitForDelivery(3);
 
-        await waitForExpect(() => {
-            expect(eventHandler1).toBeCalledTimes(0);
-            expect(eventHandler2).toBeCalledTimes(3);
-            expect(eventHandler3).toBeCalledTimes(3);
-        });
+        expect(eventHandler1).toBeCalledTimes(0);
+        expect(eventHandler2).toBeCalledTimes(3);
+        expect(eventHandler3).toBeCalledTimes(3);
 
         jest.clearAllMocks();
         publicChannel.stopListening('.testEvent');
 
-        execute(() => mockAuthServer.broadcast('public:test', 'testEvent', 'Hello there'), 3);
+        await broadcastAndWaitForDelivery(3);
 
-        await waitForExpect(() => {
-            expect(eventHandler1).toBeCalledTimes(0);
-            expect(eventHandler2).toBeCalledTimes(0);
-            expect(eventHandler3).toBeCalledTimes(0);
-        });
+        expect(eventHandler1).toBeCalledTimes(0);
+        expect(eventHandler2).toBeCalledTimes(0);
+        expect(eventHandler3).toBeCalledTimes(0);
     });
 
     // internally calls stop listening to a event

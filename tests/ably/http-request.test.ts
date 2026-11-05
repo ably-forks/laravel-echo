@@ -42,12 +42,12 @@ describe('httpRequestAsync', () => {
         await expect(post()).rejects.toMatchObject({ statusCode: 500, code: 50000 });
     });
 
-    test('rejects a non-2xx response using the Ably error code from the body', async () => {
+    test('ignores an error code in the body of a non-2xx response and derives the code from the status (R9)', async () => {
         handler = (_, res) => {
             res.statusCode = 401;
             res.end(JSON.stringify({ error: { message: 'nope', code: 40160 } }));
         };
-        await expect(post()).rejects.toMatchObject({ statusCode: 401, code: 40160, message: 'HTTP 401: nope' });
+        await expect(post()).rejects.toMatchObject({ statusCode: 401, code: 40100, message: 'HTTP 401: nope' });
     });
 
     test('rejects a non-2xx response without an Ably error, deriving the code from the status', async () => {
@@ -56,6 +56,19 @@ describe('httpRequestAsync', () => {
             res.end('Forbidden page');
         };
         await expect(post()).rejects.toMatchObject({ statusCode: 403, code: 40300, message: 'HTTP 403: Forbidden page' });
+    });
+
+    test('rejects a Laravel-style {"message"} error body with the message and a status-derived code', async () => {
+        handler = (_, res) => {
+            res.statusCode = 403;
+            res.setHeader('content-type', 'application/json');
+            res.end(JSON.stringify({ message: 'This action is unauthorized.' }));
+        };
+        await expect(post()).rejects.toMatchObject({
+            statusCode: 403,
+            code: 40300,
+            message: 'HTTP 403: This action is unauthorized.',
+        });
     });
 
     test('rejects with a timeout error when the server does not respond', async () => {
@@ -85,6 +98,16 @@ describe('httpRequestAsync', () => {
         test('includes credentials when an Authorization header is set', async () => {
             await post(undefined, { authorization: 'Bearer x' });
             expect(fetchMock.mock.calls[0][1].credentials).toBe('include');
+        });
+
+        test('uses same-origin credentials for a capitalised Authorization header (XHR parity)', async () => {
+            await post(undefined, { Authorization: 'Bearer x' });
+            expect(fetchMock.mock.calls[0][1].credentials).toBe('same-origin');
+        });
+
+        test('drops content-length in any case', async () => {
+            await post(undefined, { 'content-length': 999, 'CONTENT-LENGTH': 1 });
+            expect(Object.keys(fetchMock.mock.calls[0][1].headers).map((k) => k.toLowerCase())).not.toContain('content-length');
         });
 
         test('uses same-origin credentials otherwise, and drops Content-Length', async () => {

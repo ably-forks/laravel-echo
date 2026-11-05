@@ -17,7 +17,11 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
 
     constructor(ably: any, name: string, options: any, auth: AblyAuth) {
         super(ably, name, options, false);
-        this.channel.on('failed', auth.onChannelFailed(this));
+        if (auth) {
+            // P3: no AblyAuth with options.client, so no 40160 re-authorize
+            this.channel.on('failed', auth.onChannelFailed(this));
+        }
+
         this.channel.on('attached', (stateChange) => {
             // T15: on a resumed attach the server kept our membership and ably re-enters it (RTP17); don't enter twice.
             // If the last enter() failed there is no membership to restore, so enter again.
