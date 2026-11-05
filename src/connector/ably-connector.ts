@@ -55,6 +55,12 @@ export class AblyConnector extends Connector {
     mauHintLogged = false;
 
     /**
+     * The connection listeners of the re-attach latch (R3), so releaseClient() can remove them (P7). No initializer:
+     * connect() sets it from the base constructor, before field initializers run (like ablyAuth).
+     */
+    recoveryListeners: { failed: (stateChange?: any) => void; connected: () => void };
+
+    /**
      * Create a fresh Ably connection.
      */
     connect(): void {
@@ -96,6 +102,12 @@ export class AblyConnector extends Connector {
      */
     releaseClient(): void {
         Object.keys(this.channels).forEach((name) => this.leaveChannel(name));
+        if (this.ably && this.recoveryListeners) {
+            // a supplied options.client may be reused: don't leave a listener pair on it per connect()
+            this.ably.connection.off('failed', this.recoveryListeners.failed);
+            this.ably.connection.off('connected', this.recoveryListeners.connected);
+            this.recoveryListeners = null;
+        }
         if (this.ably && this.ably !== this.options.client) {
             this.ably.close();
         }
@@ -154,7 +166,7 @@ export class AblyConnector extends Connector {
      */
     reattachChannelsAfterConnectionFailure(): void {
         let connectionFailed = false;
-        this.ably.connection.on('failed', (stateChange) => {
+        const failed = (stateChange) => {
             connectionFailed = true;
             // MAU hint: Ably has not documented the code it uses to reject clientId-less device connections on
             // MAU-billed accounts, so log it for any failure except a 40102 clientId mismatch (handled by AblyAuth).
@@ -168,9 +180,8 @@ export class AblyConnector extends Connector {
                         'Ably accounts" in the README section "Upgrading to 2.0".'
                 );
             }
-        });
-
-        this.ably.connection.on('connected', () => {
+        };
+        const connected = () => {
             if (!connectionFailed) {
                 return;
             }
@@ -181,7 +192,10 @@ export class AblyConnector extends Connector {
                     echoChannel.channel.attach().catch(echoChannel._alertErrorListeners);
                 }
             }
-        });
+        };
+        this.ably.connection.on('failed', failed);
+        this.ably.connection.on('connected', connected);
+        this.recoveryListeners = { failed, connected };
     }
 
     /**

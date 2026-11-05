@@ -279,4 +279,23 @@ describe('P7: connect() called again', () => {
         expect((echo.private('p7') as any).channel).toBe(echo.connector.ably.channels.get('private:p7'));
         echo.disconnect();
     });
+
+    test('Echo.connect() with a supplied client does not accumulate re-attach latch listeners', () => {
+        const client = makeClient();
+        const echo = new Echo({ broadcaster: 'ably', client });
+        echo.connect();
+        echo.connect();
+        echo.connect();
+        expect(client.close).not.toHaveBeenCalled();
+        expect(client.connection.events['failed']).toHaveLength(1);
+        expect(client.connection.events['connected']).toHaveLength(1);
+        // the remaining pair belongs to the current connector, so recovery still works
+        echo.channel('p7');
+        const ch = echo.connector.channels['public:p7'].channel;
+        ch.state = 'detached';
+        ch.attach.mockClear();
+        client.connection.emit('failed', { current: 'failed', reason: { code: 40102, message: 'mismatched' } });
+        client.connection.emit('connected', { current: 'connected' });
+        expect(ch.attach).toHaveBeenCalledTimes(1);
+    });
 });
