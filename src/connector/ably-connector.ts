@@ -102,6 +102,7 @@ export class AblyConnector extends Connector {
             this.ably.connection.off('connected', this.recoveryListeners.connected);
             this.recoveryListeners = null;
         }
+        this.ablyAuth?.releaseClientIdSwitchListeners(); // before close(), while this.ably is still the old client
         if (this.ably && this.ably !== this.options.client) {
             this.ably.close();
         }

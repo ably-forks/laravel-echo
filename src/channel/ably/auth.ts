@@ -132,17 +132,36 @@ export class AblyAuth {
         });
     };
 
-    allowReconnectOnUserLogin = () => {
-        const ablyConnection = this.ablyClient().connection
+    clientIdSwitchListeners: { failed: (stateChange?: any) => void; connected: () => void } | null = null;
 
-        const connectionFailedCallback = stateChange => {
-            if (stateChange.reason.code == 40102) { // 40102 denotes mismatched clientId
-                ablyConnection.off(connectionFailedCallback);
-                this.onClientIdChanged();
-            }
-        }
-        ablyConnection.on('failed', connectionFailedCallback);
-    }
+    /**
+     * 40102 = the server refused a clientId change on the live connection (or ably-js refused a token for another
+     * identity). Reconnect once per failure episode: the handler is re-armed only by the next `connected`, so a
+     * reconnect that fails again with 40102 before connecting (failed -> connecting -> failed) cannot loop.
+     */
+    allowReconnectOnUserLogin = () => {
+        const connection = this.ablyClient().connection;
+        let armed = true;
+        const failed = (stateChange?: any) => {
+            if (!armed || stateChange?.reason?.code !== 40102) return;
+            armed = false;
+            this.onClientIdChanged();
+        };
+        const connected = () => {
+            armed = true;
+        };
+        connection.on('failed', failed);
+        connection.on('connected', connected);
+        this.clientIdSwitchListeners = { failed, connected };
+    };
+
+    releaseClientIdSwitchListeners = () => {
+        if (!this.clientIdSwitchListeners) return;
+        const connection = this.ablyClient()?.connection;
+        connection?.off('failed', this.clientIdSwitchListeners.failed);
+        connection?.off('connected', this.clientIdSwitchListeners.connected);
+        this.clientIdSwitchListeners = null;
+    };
 
     /**
      * This will be called when (guest)user logs in and new clientId is returned in the jwt token.
