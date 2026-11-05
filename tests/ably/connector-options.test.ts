@@ -188,6 +188,23 @@ describe('R3: re-attach channels after the connection failed (installed from con
         expect((console.error as jest.Mock).mock.calls[0][0]).toContain('MAU-billed');
     });
 
+    test('a supplied client that is already failed when Echo connects re-attaches on the next connected, once', () => {
+        const { fake, connection } = makeClient();
+        (connection as any).state = 'failed';
+        const echo = new Echo({ broadcaster: 'ably', client: fake });
+        const states = { a: 'failed', b: 'initialized', c: 'attached', d: 'attaching', e: 'detached' };
+        Object.entries(states).forEach(([n, state]) => {
+            const ch = echo.channel(n) as any;
+            ch.channel.state = state;
+            ch.channel.attach.mockClear();
+        });
+        connection.emit('connecting', { current: 'connecting' });
+        connection.emit('connected', { current: 'connected' });
+        connection.emit('connected', { current: 'connected' }); // a later reconnect: no second re-attach
+        const attachCalls = Object.keys(states).map((n) => echo.connector.channels[`public:${n}`].channel.attach.mock.calls.length);
+        expect(attachCalls).toEqual([1, 1, 0, 0, 1]);
+    });
+
     test('a connected without a preceding failed re-attaches nothing', () => {
         const { fake, connection } = makeClient();
         const echo = new Echo({ broadcaster: 'ably', client: fake });

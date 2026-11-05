@@ -165,7 +165,8 @@ export class AblyConnector extends Connector {
      * `initialized` channels whose authorize failed). Installed here, not in AblyAuth, so it also covers `options.client`.
      */
     reattachChannelsAfterConnectionFailure(): void {
-        let connectionFailed = false;
+        // a supplied options.client may already be failed: no later state change would tell us
+        let connectionFailed = this.ably.connection.state === 'failed';
         const failed = (stateChange) => {
             connectionFailed = true;
             // MAU hint: Ably has not documented the code it uses to reject clientId-less device connections on
