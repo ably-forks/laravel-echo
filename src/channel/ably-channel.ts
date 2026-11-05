@@ -102,7 +102,8 @@ export class AblyChannel extends Channel {
                 this._alertErrorListeners(stateChange);
             }
         });
-        this.channel.attach().catch(this._alertErrorListeners);
+        // E4: a rejection that the state change above already reported is not reported again
+        this.channel.attach().catch(this._subscribeErrorHandler());
     }
 
     /**

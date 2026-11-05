@@ -31,12 +31,12 @@ const failingPublicChannel = (configure: (echoChannel: AblyChannel) => void) => 
 };
 
 describe('attach failure -> error() listeners', () => {
-    test('baseline: error listener sees the failed state change and the attach error (2 calls, as in 1.0.6)', async () => {
+    test('baseline: error listener sees the failed state change once (E4: the identical attach rejection is not reported again)', async () => {
         const errorListener = jest.fn();
         const { fail, err } = failingPublicChannel((c) => c.error(errorListener));
         await fail();
-        expect(errorListener).toHaveBeenCalledTimes(2);
-        expect(errorListener).toHaveBeenCalledWith(err);
+        // 1.0.6: 2 calls (the state change, then the attach rejection). The payload shape is unchanged.
+        expect(errorListener).toHaveBeenCalledTimes(1);
         expect(errorListener).toHaveBeenCalledWith(expect.objectContaining({ current: 'failed', reason: err }));
     });
 
@@ -50,8 +50,8 @@ describe('attach failure -> error() listeners', () => {
                 .error(errorListener)
         );
         await fail();
-        // 1.0.6 + ably 1.x: 2 (subscribe(event, listener) had no callback, so attach errors were not re-reported)
-        expect(errorListener).toHaveBeenCalledTimes(2);
+        // 1.0.6 + ably 1.x: 2 (state change + attach rejection); E4: 1. listen()/listenToAll() add none
+        expect(errorListener).toHaveBeenCalledTimes(1);
     });
 
     test('a throwing error() listener does not prevent the next error() listener from running', async () => {
@@ -64,7 +64,7 @@ describe('attach failure -> error() listeners', () => {
                 .error(second)
         );
         await fail();
-        expect(second).toHaveBeenCalledTimes(2);
+        expect(second).toHaveBeenCalledTimes(1);
     });
 
     test('a throwing error() listener does not cause an unhandled promise rejection', async () => {
