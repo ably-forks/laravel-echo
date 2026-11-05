@@ -16,8 +16,9 @@ export class AblyConnector extends Connector {
 
     /**
      * Echo-only option keys, never passed to createClient (review P4): bearer and CSRF tokens, the auth endpoint and
-     * other Echo settings would otherwise be copied into the Ably client options and its debug logs. `token` is the
-     * initial token for Echo's own token requests (AblyAuth); Ably authenticates through Echo's authCallback.
+     * other Echo settings would otherwise be copied into the Ably client options and its debug logs. `token` is not
+     * Echo-only: it is also an Ably client option (v3 seeds its cached token from it), and Echo's token executer reads
+     * it too.
      */
     static ECHO_ONLY_KEYS = [
         'broadcaster',
@@ -31,7 +32,6 @@ export class AblyConnector extends Connector {
         'requestTokenFn',
         'client',
         'withoutInterceptors',
-        'token',
     ];
     
     /**

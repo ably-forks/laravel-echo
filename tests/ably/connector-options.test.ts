@@ -70,7 +70,6 @@ describe('P4: Echo-only options are kept out of the Ably client options', () => 
             'host',
             'namespace',
             'requestTokenFn',
-            'token',
             'userAuthentication',
             'withoutInterceptors',
         ]);
@@ -80,8 +79,11 @@ describe('P4: Echo-only options are kept out of the Ably client options', () => 
             clientId: 'user-1',
             endpoint: 'nonprod:sandbox',
             disconnectedRetryTimeout: 12345,
+            token: 'seed-token', // an Ably option too: v3 seeds its cached token from it
             agents: { 'laravel-echo': AblyConnector.LIB_VERSION },
         });
+        // Echo's token executer still reads it
+        expect(echo.connector.ablyAuth.authRequestExecuter.cachedToken).toBe('seed-token');
         expect(typeof passed.authCallback).toBe('function'); // Echo's own auth options still reach the client
         const options = echo.connector.options;
         expect(options).toMatchObject({
