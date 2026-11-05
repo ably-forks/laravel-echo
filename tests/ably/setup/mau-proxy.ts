@@ -5,7 +5,7 @@
  * forwarded unchanged to the sandbox over https/wss.
  *
  * Echo is pointed at it with `endpoint: 'localhost', port: proxy.port, tls: false, fallbackHosts: [],
- * useBinaryProtocol: false` (JSON protocol only: other formats throw).
+ * useBinaryProtocol: false` (JSON protocol only: other formats are closed with an error log).
  *
  * TODO: replace this mock with a real MAU sandbox app when Ably provides one. Never use a real MAU key.
  */
@@ -74,8 +74,9 @@ export class MauProxy {
     private websocket(client: any, req: http.IncomingMessage) {
         const url = new URL(req.url ?? '/', 'http://localhost');
         if (url.searchParams.get('format') !== 'json') {
+            console.error('MauProxy supports the JSON protocol only (set useBinaryProtocol: false)');
             client.close();
-            throw new Error('MauProxy supports the JSON protocol only (set useBinaryProtocol: false)');
+            return;
         }
         if (jwtClientId(url.searchParams.get('access_token')) === null) {
             this.rejected++;

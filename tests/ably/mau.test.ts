@@ -6,7 +6,8 @@
  * TODO: replace this mock with a real MAU sandbox app when Ably provides one. Never use a real MAU key.
  *
  * Skip behaviour: the other sandbox suites have no skip mechanism (an unreachable sandbox fails their beforeAll).
- * Here beforeAll remembers the reason and each test returns early with a console.warn instead.
+ * Locally, beforeAll remembers the reason and each test returns early with a console.warn instead; in CI
+ * (`process.env.CI`) an unreachable sandbox fails the suite.
  */
 import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
@@ -51,8 +52,9 @@ describe('MAU account (mock proxy)', () => {
             testApp = await setup();
         } catch (err: any) {
             const code = err?.code ?? err?.cause?.code;
-            if (code !== 50000 && !/ENOTFOUND|ECONNREFUSED|EAI_AGAIN|fetch failed|ETIMEDOUT/i.test(String(err?.message))) {
-                throw err;
+            const unreachable = code === 50000 || /ENOTFOUND|ECONNREFUSED|EAI_AGAIN|fetch failed|ETIMEDOUT/i.test(String(err?.message));
+            if (!unreachable || process.env.CI) {
+                throw err; // in CI an unreachable sandbox fails the suite, as it does for the other sandbox suites
             }
             skipReason = String(err?.message ?? err);
             return;

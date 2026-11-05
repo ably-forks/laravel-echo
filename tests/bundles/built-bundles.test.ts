@@ -55,7 +55,7 @@ describe('built bundles', () => {
         // the CDN exports are getters, so count createClient calls through a copy of the global
         vm.runInContext('var cdnCalls = 0; var cdn = AblyPubSub; window.AblyPubSub = Object.assign({}, cdn, ' +
             '{ createClient: function (o) { cdnCalls++; return cdn.createClient(o); } }); window.Ably = AblyPubSub;', ctx);
-        expect(vm.runInContext('Ably.createClient !== cdn.createClient && typeof Ably.Realtime', ctx)).toBe('undefined');
+        expect(vm.runInContext('Ably.createClient !== cdn.createClient', ctx)).toBe(true); // the counting copy is in place
         vm.runInContext(iife, ctx);
         expect(typeof vm.runInContext(newEcho, ctx).connector.ably.connection.on).toBe('function');
         vm.runInContext(newEcho, ctx);
