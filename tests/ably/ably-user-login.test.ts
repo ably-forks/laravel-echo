@@ -3,6 +3,7 @@ import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import { AblyChannel, AblyPrivateChannel } from '../../src/channel';
 import waitForExpect from 'wait-for-expect';
+import { trackUnhandledRejections } from '../parity/fake-ably';
 
 jest.setTimeout(30000);
 describe('AblyUserLogin', () => {
@@ -98,16 +99,15 @@ describe('AblyUserLogin', () => {
         mockAuthServer.clientId = 'sacOO7@github.com';
         const privateChannel = echo.private('test') as AblyPrivateChannel; // requests new token for channel `test`
 
-        // Register listeners up front, since reconnect and re-attach can complete before the error is observed
-        const privateChannelErrPromise : Promise<Error> = new Promise(resolve => privateChannel.error(resolve));
+        // Register listeners up front, since reconnect and re-attach can complete before an error would be observed
+        // E3: the transient 40102 ("mismatched clientid") of the Echo-initiated switch is suppressed, so error() is not called
+        const errorSpy = jest.fn();
+        privateChannel.error(errorSpy);
+        publicChannel.error(errorSpy);
         const channelsReattached = Promise.all([
             new Promise(resolve => publicChannel.subscribed(resolve)),
             new Promise(resolve => privateChannel.subscribed(resolve))
         ]);
-
-        // Since new clientId is returned in the new token, ably returns mismatched error for given auth request
-        const privateChannelErr = await privateChannelErrPromise;
-        expect(privateChannelErr.message.toLowerCase()).toContain('mismatched clientid for existing connection');
 
         // Reconnects again and starts explicit attach for all channels
         await waitForExpect(() => {
@@ -116,6 +116,7 @@ describe('AblyUserLogin', () => {
 
         // Attaches both public and private channel
         await channelsReattached;
+        expect(errorSpy).toHaveBeenCalledTimes(0); // E3
 
         await waitForExpect(() => {
             expect(connectionStates).toStrictEqual(['failed', 'connecting', 'connected']);
@@ -129,58 +130,57 @@ describe('AblyUserLogin', () => {
     });
 
     test('user logs in and then logs out', async() => {
+        const rejections = trackUnhandledRejections();
         let connectionStates : Array<any>= []
-        let privateChannelStates : Array<any>= []
 
-        // Initial clientId is null
         expect(mockAuthServer.clientId).toBeNull();
         await waitForExpect(() => {
             expect(echo.connector.ably.connection.state).toBe('connected');
         });
-
-        // Track all connection state changes
         echo.connector.ably.connection.on(stateChange => {
             connectionStates.push(stateChange.current)
         });
-
-        // Making sure client is still anonymous
-        expect(mockAuthServer.clientId).toBeNull();
         expect(echo.connector.ablyAuth.existingToken().clientId).toBeNull()
 
-        // Set server clientId to sacOO7@github.com, so user logs in for next request
+        // login: null -> user
         mockAuthServer.clientId = 'sacOO7@github.com'
-        const privateChannel = echo.private('test') as AblyPrivateChannel; // Requests new token     
-        privateChannel.channel.on(statechange => {
-            privateChannelStates.push(statechange.current)
-        })
-        const privateChannel1ErrPromise = new Promise((resolve) => privateChannel.error(resolve))
-       
-        await new Promise((resolve) => privateChannel.subscribed(resolve)); // successful attach 
+        const privateChannel = echo.private('test') as AblyPrivateChannel; // Requests new token
+        const loginErrorSpy = jest.fn();
+        privateChannel.error(loginErrorSpy);
+        await new Promise((resolve) => privateChannel.subscribed(resolve)); // successful attach
         await waitForExpect(() => {
             expect(connectionStates).toStrictEqual(['failed', 'connecting', 'connected'])
         });
+        expect(loginErrorSpy).toHaveBeenCalledTimes(0); // E3
+        expect(echo.connector.ablyAuth.existingToken().clientId).toBe('sacOO7@github.com');
 
-        // Logout user by setting clientId to null
+        // logout: the documented in-page path is echo.connect() (replaces the connector, closes the old client)
+        const oldClient = echo.connector.ably;
         mockAuthServer.clientId = null
-        const privateChannel2 = echo.private('test1') as AblyPrivateChannel; // Requests new token with null clientId
-
-        // Receives error on both channels
-        const privateChannel1Err = await privateChannel1ErrPromise as any;
-        const privateChannel2Err = await new Promise((resolve) => privateChannel2.error(resolve)) as any;
-
-        const errMsg = 'mismatched clientid for existing connection'
-        expect(privateChannel1Err.message.toLowerCase()).toContain(errMsg);
-        expect(privateChannel2Err.message.toLowerCase()).toContain(errMsg);
-
+        echo.connect();
+        const newClient = echo.connector.ably;
+        expect(newClient).not.toBe(oldClient);
         await waitForExpect(() => {
-            expect(privateChannelStates).toStrictEqual(['attaching', 'attached', 'failed']);
+            expect(newClient.connection.state).toBe('connected');
+            expect(['closing', 'closed']).toContain(oldClient.connection.state);
         });
-
-        // Connection transitions to failed state
-        await waitForExpect(() => {
-            expect(connectionStates).toStrictEqual(['failed', 'connecting', 'connected', 'failed'])
-        });
-
+        expect(newClient.auth.clientId).toBeFalsy();
         expect(echo.connector.ablyAuth.existingToken().clientId).toBeNull();
+
+        // public channel re-subscribed by the caller receives again
+        const publicChannel = echo.channel('test-logout') as AblyChannel;
+        await new Promise((resolve) => publicChannel.subscribed(resolve));
+        const received = new Promise((resolve) => publicChannel.listen('.logout-event', resolve));
+        await mockAuthServer.broadcast('public:test-logout', 'logout-event', JSON.stringify({ ok: true }));
+        await received;
+
+        // private channel re-requested as a guest: the auth endpoint answers 403
+        const guestPrivate = echo.private('test') as AblyPrivateChannel;
+        const guestErr: any = await new Promise((resolve) => guestPrivate.error(resolve));
+        expect(guestErr.statusCode === 403 || guestErr.code === 40300).toBe(true);
+
+        await new Promise((resolve) => setTimeout(resolve, 50)); // let Node emit pending unhandledRejection events
+        rejections.stop();
+        expect(rejections.rejections).toStrictEqual([]);
     });
 });
