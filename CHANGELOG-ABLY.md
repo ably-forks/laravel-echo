@@ -8,8 +8,8 @@ Echo's API is unchanged. See "Upgrading to 1.1" in the README.
 
 ### Changed
 
-- The peer dependency is now `@ably/pubsub-device@^3` instead of `ably`; `ably@1.x` and `ably@2.x` are no longer supported. Import it with `import * as Ably from '@ably/pubsub-device'; window.Ably = Ably;` (replace `ably` and `ably/promises` imports; there is no default export). `echo.connector.ably` is now a `PubSubClient` with promise-based APIs.
-- With a script tag, the v3 CDN bundle (`https://cdn.ably.com/lib/ably.min-3.js`) exposes `AblyPubSub`; Echo picks it up automatically.
+- Echo now depends on `@ably/pubsub-device@^3` and installs it itself (`npm install @ably/laravel-echo`); `ably@1.x` and `ably@2.x` are no longer used. Echo always uses its own copy and ignores a global `Ably` or `AblyPubSub`, so the 1.0.x snippet `window.Ably = Ably` (or `require('ably')`) can stay but can be removed; while it is there, Echo logs a one-time `console.warn`. A client passed as `options.client` is still used as is. `echo.connector.ably` is now a `PubSubClient` with promise-based APIs.
+- The script-tag build `dist/echo.iife.js` bundles `@ably/pubsub-device`, so it needs no Ably CDN script or global.
 - Installing and building requires Node.js 22 or later and a bundler that understands ES2020 (webpack 5 or Vite; webpack 4 needs transpiling). Both are inherited from `@ably/pubsub-device`, not an Echo API change; browsers are unaffected.
 - On MAU-billed Ably accounts, device connections must carry a client ID, so guest connections without one are rejected. Reload the page after login so Echo connects with the user's client ID, or don't connect Echo for guests.
 
@@ -19,7 +19,6 @@ Echo's API is unchanged. See "Upgrading to 1.1" in the README.
 - One attach failure is reported to `error()` once; subscribe errors that no channel state change reported still reach `error()`.
 - Auth endpoint: cookies are sent cross-origin only for a lowercase `authorization` header, as with ably 1.x and 2.x; error codes come from the HTTP status; invalid tokens are rejected with code 50000 and no longer replace the cached token; a `requestTokenFn` that never settles no longer blocks other token requests forever (each request is bounded by 30 s; an auth-endpoint request by `httpRequestTimeout` + 1 s if that is longer); `httpRequestTimeout` applies to auth requests.
 - `environment`, `realtimeHost` and `restHost` are mapped to `endpoint` with a warning instead of being ignored.
-- The CDN global `AblyPubSub` is detected, and a stale `ably` global gives a clear error.
 - `import { Channel } from '@ably/laravel-echo'` works again.
 - Attach and presence edge cases: concurrent attaches during authorization (a caller that awaits its attach is rejected when the authorization or the ATTACH fails), leaving a channel while it authorizes, `stopListening` / `stopListeningToAll` bookkeeping (`stopListeningToAll()` no longer removes `listen()` listeners), `listenToAll` with `namespace: false`, no duplicate presence enter after a resumed reconnect, and a re-enter when the last `enter()` failed.
 - Channels subscribed before a failed connection are re-attached when it recovers, for example after login.

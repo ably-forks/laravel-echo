@@ -3,7 +3,6 @@ import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import { AblyPresenceChannel } from '../../src/channel';
 import safeAssert from './setup/utils';
-import * as Ably from '@ably/pubsub-device';
 
 jest.setTimeout(20000);
 describe('AblyPresenceChannel', () => {
@@ -12,7 +11,6 @@ describe('AblyPresenceChannel', () => {
     let echo: Echo;
 
     beforeAll(async () => {
-        global.Ably = Ably;
         testApp = await setup();
         mockAuthServer = new MockAuthServer(testApp.keys[0].keyStr);
     });

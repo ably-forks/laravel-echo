@@ -3,9 +3,14 @@ import json from '@rollup/plugin-json';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import typescript from 'rollup-plugin-typescript2';
 
-const plugins = [
+// Single install: @ably/pubsub-device is a dependency. The ESM/CJS builds keep it external (the app's bundler or Node
+// resolves it); the IIFE build bundles its browser build, so a script-tag page needs no Ably global.
+const isAblyDevice = (id) => id === '@ably/pubsub-device' || id.startsWith('@ably/pubsub-device/');
+
+const pluginsWith = (resolveOptions) => [
     nodeResolve({
         extensions: ['.js', '.ts'],
+        ...resolveOptions,
     }),
     json(),
     typescript(),
@@ -32,11 +37,12 @@ export default [
             { file: './dist/echo.js', format: 'esm' },
             { file: './dist/echo.common.js', format: 'cjs' },
         ],
-        plugins,
+        external: isAblyDevice,
+        plugins: pluginsWith({}),
     },
     {
         input: './src/index.iife.ts',
         output: [{ file: './dist/echo.iife.js', format: 'iife', name: 'Echo' }],
-        plugins,
+        plugins: pluginsWith({ extensions: ['.mjs', '.js', '.ts'], browser: true, exportConditions: ['browser'] }),
     },
 ];

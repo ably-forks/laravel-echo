@@ -1,8 +1,14 @@
 /**
- * AblyConnector.connect(): library resolution (R4), legacy host-option mapping (R5) and the
+ * AblyConnector.connect(): library resolution (single install), legacy host-option mapping (R5) and the
  * failed-connection re-attach latch (R3). No network: clients are created with autoConnect: false or faked.
  */
 import * as AblyDevice from '@ably/pubsub-device';
+
+// createClient is a non-configurable getter on the real module, so wrap the module to observe the options Echo passes
+jest.mock('@ably/pubsub-device', () => {
+    const actual = jest.requireActual('@ably/pubsub-device');
+    return { ...actual, createClient: jest.fn((options) => actual.createClient(options)) };
+});
 import Echo from '../../src/echo';
 import { AblyConnector } from '../../src/connector/ably-connector';
 import { FakeEmitter, makeFakeAbly } from '../parity/fake-ably';
@@ -15,36 +21,41 @@ afterEach(() => {
     jest.restoreAllMocks();
 });
 
-describe('R4: resolving the Ably library global', () => {
-    test('uses the bare Ably global when it has createClient', () => {
-        (globalThis as any).Ably = AblyDevice;
+describe('single install: Echo uses its own @ably/pubsub-device', () => {
+    beforeEach(() => jest.spyOn(console, 'warn').mockImplementation(() => undefined));
+
+    test('connects with no Ably global at all', () => {
         const echo = new Echo({ ...baseOptions });
+        expect(AblyDevice.createClient).toHaveBeenCalled();
         expect(typeof echo.connector.ably.connection.on).toBe('function');
         echo.disconnect();
     });
 
-    test('falls back to the CDN global AblyPubSub, even when a legacy Ably global shadows it', () => {
-        (globalThis as any).Ably = { Realtime: jest.fn() };
-        (globalThis as any).AblyPubSub = AblyDevice;
+    test('a legacy ably v1/v2 global (no createClient) is ignored', () => {
+        const legacy = { Realtime: jest.fn() };
+        (globalThis as any).Ably = legacy;
+        (AblyDevice.createClient as jest.Mock).mockClear();
         const echo = new Echo({ ...baseOptions });
-        expect(typeof echo.connector.ably.connection.on).toBe('function');
+        expect(AblyDevice.createClient).toHaveBeenCalledTimes(1);
+        expect(legacy.Realtime).not.toHaveBeenCalled();
         echo.disconnect();
     });
 
-    test('a legacy ably global alone gives a clear error instead of "createClient is not a function"', () => {
-        (globalThis as any).Ably = { Realtime: jest.fn() };
-        expect(() => new Echo({ ...baseOptions })).toThrow(/requires @ably\/pubsub-device v3.*legacy `ably` package/);
-    });
-
-    test('no global at all gives the same clear error', () => {
-        expect(() => new Echo({ ...baseOptions })).toThrow(/requires @ably\/pubsub-device v3/);
+    test('a v3 global with its own createClient is not used either', () => {
+        const createClient = jest.fn();
+        (globalThis as any).Ably = { createClient };
+        (globalThis as any).AblyPubSub = { createClient };
+        const echo = new Echo({ ...baseOptions });
+        expect(createClient).not.toHaveBeenCalled();
+        expect(typeof echo.connector.ably.connection.on).toBe('function');
+        echo.disconnect();
     });
 });
 
 describe('P4: Echo-only options are kept out of the Ably client options', () => {
     test('createClient gets every Ably option and none of the Echo-only keys; Echo keeps its own options', () => {
-        const createClient = jest.fn((options) => AblyDevice.createClient(options));
-        (globalThis as any).Ably = { ...AblyDevice, createClient };
+        const createClient = AblyDevice.createClient as jest.Mock;
+        createClient.mockClear();
         const echo = new Echo({
             ...baseOptions,
             key: 'appId.keyId:secret',
@@ -103,7 +114,6 @@ describe('P4: Echo-only options are kept out of the Ably client options', () => 
 
 describe('R5: environment / realtimeHost / restHost are mapped to endpoint', () => {
     beforeEach(() => {
-        (globalThis as any).Ably = AblyDevice;
         jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     });
 
@@ -231,7 +241,6 @@ describe('P3: options.client (no AblyAuth)', () => {
 
 describe('P6: encryptedPrivate()', () => {
     test('throws a clear error for the Ably broadcaster', () => {
-        (globalThis as any).Ably = AblyDevice;
         const echo = new Echo({ ...baseOptions });
         expect(() => echo.encryptedPrivate('p6')).toThrow(
             new Error('Encrypted private channels are not supported with the Ably broadcaster')
@@ -271,7 +280,6 @@ describe('P7: connect() called again', () => {
     });
 
     test('a client Echo created is closed and replaced', () => {
-        (globalThis as any).Ably = AblyDevice;
         const echo = new Echo({ ...baseOptions });
         const previous = echo.connector.ably;
         echo.connector.connect();
@@ -282,7 +290,6 @@ describe('P7: connect() called again', () => {
     });
 
     test('Echo.connect() called again releases the previous connector: its channels are left and its client closed', () => {
-        (globalThis as any).Ably = AblyDevice;
         const echo = new Echo({ ...baseOptions });
         const previousConnector = echo.connector;
         const previous = previousConnector.ably;

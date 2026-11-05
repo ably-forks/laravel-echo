@@ -3,19 +3,17 @@ This repository is a fork of https://github.com/laravel/echo. It adheres to publ
 Ably-specific implementation is added to support native [ably-js](https://github.com/ably/ably-js) via the [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) package.
 
 ## Installation 
- Install `@ably/laravel-echo` (wrapper for pluggable lib) and `@ably/pubsub-device` v3 (pluggable lib) using npm.
+ Install `@ably/laravel-echo` using npm. It installs its own copy of Ably's [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) v3.
 
 ```bash
-npm install @ably/laravel-echo @ably/pubsub-device@3.x
+npm install @ably/laravel-echo
 ```
 
 Once Echo is installed, you are ready to create a fresh Echo instance in your application's JavaScript. A great place to do this is at the bottom of the `resources/js/bootstrap.js` file that is included with the Laravel framework. By default, an example Echo configuration is already included in this file; however, the default configuration in the `bootstrap.js` file is intended for Pusher. You may copy the configuration below to transition your configuration to Ably.
 
 ```js
 import Echo from '@ably/laravel-echo';
-import * as Ably from '@ably/pubsub-device';
 
-window.Ably = Ably; // make globally accessible to Echo
 window.Echo = new Echo({
     broadcaster: 'ably',
 });
@@ -27,12 +25,8 @@ window.Echo.connector.ably.connection.on(stateChange => {
 });
 ```
 
-- Use `import * as Ably from '@ably/pubsub-device'`. `@ably/pubsub-device` has no default export, so `import Ably from '@ably/pubsub-device'` is a build error in Vite, rollup, webpack 5 and Node ESM.
-- **Script tag / CDN:** the v3 CDN bundle exposes `AblyPubSub`, not `Ably`:
-```html
-<script src="https://cdn.ably.com/lib/ably.min-3.js"></script>
-<script>window.Ably = AblyPubSub;</script>
-```
+- Echo uses its own `@ably/pubsub-device` and ignores a global `Ably` or `AblyPubSub`. If your `bootstrap.js` still has `import * as Ably from 'ably'; window.Ably = Ably;` (or `window.Ably = require('ably')`), remove it. It is harmless if left, but Echo logs a one-time `console.warn` while it is there.
+- **Script tag:** `dist/echo.iife.js` includes `@ably/pubsub-device`, so it needs no separate Ably script.
 
 - Take a look at [laravel broadcasting auth-endpoint doc](https://laravel.com/docs/broadcasting#customizing-the-authorization-endpoint) for customizing authEndpoint.
 ```
@@ -61,18 +55,10 @@ npm run dev
 
 ## Upgrading to 1.1
 
-`@ably/laravel-echo` 1.1 uses Ably's [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) package instead of `ably`. The Echo API (`channel`, `private`, `join`, `listen`, `whisper`, `here`, `error`, `socketId`, …) is unchanged; you only need to update how Ably is installed and exposed.
+`@ably/laravel-echo` 1.1 uses Ably's [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) package instead of `ably`, and installs it itself. The Echo API (`channel`, `private`, `join`, `listen`, `whisper`, `here`, `error`, `socketId`, …) is unchanged.
 
-1. **Install and import.**
-   ```bash
-   npm install @ably/laravel-echo@^1.1 @ably/pubsub-device@3
-   ```
-   ```js
-   import * as Ably from '@ably/pubsub-device';
-   window.Ably = Ably;
-   ```
-   Replace any `import ... from 'ably'` or `'ably/promises'`. `@ably/pubsub-device` has no default export, so use `import * as Ably`.
-2. **Script tag / CDN.** Load `https://cdn.ably.com/lib/ably.min-3.js`; its global is `AblyPubSub`, which Echo picks up automatically.
+1. **Install.** `npm install @ably/laravel-echo@^1.1`. You no longer install or expose an Ably library for Echo: remove `import * as Ably from 'ably'; window.Ably = Ably;` (or `window.Ably = require('ably')`) and the `ably` dependency if nothing else uses them. Echo ignores a global `Ably`/`AblyPubSub` and logs a one-time `console.warn` while one exists. A client you pass as `options.client` is still used as is.
+2. **Script tag.** `dist/echo.iife.js` bundles `@ably/pubsub-device`; remove the Ably CDN script unless your own code uses it.
 3. **Node.js 22 or later** is needed to install and build (it affects build machines and CI, not browsers).
 4. **Guest users on MAU-billed Ably accounts.** Connections must carry a client ID, so guest connections without one are rejected. If your app connects guests, check the [Ably docs](https://ably.com/docs/getting-started/javascript) and your broadcaster's token setup. On MAU-billed accounts, either reload the page after login so Echo connects with the user's client ID, or don't connect Echo for guests.
 5. **Using `echo.connector.ably` directly, or passing Ably client options through Echo** (for example `environment`, now `endpoint`)? See [Getting started with Ably in JavaScript](https://ably.com/docs/getting-started/javascript) and the [ably-js v3 migration guide](https://github.com/ably/ably-js/blob/main/docs/migration-guides/v3/lib.md).

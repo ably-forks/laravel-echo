@@ -1,4 +1,7 @@
 import type { TokenDetails } from '../../../typings/ably';
+// Single install: Echo always uses its own copy of @ably/pubsub-device (a dependency). The ESM/CJS builds keep this
+// import external, so the app's bundler resolves it; the IIFE build bundles it.
+import * as BundledAbly from '@ably/pubsub-device';
 
 /**
  * Invokes a user-supplied callback/listener so that an exception it throws (or a promise it rejects) is reported
@@ -120,15 +123,26 @@ export const fullUrl = (url: string) => {
 export const HTTP_REQUEST_TIMEOUT_MS = 10000;
 
 /**
- * Resolves the Ably library global (R4): the bare `Ably` (webpack ProvidePlugin friendly) or the CDN's `AblyPubSub`,
- * whichever has `createClient`. Returns undefined when neither does.
+ * The Ably library Echo uses: always its own `@ably/pubsub-device`. A global `Ably` or `AblyPubSub` (the 1.0.x README
+ * snippet `window.Ably = Ably`, or the CDN bundle) is never read, so a legacy ably v1/v2 global cannot break Echo.
  */
-export const resolveAblyLib = (): any => {
-    const candidates = [
-        typeof Ably !== 'undefined' ? Ably : undefined,
-        typeof AblyPubSub !== 'undefined' ? AblyPubSub : undefined,
-    ];
-    return candidates.find((lib) => typeof lib?.createClient === 'function');
+export const resolveAblyLib = (): any => BundledAbly;
+
+let ignoredGlobalsWarned = false;
+
+/**
+ * Logs one `console.warn` per page when a global `Ably` or `AblyPubSub` exists, because Echo ignores it. Only checks
+ * whether the globals exist; their values are never used.
+ */
+export const warnIfAblyGlobalsIgnored = (): void => {
+    if (ignoredGlobalsWarned || (typeof Ably === 'undefined' && typeof AblyPubSub === 'undefined')) {
+        return;
+    }
+    ignoredGlobalsWarned = true;
+    console.warn(
+        '@ably/laravel-echo: the global `Ably` / `AblyPubSub` is ignored; Echo uses its own @ably/pubsub-device. ' +
+            'You can remove `window.Ably = ...` (and the Ably CDN script) unless your own code uses it.'
+    );
 };
 
 /**

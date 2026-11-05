@@ -2,7 +2,7 @@ import { Connector } from './connector';
 
 import { AblyChannel, AblyPrivateChannel, AblyPresenceChannel, AblyAuth } from './../channel';
 import type { AblyRealtime } from '../../typings/ably';
-import { toBase64UrlEncoded, resolveAblyLib } from '../channel/ably/utils';
+import { toBase64UrlEncoded, resolveAblyLib, warnIfAblyGlobalsIgnored } from '../channel/ably/utils';
 import { version } from '../../package.json';
 
 /**
@@ -79,17 +79,10 @@ export class AblyConnector extends Connector {
             }
             this.options.agents['laravel-echo'] = AblyConnector.LIB_VERSION;
             this.mapLegacyHostOptions();
-            const AblyLib = resolveAblyLib();
-            if (!AblyLib) {
-                throw new Error(
-                    "@ably/laravel-echo requires @ably/pubsub-device v3: `import * as Ably from '@ably/pubsub-device'; window.Ably = Ably;` " +
-                        '(or load the CDN bundle, which exposes `AblyPubSub`).' +
-                        (typeof Ably !== 'undefined' && Ably?.Realtime
-                            ? ' Found the legacy `ably` package, which is no longer supported.'
-                            : '')
-                );
-            }
-            this.ably = AblyLib.createClient({ ...this.ablyAuth.options, ...this.clientOptions() });
+            // single install: Echo's own @ably/pubsub-device, never a global (a user-supplied options.client above is
+            // the only way to use another copy)
+            warnIfAblyGlobalsIgnored();
+            this.ably = resolveAblyLib().createClient({ ...this.ablyAuth.options, ...this.clientOptions() });
             this.ablyAuth.enableAuthorizeBeforeChannelAttach();
             this.ablyAuth.allowReconnectOnUserLogin();
         }

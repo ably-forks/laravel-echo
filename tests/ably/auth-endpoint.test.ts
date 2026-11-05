@@ -4,7 +4,6 @@
  */
 import * as http from 'http';
 import { AddressInfo } from 'net';
-import * as Ably from '@ably/pubsub-device';
 import Echo from '../../src/echo';
 import { AblyChannel, AblyPrivateChannel } from '../../src/channel';
 import waitForExpect from 'wait-for-expect';
@@ -22,7 +21,6 @@ describe('authEndpoint end to end', () => {
     const requests: Array<{ headers: http.IncomingHttpHeaders; body: any }> = [];
 
     beforeAll(async () => {
-        global.Ably = Ably;
         testApp = await setup();
         mockAuthServer = new MockAuthServer(testApp.keys[0].keyStr);
         server = http.createServer(async (req, res) => {

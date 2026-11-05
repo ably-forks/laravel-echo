@@ -3,7 +3,6 @@ import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import { AblyChannel } from '../../src/channel';
 import { parseJwt } from '../../src/channel/ably/utils';
-import * as Ably from '@ably/pubsub-device';
 import waitForExpect from 'wait-for-expect';
 
 const TOKEN_EXPIRY_S = 6;
@@ -16,7 +15,6 @@ describe('Token renewal', () => {
     let tokenRequests: Array<{ channelName: string | null; existingToken: string | null; token: string }>;
 
     beforeAll(async () => {
-        global.Ably = Ably;
         testApp = await setup();
         mockAuthServer = new MockAuthServer(testApp.keys[0].keyStr);
         mockAuthServer.tokenExpiry = TOKEN_EXPIRY_S;

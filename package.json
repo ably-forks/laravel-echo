@@ -38,7 +38,6 @@
         "test:browser-build": "jest -c jest.browser.config.js"
     },
     "devDependencies": {
-        "@ably/pubsub-device": "^3.0.0",
         "@ably/pubsub-server": "^3.0.0",
         "@babel/plugin-proposal-decorators": "^7.17.2",
         "@babel/plugin-proposal-export-namespace-from": "^7.16.7",
@@ -72,12 +71,7 @@
     "engines": {
         "node": ">=22"
     },
-    "peerDependencies": {
+    "dependencies": {
         "@ably/pubsub-device": "^3.0.0"
-    },
-    "peerDependenciesMeta": {
-        "@ably/pubsub-device": {
-            "optional": true
-        }
     }
 }

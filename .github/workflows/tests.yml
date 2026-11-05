@@ -39,7 +39,7 @@ jobs:
       - name: Run build
         run: npm run build
 
-      - name: Smoke-test the built bundles (IIFE + CDN global, ESM/CJS export surface)
+      - name: Smoke-test the built bundles (self-contained IIFE, ESM/CJS export surface)
         run: npm run test:bundles
 
   browser-build:

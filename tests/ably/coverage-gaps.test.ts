@@ -16,7 +16,6 @@ describe('coverage gaps (R17)', () => {
     let mockAuthServer: MockAuthServer;
 
     beforeAll(async () => {
-        global.Ably = Ably;
         testApp = await setup();
         mockAuthServer = new MockAuthServer(testApp.keys[0].keyStr);
     });

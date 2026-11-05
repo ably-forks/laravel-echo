@@ -2,7 +2,6 @@ import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import { AblyChannel, AblyPrivateChannel } from '../../src/channel';
-import * as Ably from '@ably/pubsub-device';
 import waitForExpect from 'wait-for-expect';
 
 jest.setTimeout(30000);
@@ -12,7 +11,6 @@ describe('AblyUserLogin', () => {
     let echo: Echo;
 
     beforeAll(async () => {
-        global.Ably = Ably;
         testApp = await setup();
         mockAuthServer = new MockAuthServer(testApp.keys[0].keyStr);
     });
