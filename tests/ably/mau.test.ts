@@ -14,10 +14,75 @@ import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import { MauProxy } from './setup/mau-proxy';
 import { AblyChannel, AblyPrivateChannel } from '../../src/channel';
+import { AblyConnector } from '../../src/connector';
 import { trackUnhandledRejections } from '../parity/fake-ably';
 import waitForExpect from 'wait-for-expect';
 
 jest.setTimeout(45000);
+
+/**
+ * Diagnostics for the once-only hint check (see dumpHintDiagnostics). Every AblyConnector and Ably client created in
+ * this file gets a sequence number, and each client's `failed` events, connect() and authorize() calls are recorded.
+ * Nothing is printed unless a hint check fails.
+ */
+type Diag = { events: any[]; connectors: any[]; t0: number };
+const diag: Diag = { events: [], connectors: [], t0: Date.now() };
+let connectorSeq = 0;
+let clientSeq = 0;
+const shortStack = () =>
+    String(new Error().stack)
+        .split('\n')
+        .slice(3, 8)
+        .map((l) => l.trim().replace(/\(?(?:\/[^/ ]+)*\/(?:src|tests|node_modules)\//, '('))
+        .join(' | ');
+const note = (event: any) =>
+    diag.events.push({ t: Date.now() - diag.t0, test: expect.getState().currentTestName, ...event });
+const originalConnect = AblyConnector.prototype.connect;
+const patchConnector = () => {
+    AblyConnector.prototype.connect = function (this: any) {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        const connector = this;
+        originalConnect.call(connector);
+        // connect() runs from the base constructor, before the subclass field initializers: the seq is set after
+        connector.__seq ??= ++connectorSeq;
+        const client: any = connector.ably;
+        if (!client || client.__seq) return;
+        client.__seq = ++clientSeq;
+        diag.connectors.push({ connectorSeq: connector.__seq, clientSeq: client.__seq, created: shortStack() });
+        for (const [obj, name] of [[client, 'connect'], [client.auth, 'authorize']] as any[]) {
+            const original = obj[name].bind(obj);
+            obj[name] = (...args: any[]) => {
+                note({ connectorSeq: connector.__seq, clientSeq: client.__seq, call: name, state: client.connection.state, stack: shortStack() });
+                return original(...args);
+            };
+        }
+        client.connection.on('failed', (change: any) =>
+            note({
+                connectorSeq: connector.__seq,
+                clientSeq: client.__seq,
+                failed: change?.reason?.code,
+                connectionId: client.connection.id,
+                hintsLogged: [...(connector.mauHintsLogged ?? [])],
+            }),
+        );
+    };
+};
+const unpatchConnector = () => {
+    AblyConnector.prototype.connect = originalConnect;
+};
+/** Call before an assertion that exactly one hint was logged: prints one JSON block only when it was not. */
+const dumpHintDiagnostics = (hints: any[][]) => {
+    if (hints.length === 1) return;
+    console.log(
+        `MAU_HINT_DIAGNOSTICS ${JSON.stringify({
+            test: expect.getState().currentTestName,
+            hintCount: hints.length,
+            hintCalls: hints.map((c) => String(c[0]).slice(0, 80)),
+            connectors: diag.connectors,
+            events: diag.events,
+        })}`,
+    );
+};
 
 describe('MAU account (mock proxy)', () => {
     let testApp: any;
@@ -49,6 +114,7 @@ describe('MAU account (mock proxy)', () => {
     const connected = (e: Echo) => waitForExpect(() => expect(e.connector.ably.connection.state).toBe('connected'));
 
     beforeAll(async () => {
+        patchConnector();
         try {
             testApp = await setup();
         } catch (err: any) {
@@ -66,6 +132,7 @@ describe('MAU account (mock proxy)', () => {
     });
 
     afterAll(async () => {
+        unpatchConnector();
         if (proxy) {
             await proxy.stop();
         }
@@ -78,6 +145,9 @@ describe('MAU account (mock proxy)', () => {
         if (!ready) {
             return;
         }
+        diag.events = [];
+        diag.connectors = [];
+        diag.t0 = Date.now();
         proxy.rejected = 0;
         mockAuthServer.clientId = null;
         mockAuthServer.guestClientId = false;
@@ -205,6 +275,7 @@ describe('MAU account (mock proxy)', () => {
         await waitForExpect(() => expect(newClient.connection.state).toBe('failed'));
         expect(newClient.connection.errorReason?.code).toBe(40161);
         expect(proxy.rejected).toBeGreaterThanOrEqual(1);
+        dumpHintDiagnostics(hintCalls());
         expect(hintCalls()).toHaveLength(1);
         expect(String(hintCalls()[0][0])).toContain('ABLY_MAU_ACCOUNT=true');
     });
@@ -257,6 +328,7 @@ describe('MAU account (mock proxy)', () => {
             await waitForExpect(() => expect(client.connection.state).toBe('failed'), 40000, 250);
             expect(client.connection.errorReason?.code).toBe(40161);
             expect(proxy.rejected).toBeGreaterThanOrEqual(1);
+            dumpHintDiagnostics(hintCalls());
             expect(hintCalls()).toHaveLength(1);
             expect(String(hintCalls()[0][0])).toContain('ABLY_MAU_ACCOUNT=true');
         });
