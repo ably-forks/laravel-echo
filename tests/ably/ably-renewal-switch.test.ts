@@ -69,10 +69,10 @@ describe('AblyRenewalSwitch', () => {
         waitForExpect(() => expect(ch.channel.state).toBe('attached'));
     const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-    /** Records connection states and the recovery time from the first non-connected state after the switch starts. */
     /**
-     * Records connection state transitions. ably-js also emits `update` events (previous === current, e.g. after a
-     * successful in-band re-authentication); they are not transitions and are ignored.
+     * Records connection state transitions and the recovery time from the first non-connected state after the
+     * switch starts. ably-js also emits `update` events (previous === current, e.g. after a successful in-band
+     * re-authentication); they are not transitions and are ignored.
      */
     const watchConnection = () => {
         const states: string[] = [];
@@ -345,7 +345,6 @@ describe('AblyRenewalSwitch', () => {
         expect(await pagePublishSeenAs(seen, 'public:x')).toBe('user1');
         expectAtMostOneSwitchFailure(conn);
         console.log(`null -> user1 states: ${conn.states.join(',')}`);
-
         expect(errorSpy).not.toHaveBeenCalled();
         await expectNoUnhandledRejections();
     });

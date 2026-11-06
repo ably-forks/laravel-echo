@@ -53,7 +53,7 @@ describe('MAU account (mock proxy)', () => {
             testApp = await setup();
         } catch (err: any) {
             const code = err?.code ?? err?.cause?.code;
-            const unreachable = code === 50000 || /ENOTFOUND|ECONNREFUSED|EAI_AGAIN|fetch failed|ETIMEDOUT/i.test(String(err?.message));
+            const unreachable = code === 50000 || code === 50003 || /ENOTFOUND|ECONNREFUSED|EAI_AGAIN|fetch failed|ETIMEDOUT/i.test(String(err?.message));
             if (!unreachable || process.env.CI) {
                 throw err; // in CI an unreachable sandbox fails the suite, as it does for the other sandbox suites
             }
