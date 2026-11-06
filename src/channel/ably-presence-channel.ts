@@ -26,7 +26,10 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
             // T15: on a resumed attach the server kept our membership and ably re-enters it (RTP17); don't enter twice.
             // If the last enter() failed there is no membership to restore, so enter again.
             if (!stateChange?.resumed || this.lastEnterSucceeded === false) {
-                this.enter(this.presenceData, this._alertErrorListeners);
+                // E4: a failure of this enter() that the channel state change already reported (or that E3 swallowed
+                // during an identity switch) is not reported again; the count scopes that to this attempt
+                const stateChangeReasonsBefore = this.stateChangeReasonCount;
+                this.enter(this.presenceData, (err) => err && this._alertSubscribeError(err, stateChangeReasonsBefore));
             }
         });
         this.subscribe();

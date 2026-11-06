@@ -4,7 +4,6 @@
  */
 import * as http from 'http';
 import { AddressInfo } from 'net';
-import * as Ably from '@ably/pubsub-device';
 import Echo from '../../src/echo';
 import { AblyChannel, AblyPrivateChannel } from '../../src/channel';
 import waitForExpect from 'wait-for-expect';
@@ -22,7 +21,6 @@ describe('authEndpoint end to end', () => {
     const requests: Array<{ headers: http.IncomingHttpHeaders; body: any }> = [];
 
     beforeAll(async () => {
-        global.Ably = Ably;
         testApp = await setup();
         mockAuthServer = new MockAuthServer(testApp.keys[0].keyStr);
         server = http.createServer(async (req, res) => {
@@ -101,13 +99,14 @@ describe('authEndpoint end to end', () => {
 
             mockAuthServer.clientId = 'sacOO7@github.com'; // user logs in for the next auth request
             const privateChannel = echo.private('r7login') as AblyPrivateChannel;
-            const privateChannelErr: Promise<any> = new Promise((resolve) => privateChannel.error(resolve));
+            const errorSpy = jest.fn(); // E3: the transient 40102 of the switch is suppressed
+            privateChannel.error(errorSpy);
             const channelsReattached = Promise.all([
                 new Promise((resolve) => publicChannel.subscribed(resolve)),
                 new Promise((resolve) => privateChannel.subscribed(resolve)),
             ]);
-            expect(String((await privateChannelErr).message).toLowerCase()).toContain('mismatched clientid');
             await channelsReattached;
+            expect(errorSpy).toHaveBeenCalledTimes(0); // E3
             expect(privateChannel.channel.state).toBe('attached');
             expect(echo.connector.ablyAuth.existingToken().clientId).toBe('sacOO7@github.com');
         } finally {

@@ -2,7 +2,21 @@ import { Connector } from './connector';
 
 import { AblyChannel, AblyPrivateChannel, AblyPresenceChannel, AblyAuth } from './../channel';
 import type { AblyRealtime } from '../../typings/ably';
-import { toBase64UrlEncoded, resolveAblyLib } from '../channel/ably/utils';
+import { toBase64UrlEncoded, resolveAblyLib, warnIfAblyGlobalsIgnored } from '../channel/ably/utils';
+import { version } from '../../package.json';
+
+/**
+ * E5: console hints for the error codes Ably uses on MAU-billed accounts, logged once per code.
+ */
+const MAU_HINTS: Record<number, string> = {
+    40161: 'Your Ably account requires an identified client on every connection (MAU billing), but this guest connected without a clientId. ' +
+        'In laravel-broadcaster set ABLY_MAU_ACCOUNT=true (config broadcasting.connections.ably.mau_account) so guests receive a clientId, ' +
+        'or only connect Echo for signed-in users. See "Guest users on MAU-billed Ably accounts" in the README.',
+    40168: 'Your Ably account is MAU-billed and only accepts the current @ably/pubsub-device (v3) SDK, but an incompatible or older SDK build connected. ' +
+        'Make sure a single, up-to-date @ably/pubsub-device is installed and that no other Ably SDK creates this connection.',
+    40167: 'A server-side Ably client needs the server claim on its token to connect to a MAU-billed account. This is usually a server-side ' +
+        'configuration issue (laravel-broadcaster / token issuing), not a browser issue.',
+};
 
 /**
  * This class creates a connector to Ably.
@@ -12,7 +26,7 @@ export class AblyConnector extends Connector {
     /**
      * The laravel-echo library version.
      */
-    static LIB_VERSION = '1.0.6';
+    static LIB_VERSION = version;
 
     /**
      * Echo-only option keys, never passed to createClient (review P4): bearer and CSRF tokens, the auth endpoint and
@@ -50,15 +64,21 @@ export class AblyConnector extends Connector {
     ablyAuth: AblyAuth;
 
     /**
-     * Whether the MAU hint was logged for this connector (once only).
+     * The MAU hint codes already logged by this connector (each code once).
      */
-    mauHintLogged = false;
+    mauHintsLogged = new Set<number>();
+
+    /**
+     * Set by AblyAuth.onClientIdChanged when it has re-attached every channel for a client ID change; the next
+     * `connected` then skips the re-attach below once. Cleared by any later `failed`, `disconnected` or `suspended`.
+     */
+    channelsReattachedByAuth = false;
 
     /**
      * The connection listeners of the re-attach latch (R3), so releaseClient() can remove them (P7). No initializer:
      * connect() sets it from the base constructor, before field initializers run (like ablyAuth).
      */
-    recoveryListeners: { failed: (stateChange?: any) => void; connected: () => void };
+    recoveryListeners: { failed: (stateChange?: any) => void; connected: () => void; interrupted: () => void };
 
     /**
      * Create a fresh Ably connection.
@@ -78,17 +98,10 @@ export class AblyConnector extends Connector {
             }
             this.options.agents['laravel-echo'] = AblyConnector.LIB_VERSION;
             this.mapLegacyHostOptions();
-            const AblyLib = resolveAblyLib();
-            if (!AblyLib) {
-                throw new Error(
-                    "@ably/laravel-echo requires @ably/pubsub-device v3: `import * as Ably from '@ably/pubsub-device'; window.Ably = Ably;` " +
-                        '(or load the CDN bundle, which exposes `AblyPubSub`).' +
-                        (typeof Ably !== 'undefined' && Ably?.Realtime
-                            ? ' Found the legacy `ably` package, which is no longer supported.'
-                            : '')
-                );
-            }
-            this.ably = AblyLib.createClient({ ...this.ablyAuth.options, ...this.clientOptions() });
+            // single install: Echo's own @ably/pubsub-device, never a global (a user-supplied options.client above is
+            // the only way to use another copy)
+            warnIfAblyGlobalsIgnored();
+            this.ably = resolveAblyLib().createClient({ ...this.ablyAuth.options, ...this.clientOptions() });
             this.ablyAuth.enableAuthorizeBeforeChannelAttach();
             this.ablyAuth.allowReconnectOnUserLogin();
         }
@@ -106,8 +119,11 @@ export class AblyConnector extends Connector {
             // a supplied options.client may be reused: don't leave a listener pair on it per connect()
             this.ably.connection.off('failed', this.recoveryListeners.failed);
             this.ably.connection.off('connected', this.recoveryListeners.connected);
+            this.ably.connection.off('disconnected', this.recoveryListeners.interrupted);
+            this.ably.connection.off('suspended', this.recoveryListeners.interrupted);
             this.recoveryListeners = null;
         }
+        this.ablyAuth?.releaseClientIdSwitchListeners(); // before close(), while this.ably is still the old client
         if (this.ably && this.ably !== this.options.client) {
             this.ably.close();
         }
@@ -169,17 +185,14 @@ export class AblyConnector extends Connector {
         let connectionFailed = this.ably.connection.state === 'failed';
         const failed = (stateChange) => {
             connectionFailed = true;
-            // MAU hint: Ably has not documented the code it uses to reject clientId-less device connections on
-            // MAU-billed accounts, so log it for any failure except a 40102 clientId mismatch (handled by AblyAuth).
-            if (stateChange?.reason?.code !== 40102 && !this.mauHintLogged) {
-                this.mauHintLogged = true;
-                console.error(
-                    '@ably/laravel-echo: the Ably connection failed' +
-                        (stateChange?.reason ? ` (${stateChange.reason.code}: ${stateChange.reason.message})` : '') +
-                        '. If your Ably account is MAU-billed, device connections require a clientId: connect guests ' +
-                        'with a clientId or only connect Echo for signed-in users. See "Guest users on MAU-billed ' +
-                        'Ably accounts" in the README section "Upgrading to 2.0".'
-                );
+            this.channelsReattachedByAuth = false; // that re-attach did not survive this failure
+
+            // E5: a hint only for the MAU codes (40161, 40168, 40167), once per code
+            const code = stateChange?.reason?.code;
+            const hint = code !== undefined ? MAU_HINTS[code] : undefined;
+            if (hint && !this.mauHintsLogged.has(code)) {
+                this.mauHintsLogged.add(code);
+                console.error(`@ably/laravel-echo: the Ably connection failed (${code}: ${stateChange.reason.message}). ${hint}`);
             }
         };
         const connected = () => {
@@ -187,6 +200,10 @@ export class AblyConnector extends Connector {
                 return;
             }
             connectionFailed = false;
+            if (this.channelsReattachedByAuth) {
+                this.channelsReattachedByAuth = false;
+                return;
+            }
             for (const echoChannel of Object.values(this.channels)) {
                 const state = echoChannel.channel.state;
                 if (state !== 'attached' && state !== 'attaching') {
@@ -194,9 +211,16 @@ export class AblyConnector extends Connector {
                 }
             }
         };
+        // a reconnect that is interrupted before `connected` (disconnected/suspended) may lose the client ID change
+        // handler's attaches too: don't skip the re-attach then
+        const interrupted = () => {
+            this.channelsReattachedByAuth = false;
+        };
         this.ably.connection.on('failed', failed);
         this.ably.connection.on('connected', connected);
-        this.recoveryListeners = { failed, connected };
+        this.ably.connection.on('disconnected', interrupted);
+        this.ably.connection.on('suspended', interrupted);
+        this.recoveryListeners = { failed, connected, interrupted };
     }
 
     /**

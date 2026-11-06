@@ -1,8 +1,14 @@
 /**
- * AblyConnector.connect(): library resolution (R4), legacy host-option mapping (R5) and the
+ * AblyConnector.connect(): library resolution (single install), legacy host-option mapping (R5) and the
  * failed-connection re-attach latch (R3). No network: clients are created with autoConnect: false or faked.
  */
 import * as AblyDevice from '@ably/pubsub-device';
+
+// createClient is a non-configurable getter on the real module, so wrap the module to observe the options Echo passes
+jest.mock('@ably/pubsub-device', () => {
+    const actual = jest.requireActual('@ably/pubsub-device');
+    return { ...actual, createClient: jest.fn((options) => actual.createClient(options)) };
+});
 import Echo from '../../src/echo';
 import { AblyConnector } from '../../src/connector/ably-connector';
 import { FakeEmitter, makeFakeAbly } from '../parity/fake-ably';
@@ -15,36 +21,41 @@ afterEach(() => {
     jest.restoreAllMocks();
 });
 
-describe('R4: resolving the Ably library global', () => {
-    test('uses the bare Ably global when it has createClient', () => {
-        (globalThis as any).Ably = AblyDevice;
+describe('single install: Echo uses its own @ably/pubsub-device', () => {
+    beforeEach(() => jest.spyOn(console, 'warn').mockImplementation(() => undefined));
+
+    test('connects with no Ably global at all', () => {
         const echo = new Echo({ ...baseOptions });
+        expect(AblyDevice.createClient).toHaveBeenCalled();
         expect(typeof echo.connector.ably.connection.on).toBe('function');
         echo.disconnect();
     });
 
-    test('falls back to the CDN global AblyPubSub, even when a legacy Ably global shadows it', () => {
-        (globalThis as any).Ably = { Realtime: jest.fn() };
-        (globalThis as any).AblyPubSub = AblyDevice;
+    test('a legacy ably v1/v2 global (no createClient) is ignored', () => {
+        const legacy = { Realtime: jest.fn() };
+        (globalThis as any).Ably = legacy;
+        (AblyDevice.createClient as jest.Mock).mockClear();
         const echo = new Echo({ ...baseOptions });
-        expect(typeof echo.connector.ably.connection.on).toBe('function');
+        expect(AblyDevice.createClient).toHaveBeenCalledTimes(1);
+        expect(legacy.Realtime).not.toHaveBeenCalled();
         echo.disconnect();
     });
 
-    test('a legacy ably global alone gives a clear error instead of "createClient is not a function"', () => {
-        (globalThis as any).Ably = { Realtime: jest.fn() };
-        expect(() => new Echo({ ...baseOptions })).toThrow(/requires @ably\/pubsub-device v3.*legacy `ably` package/);
-    });
-
-    test('no global at all gives the same clear error', () => {
-        expect(() => new Echo({ ...baseOptions })).toThrow(/requires @ably\/pubsub-device v3/);
+    test('a v3 global with its own createClient is not used either', () => {
+        const createClient = jest.fn();
+        (globalThis as any).Ably = { createClient };
+        (globalThis as any).AblyPubSub = { createClient };
+        const echo = new Echo({ ...baseOptions });
+        expect(createClient).not.toHaveBeenCalled();
+        expect(typeof echo.connector.ably.connection.on).toBe('function');
+        echo.disconnect();
     });
 });
 
 describe('P4: Echo-only options are kept out of the Ably client options', () => {
     test('createClient gets every Ably option and none of the Echo-only keys; Echo keeps its own options', () => {
-        const createClient = jest.fn((options) => AblyDevice.createClient(options));
-        (globalThis as any).Ably = { ...AblyDevice, createClient };
+        const createClient = AblyDevice.createClient as jest.Mock;
+        createClient.mockClear();
         const echo = new Echo({
             ...baseOptions,
             key: 'appId.keyId:secret',
@@ -103,7 +114,6 @@ describe('P4: Echo-only options are kept out of the Ably client options', () => 
 
 describe('R5: environment / realtimeHost / restHost are mapped to endpoint', () => {
     beforeEach(() => {
-        (globalThis as any).Ably = AblyDevice;
         jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     });
 
@@ -148,6 +158,79 @@ describe('R5: environment / realtimeHost / restHost are mapped to endpoint', () 
     });
 });
 
+describe('E5: MAU hints only for 40161, 40168 and 40167, once per code', () => {
+    const makeClient = () => {
+        const connection = new FakeEmitter();
+        const fake: any = { ...makeFakeAbly(), connection, close: jest.fn(), auth: {} };
+        return { fake, connection };
+    };
+    const fail = (connection: FakeEmitter, code: number) =>
+        connection.emit('failed', { current: 'failed', reason: { code, message: `failure ${code}` } });
+    const logged = () => (console.error as jest.Mock).mock.calls.map(([message]) => String(message));
+
+    beforeEach(() => jest.spyOn(console, 'error').mockImplementation(() => undefined));
+
+    // the exact texts of MAU_HINTS in src/connector/ably-connector.ts, duplicated on purpose
+    const HINT_40161 =
+        'Your Ably account requires an identified client on every connection (MAU billing), but this guest connected without a clientId. ' +
+        'In laravel-broadcaster set ABLY_MAU_ACCOUNT=true (config broadcasting.connections.ably.mau_account) so guests receive a clientId, ' +
+        'or only connect Echo for signed-in users. See "Guest users on MAU-billed Ably accounts" in the README.';
+    const HINT_40168 =
+        'Your Ably account is MAU-billed and only accepts the current @ably/pubsub-device (v3) SDK, but an incompatible or older SDK build connected. ' +
+        'Make sure a single, up-to-date @ably/pubsub-device is installed and that no other Ably SDK creates this connection.';
+    const HINT_40167 =
+        'A server-side Ably client needs the server claim on its token to connect to a MAU-billed account. This is usually a server-side ' +
+        'configuration issue (laravel-broadcaster / token issuing), not a browser issue.';
+    const message = (code: number, hint: string) =>
+        `@ably/laravel-echo: the Ably connection failed (${code}: failure ${code}). ${hint}`;
+
+    test('40161 logs once, with the exact message and hint', () => {
+        const { fake, connection } = makeClient();
+        new Echo({ broadcaster: 'ably', client: fake });
+        fail(connection, 40161);
+        fail(connection, 40161);
+        expect(logged()).toEqual([message(40161, HINT_40161)]);
+    });
+
+    test('40168 and 40167 log their exact messages and hints, in order', () => {
+        const { fake, connection } = makeClient();
+        new Echo({ broadcaster: 'ably', client: fake });
+        fail(connection, 40168);
+        fail(connection, 40167);
+        expect(logged()).toEqual([message(40168, HINT_40168), message(40167, HINT_40167)]);
+    });
+
+    test('once per code: 40161 then 40168 logs two hints', () => {
+        const { fake, connection } = makeClient();
+        new Echo({ broadcaster: 'ably', client: fake });
+        fail(connection, 40161);
+        fail(connection, 40168);
+        fail(connection, 40161);
+        expect(logged()).toHaveLength(2);
+    });
+
+    test.each([40102, 40142, 40101, 80019, 50003])('%i logs no hint, and the next connected still re-attaches', (code) => {
+        const { fake, connection } = makeClient();
+        const echo = new Echo({ broadcaster: 'ably', client: fake });
+        const channel = echo.channel('a') as any;
+        channel.channel.state = 'failed';
+        channel.channel.attach.mockClear();
+        fail(connection, code);
+        connection.emit('connected', { current: 'connected' });
+        expect(console.error).not.toHaveBeenCalled();
+        expect(channel.channel.attach).toHaveBeenCalledTimes(1);
+    });
+
+    test('regression: an earlier unrelated failure (80019) does not use up the 40161 hint', () => {
+        const { fake, connection } = makeClient();
+        new Echo({ broadcaster: 'ably', client: fake });
+        fail(connection, 80019);
+        fail(connection, 40161);
+        expect(logged()).toHaveLength(1);
+        expect(logged()[0]).toContain('40161');
+    });
+});
+
 describe('R3: re-attach channels after the connection failed (installed from connect(), so options.client is covered)', () => {
     const makeClient = () => {
         const connection = new FakeEmitter();
@@ -165,27 +248,14 @@ describe('R3: re-attach channels after the connection failed (installed from con
             ch.channel.state = state;
             ch.channel.attach.mockClear();
         });
-        connection.emit('failed', { current: 'failed', reason: { code: 40330, message: 'clientId required' } });
+        connection.emit('failed', { current: 'failed', reason: { code: 40161, message: 'requires an identified client' } });
         connection.emit('connecting', { current: 'connecting' });
         connection.emit('connected', { current: 'connected' });
         connection.emit('connected', { current: 'connected' }); // e.g. a later reconnect: no second re-attach
         const attachCalls = Object.keys(states).map((n) => echo.connector.channels[`public:${n}`].channel.attach.mock.calls.length);
         expect(attachCalls).toEqual([1, 1, 0, 0, 1]);
         expect(console.error).toHaveBeenCalledTimes(1); // the MAU hint
-        expect((console.error as jest.Mock).mock.calls[0][0]).toContain('MAU-billed');
-        expect((console.error as jest.Mock).mock.calls[0][0]).toContain('clientId');
-    });
-
-    test('a 40102 clientId mismatch logs no MAU hint; other failures log it once', () => {
-        jest.spyOn(console, 'error').mockImplementation(() => undefined);
-        const { fake, connection } = makeClient();
-        new Echo({ broadcaster: 'ably', client: fake });
-        connection.emit('failed', { current: 'failed', reason: { code: 40102, message: 'mismatched clientId' } });
-        expect(console.error).not.toHaveBeenCalled();
-        connection.emit('failed', { current: 'failed', reason: { code: 40330, message: 'clientId required' } });
-        connection.emit('failed', { current: 'failed', reason: { code: 40330, message: 'clientId required' } });
-        expect(console.error).toHaveBeenCalledTimes(1);
-        expect((console.error as jest.Mock).mock.calls[0][0]).toContain('MAU-billed');
+        expect((console.error as jest.Mock).mock.calls[0][0]).toContain('40161');
     });
 
     test('a supplied client that is already failed when Echo connects re-attaches on the next connected, once', () => {
@@ -231,7 +301,6 @@ describe('P3: options.client (no AblyAuth)', () => {
 
 describe('P6: encryptedPrivate()', () => {
     test('throws a clear error for the Ably broadcaster', () => {
-        (globalThis as any).Ably = AblyDevice;
         const echo = new Echo({ ...baseOptions });
         expect(() => echo.encryptedPrivate('p6')).toThrow(
             new Error('Encrypted private channels are not supported with the Ably broadcaster')
@@ -271,7 +340,6 @@ describe('P7: connect() called again', () => {
     });
 
     test('a client Echo created is closed and replaced', () => {
-        (globalThis as any).Ably = AblyDevice;
         const echo = new Echo({ ...baseOptions });
         const previous = echo.connector.ably;
         echo.connector.connect();
@@ -282,7 +350,6 @@ describe('P7: connect() called again', () => {
     });
 
     test('Echo.connect() called again releases the previous connector: its channels are left and its client closed', () => {
-        (globalThis as any).Ably = AblyDevice;
         const echo = new Echo({ ...baseOptions });
         const previousConnector = echo.connector;
         const previous = previousConnector.ably;

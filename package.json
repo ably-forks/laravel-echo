@@ -1,6 +1,6 @@
 {
     "name": "@ably/laravel-echo",
-    "version": "1.0.6",
+    "version": "1.1.0",
     "description": "Laravel Echo library for beautiful Ably integration",
     "keywords": [
         "laravel",
@@ -18,6 +18,10 @@
     "main": "dist/echo.common.js",
     "module": "dist/echo.js",
     "types": "dist/src/echo.d.ts",
+    "files": [
+        "dist",
+        "typings"
+    ],
     "scripts": {
         "build": "npm run compile && npm run declarations",
         "compile": "rollup -c",
@@ -34,7 +38,6 @@
         "test:browser-build": "jest -c jest.browser.config.js"
     },
     "devDependencies": {
-        "@ably/pubsub-device": "^3.0.0",
         "@ably/pubsub-server": "^3.0.0",
         "@babel/plugin-proposal-decorators": "^7.17.2",
         "@babel/plugin-proposal-export-namespace-from": "^7.16.7",
@@ -45,6 +48,7 @@
         "@babel/preset-env": "^7.16.11",
         "@babel/preset-typescript": "^7.29.7",
         "@rollup/plugin-babel": "^5.3.1",
+        "@rollup/plugin-json": "^4.1.0",
         "@rollup/plugin-node-resolve": "^13.3.0",
         "@types/jest": "^27.4.1",
         "@types/node": "^18.11.9",
@@ -62,12 +66,13 @@
         "ts-jest": "^27.1.3",
         "tslib": "^2.3.1",
         "typescript": "^4.6.2",
-        "wait-for-expect": "^3.0.2"
+        "wait-for-expect": "^3.0.2",
+        "ws": "^8.18.0"
     },
     "engines": {
         "node": ">=22"
     },
-    "peerDependencies": {
+    "dependencies": {
         "@ably/pubsub-device": "^3.0.0"
     }
 }
