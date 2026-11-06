@@ -52,13 +52,24 @@ export class AblyAuth {
      * switch window (E3) and clear the cached clientId with an authorize() that carries the token itself, so no token
      * request is made and this authCallback is not re-entered. The connection then reconnects once as the new
      * identity, and the channels re-attach (private and presence ones re-authorize).
-     * Skipped when no clientId is cached, which includes the client's first token (null -> user already works in
-     * ably-js).
+     * When no clientId is cached (null -> user) only the E3 window is opened:
+     * ably-js handles that change itself.
      */
     switchIdentityOnRenewal = (token: TokenDetails) => {
         const client = this.ablyClient();
         const current = client?.auth?.clientId ?? null;
-        if (!client || current === null || current === (token.clientId ?? null)) {
+        const next = token.clientId ?? null;
+        if (!client || current === next) {
+            return;
+        }
+        if (current === null) {
+            // null -> user: ably-js adopts the clientId itself, so no authorize() here. The server may still reject an
+            // in-band AUTH with 40102 ("mismatched clientId"), which the channels see before the connection recovers:
+            // open the same E3 window as the in-page login, so that transient 40102 does not reach error().
+            // (the client's first token has no connection yet, so nothing can be rejected: no window)
+            if (client.connection?.id) {
+                beginIdentitySwitch(client);
+            }
             return;
         }
         beginIdentitySwitch(client);

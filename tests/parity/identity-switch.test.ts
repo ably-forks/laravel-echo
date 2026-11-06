@@ -365,7 +365,7 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
     test.each([
         ['null', null],
         ['undefined', undefined],
-    ])('no switch when the cached clientId is %s (null -> user)', async (_n, cached) => {
+    ])('cached clientId %s (null -> user): no authorize (ably-js adopts it), but the E3 window opens', async (_n, cached) => {
         const { client, renew, fake, errorListener, order } = setup(cached as any);
         const [error, token] = await renew('user1');
         jest.advanceTimersByTime(1000);
@@ -373,7 +373,9 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
         expect(token.clientId).toBe('user1');
         expect(order).toEqual(['callback']);
         expect(client.auth.authorize).not.toHaveBeenCalled();
-        fake.transition('failed', ablyError('x', SWITCH));
+        fake.transition('failed', ablyError('x', SWITCH)); // the transient 40102 of the rejected in-band AUTH
+        expect(errorListener).not.toHaveBeenCalled();
+        fake.transition('failed', ablyError('x', SWITCH)); // only the first one per channel
         expect(errorListener).toHaveBeenCalledTimes(1);
     });
 

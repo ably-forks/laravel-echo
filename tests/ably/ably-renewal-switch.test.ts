@@ -399,6 +399,38 @@ describe('AblyRenewalSwitch', () => {
         await expectNoUnhandledRejections();
     });
 
+    test('in-band renewal null -> user1: ends connected as user1, error() is never called on public or private channels', async () => {
+        mockAuthServer.tokenExpiry = 60;
+        echo = makeEcho();
+        await connected();
+        expect(echo.connector.ably.auth.clientId).toBeFalsy();
+        const publicChannel = echo.channel('h3') as AblyChannel;
+        await new Promise((resolve) => publicChannel.subscribed(resolve));
+        await attached(publicChannel);
+        const publicErrors = jest.fn();
+        publicChannel.error(publicErrors);
+        const conn = watchConnection();
+
+        mockAuthServer.clientId = 'user1';
+        conn.arm();
+        await echo.connector.ably.auth.authorize().catch(() => undefined);
+        await waitForExpect(() => expect(echo.connector.ably.auth.clientId).toBe('user1'), 40000, 250);
+        await connected();
+        await attached(publicChannel);
+        // a private channel is only authorized for a signed-in user: join it after the switch
+        const privateChannel = echo.private('h3') as AblyPrivateChannel;
+        const privateErrors = jest.fn();
+        privateChannel.error(privateErrors);
+        await new Promise((resolve) => privateChannel.subscribed(resolve));
+        await attached(privateChannel);
+        await sleep(1500);
+
+        console.log(`in-band null -> user1 states: ${conn.states.join(',')}`);
+        expect(publicErrors).not.toHaveBeenCalled();
+        expect(privateErrors).not.toHaveBeenCalled();
+        await expectNoUnhandledRejections();
+    });
+
     test('in-band renewal user1 -> user2: connects as user2, no error() on any channel, at most one failed, one connected', async () => {
         mockAuthServer.tokenExpiry = 60;
         mockAuthServer.clientId = 'user1';
