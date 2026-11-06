@@ -451,7 +451,9 @@ describe('AblyRenewalSwitch', () => {
             `same identity: token renewed, states: ${conn.states.join(',')}, ` +
                 `connection.id unchanged: ${client.connection.id === connectionId}`
         );
-        expect(authorizeSpy).not.toHaveBeenCalled();
+        // Echo's switch authorizes with the token and clientId: null. ably-js's own re-authentication, when Ably asks
+        // for it in-band, calls authorize() without arguments: that is not a switch.
+        expect(authorizeSpy.mock.calls.filter(([, options]: any[]) => options && 'clientId' in options)).toHaveLength(0);
         expect(conn.count('failed')).toBe(0);
         expect(client.auth.clientId).toBe(clientId);
         expect(client.connection.state).toBe('connected');
@@ -460,13 +462,13 @@ describe('AblyRenewalSwitch', () => {
         await expectNoUnhandledRejections();
     };
 
-    test('user1 -> user1 renewal does not switch: no authorize(), same connection, no failed', async () => {
+    test('user1 -> user1 renewal does not switch: no switch authorize(), same connection, no failed', async () => {
         mockAuthServer.clientId = 'user1';
         echo = makeEcho();
         await expectNoSwitchOnSameIdentity(() => 'user1', 'r6');
     });
 
-    test('guest id -> same guest id renewal does not switch: no authorize(), same connection, no failed', async () => {
+    test('guest id -> same guest id renewal does not switch: no switch authorize(), same connection, no failed', async () => {
         mockAuthServer.guestClientId = true;
         echo = makeEcho();
         await expectNoSwitchOnSameIdentity(() => mockAuthServer.guestId, 'r7');
