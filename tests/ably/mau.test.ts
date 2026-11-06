@@ -85,13 +85,19 @@ describe('MAU account (mock proxy)', () => {
         errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         if (!ready) {
             return;
         }
         errorSpy.mockRestore();
+        const client = echo?.connector.ably;
         echo?.disconnect();
         echo = undefined;
+        // the next test resets the mock auth server: its client must not still be connected or reconnecting then, or
+        // its own failure (and hint) would land in the next test's console spy
+        if (client) {
+            await waitForExpect(() => expect(['closed', 'failed']).toContain(client.connection.state), 15000, 50);
+        }
     });
 
     test('a null guest is rejected with 40161 and Echo logs the hint once', async () => {
