@@ -3,7 +3,7 @@
  * rule "a connection needs an identified client" (40161 for a null or '*' clientId). Only Echo goes through the proxy:
  * the mock auth server talks to the sandbox directly.
  *
- * TODO: replace this mock with a real MAU sandbox app when Ably provides one. Never use a real MAU key.
+ * TODO: once the Ably sandbox can create MAU-enabled apps, replace this proxy with the existing sandbox setup (`setup()` in tests/ably/setup/sandbox.ts, which takes no arguments today) called with a new optional options object that enables MAU on the test app, e.g. `setup({ mau: true })`, and run this suite directly against that app. Never use a real MAU key.
  *
  * Skip behaviour: the other sandbox suites have no skip mechanism (an unreachable sandbox fails their beforeAll).
  * Locally, beforeAll remembers the reason and each test returns early with a console.warn instead; in CI
