@@ -70,7 +70,7 @@ export class AblyConnector extends Connector {
 
     /**
      * Set by AblyAuth.onClientIdChanged when it has re-attached every channel for a client ID change; the next
-     * `connected` then skips the re-attach below once. Cleared by any later `failed`.
+     * `connected` then skips the re-attach below once. Cleared by any later `failed`, `disconnected` or `suspended`.
      */
     channelsReattachedByAuth = false;
 
@@ -78,7 +78,7 @@ export class AblyConnector extends Connector {
      * The connection listeners of the re-attach latch (R3), so releaseClient() can remove them (P7). No initializer:
      * connect() sets it from the base constructor, before field initializers run (like ablyAuth).
      */
-    recoveryListeners: { failed: (stateChange?: any) => void; connected: () => void };
+    recoveryListeners: { failed: (stateChange?: any) => void; connected: () => void; interrupted: () => void };
 
     /**
      * Create a fresh Ably connection.
@@ -119,6 +119,8 @@ export class AblyConnector extends Connector {
             // a supplied options.client may be reused: don't leave a listener pair on it per connect()
             this.ably.connection.off('failed', this.recoveryListeners.failed);
             this.ably.connection.off('connected', this.recoveryListeners.connected);
+            this.ably.connection.off('disconnected', this.recoveryListeners.interrupted);
+            this.ably.connection.off('suspended', this.recoveryListeners.interrupted);
             this.recoveryListeners = null;
         }
         this.ablyAuth?.releaseClientIdSwitchListeners(); // before close(), while this.ably is still the old client
@@ -209,9 +211,16 @@ export class AblyConnector extends Connector {
                 }
             }
         };
+        // a reconnect that is interrupted before `connected` (disconnected/suspended) may lose the client ID change
+        // handler's attaches too: don't skip the re-attach then
+        const interrupted = () => {
+            this.channelsReattachedByAuth = false;
+        };
         this.ably.connection.on('failed', failed);
         this.ably.connection.on('connected', connected);
-        this.recoveryListeners = { failed, connected };
+        this.ably.connection.on('disconnected', interrupted);
+        this.ably.connection.on('suspended', interrupted);
+        this.recoveryListeners = { failed, connected, interrupted };
     }
 
     /**

@@ -645,6 +645,29 @@ describe('channelsReattachedByAuth: the connector skips its re-attach once after
         expect(attachCalls()).toEqual([2, 2]);
     });
 
+    test.each(['disconnected', 'suspended'])('(b3) a %s after the flag is set clears it: the next connected re-attaches a failed channel', (state) => {
+        const { connector, auth, attachCalls, fail, connect, detachAll } = build();
+        fail();
+        detachAll();
+        auth.onClientIdChanged();
+        jest.advanceTimersByTime(0);
+        expect(connector.channelsReattachedByAuth).toBe(true);
+        (connector.ably.connection as any).emit(state, { current: state });
+        expect(connector.channelsReattachedByAuth).toBe(false);
+        connect();
+        expect(attachCalls()).toEqual([2, 2]);
+    });
+
+    test('releaseClient() removes the disconnected/suspended listener too', () => {
+        const { echo, connector } = build();
+        const connection: any = connector.ably.connection;
+        const before = ['disconnected', 'suspended'].map((e) => (connection.events[e] || []).length);
+        expect(before).toEqual([1, 1]);
+        echo.connect(); // releases the supplied client's listeners and binds them again
+        expect(['disconnected', 'suspended'].map((e) => (connection.events[e] || []).length)).toEqual([1, 1]);
+        connector.releaseClient();
+    });
+
     test('(b2) channels that are attached or attaching are not re-attached by the latch after that', () => {
         const { channels, connector, auth, attachCalls, fail, connect, detachAll } = build();
         fail();
