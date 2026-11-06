@@ -132,8 +132,11 @@ describe('AblyIdentitySwitch', () => {
         await connected();
         const publicChannel = echo.channel('t3') as AblyChannel;
         const privateChannel = echo.private('t3') as AblyPrivateChannel;
-        await new Promise((resolve) => publicChannel.subscribed(resolve));
-        await new Promise((resolve) => privateChannel.subscribed(resolve));
+        // register both listeners before awaiting: either channel may attach first
+        await Promise.all([
+            new Promise((resolve) => publicChannel.subscribed(resolve)),
+            new Promise((resolve) => privateChannel.subscribed(resolve)),
+        ]);
         await connected();
         await attached(privateChannel);
         // the first private request moves the connection from the null connection token to user1
@@ -176,8 +179,11 @@ describe('AblyIdentitySwitch', () => {
         await connected();
         const publicChannel = echo.channel('t4') as AblyChannel;
         const privateChannel = echo.private('t4') as AblyPrivateChannel;
-        await new Promise((resolve) => publicChannel.subscribed(resolve));
-        await new Promise((resolve) => privateChannel.subscribed(resolve));
+        // register both listeners before awaiting: either channel may attach first
+        await Promise.all([
+            new Promise((resolve) => publicChannel.subscribed(resolve)),
+            new Promise((resolve) => privateChannel.subscribed(resolve)),
+        ]);
         await connected();
         await waitForExpect(() => expect(echo.connector.ably.auth.clientId).toBe('user1'));
         const previousGuestId = mockAuthServer.guestId;
