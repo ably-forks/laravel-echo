@@ -431,6 +431,33 @@ describe('AblyRenewalSwitch', () => {
         await expectNoUnhandledRejections();
     });
 
+    test('disconnect() while a token request is in flight leaves the client closed (the token is not handed to ably-js afterwards)', async () => {
+        mockAuthServer.tokenExpiry = 60;
+        let slow = false;
+        echo = new Echo({
+            broadcaster: 'ably',
+            useTls: true,
+            endpoint: 'nonprod:sandbox',
+            requestTokenFn: async (...args: any[]) => {
+                if (slow) await sleep(1500);
+                return (mockAuthServer.getSignedToken as any)(...args);
+            },
+            echoMessages: true,
+        });
+        await connected();
+        const client = echo.connector.ably;
+        const states: string[] = [];
+        client.connection.on((change: any) => states.push(change.current));
+        slow = true;
+        const authorizing = client.auth.authorize().catch(() => undefined); // in-band: a token request is now in flight
+        await sleep(200);
+        echo.disconnect();
+        await sleep(4000); // past the token response
+        await authorizing;
+        expect(client.connection.state).toBe('closed');
+        expect(states).toEqual(['closing', 'closed']);
+    });
+
     test('in-band renewal user1 -> user2: connects as user2, no error() on any channel, at most one failed, one connected', async () => {
         mockAuthServer.tokenExpiry = 60;
         mockAuthServer.clientId = 'user1';

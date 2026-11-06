@@ -181,3 +181,44 @@ describe('beforeChannelAttach (patched RealtimeChannel._attach)', () => {
         expect(ch.authorizing).toBe(false);
     });
 });
+
+describe('nothing Echo scheduled reopens a connection the app closed (RTC8c: authorize() on a closed connection reconnects)', () => {
+    const deferred = () => {
+        let resolve!: (v: any) => void;
+        const promise = new Promise((r) => (resolve = r));
+        return { promise, resolve };
+    };
+
+    test('a token requested before Echo.disconnect() is not handed to ably-js after it', async () => {
+        const pending = deferred();
+        const { auth, client } = makeAuth(() => pending.promise);
+        client.connection.state = 'connected';
+        const cb = jest.fn();
+        const run = (auth.options.authCallback as any)({}, cb);
+        client.connection.state = 'closing'; // Echo.disconnect() while the token request is in flight
+        pending.resolve({ token: makeJwt() });
+        await run;
+        expect(cb).toHaveBeenCalledTimes(1);
+        expect(cb.mock.calls[0][0]).toContain('closed while a token was requested');
+        expect(cb.mock.calls[0][1]).toBeNull();
+    });
+
+    test('a token request that starts on a closed connection (the app calls authorize() itself) is still delivered', async () => {
+        const { auth, client } = makeAuth(async () => ({ token: makeJwt() }));
+        client.connection.state = 'closed';
+        const cb = jest.fn();
+        await (auth.options.authCallback as any)({}, cb);
+        expect(cb.mock.calls[0][0]).toBeNull();
+        expect(cb.mock.calls[0][1]).toBeTruthy();
+    });
+
+    test.each(['closing', 'closed'])('tryAuthorizeOnSameConnection on a %s connection does not call authorize()', async (state) => {
+        const { auth, client } = makeAuth(async () => ({ token: makeJwt() }));
+        client.connection.state = state;
+        const cb = jest.fn();
+        auth.tryAuthorizeOnSameConnection({}, cb);
+        await settle();
+        expect(client.auth.authorize).not.toHaveBeenCalled();
+        expect(cb.mock.calls[0][0]).toBeInstanceOf(Error);
+    });
+});

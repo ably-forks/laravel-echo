@@ -31,12 +31,19 @@ export class AblyAuth {
         queryTime: true,
         useTokenAuth: true,
         authCallback: async (_, callback) => {
+            const wasClosed = this.isClosedOrClosing();
             let tokenDetails;
             try {
                 const { token } = await this.authRequestExecuter.request(null);
                 tokenDetails = toTokenDetails(token);
             } catch (error) {
                 callback(error, null);
+                return;
+            }
+            if (!wasClosed && this.isClosedOrClosing()) {
+                // Echo.disconnect() ran while the token was requested: handing it over would make ably-js open the
+                // closed connection again (RTC8c)
+                callback('laravel-echo: the connection was closed while a token was requested', null);
                 return;
             }
             this.switchIdentityOnRenewal(tokenDetails);
@@ -84,6 +91,9 @@ export class AblyAuth {
                 .catch(() => undefined); // a failed switch surfaces through the connection state and the 40102 handler
         }, 0);
     };
+
+    /** The connection was closed (or is closing) by the app: nothing Echo scheduled earlier may open it again. */
+    isClosedOrClosing = () => ['closing', 'closed'].includes(this.ablyClient()?.connection?.state);
 
     requestToken = async (channelName: string, existingToken: string) => {
         let postData = JSON.stringify({ channel_name: channelName, token: existingToken });
@@ -258,6 +268,11 @@ export class AblyAuth {
 
     tryAuthorizeOnSameConnection = (authOptions?: AuthOptions, callback?: (error, TokenDetails) => void) => {
         const client = this.ablyClient();
+        if (this.isClosedOrClosing()) {
+            // a token request that finished after Echo.disconnect(): authorize() on a closed connection reconnects it
+            callback?.(new Error('laravel-echo: the connection is closed'), null);
+            return;
+        }
         const token = authOptions?.token as TokenDetails;
         // E3: a token for another identity (including null -> user) opens the switch window before authorize(), since
         // a channel's 40102 can arrive before the connection's `failed`
