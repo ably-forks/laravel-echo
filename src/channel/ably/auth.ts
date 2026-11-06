@@ -52,12 +52,13 @@ export class AblyAuth {
      * switch window (E3) and clear the cached clientId with an authorize() that carries the token itself, so no token
      * request is made and this authCallback is not re-entered. The connection then reconnects once as the new
      * identity, and the channels re-attach (private and presence ones re-authorize).
-     * Skipped for the client's first token, and when no clientId is cached (null -> user already works in ably-js).
+     * Skipped when no clientId is cached, which includes the client's first token (null -> user already works in
+     * ably-js).
      */
     switchIdentityOnRenewal = (token: TokenDetails) => {
         const client = this.ablyClient();
         const current = client?.auth?.clientId ?? null;
-        if (!client?.connection?.id || current === null || current === (token.clientId ?? null)) {
+        if (!client || current === null || current === (token.clientId ?? null)) {
             return;
         }
         beginIdentitySwitch(client);

@@ -343,13 +343,22 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
         return { client, connector, auth, requestTokenFn, order, renew, ...channel };
     };
 
-    test('no switch on the first token (no connection.id), and the window stays closed', async () => {
-        const { client, renew, fake, errorListener } = setup('user1', null);
+    test('no switch on the first token (no cached clientId, no connection yet), and the window stays closed', async () => {
+        const { client, renew, fake, errorListener } = setup(undefined, null);
         await renew('user2');
         jest.advanceTimersByTime(1000);
         expect(client.auth.authorize).not.toHaveBeenCalled();
         fake.transition('failed', ablyError('x', SWITCH));
         expect(errorListener).toHaveBeenCalledTimes(1);
+    });
+
+    test.each(['failed', 'closed'])('after a %s connection (no connection.id), a renewal to another identity still switches', async (state) => {
+        const { client, renew } = setup('user1', null);
+        client.connection.state = state === 'closed' ? 'connecting' : 'failed'; // closed: the app reconnects
+        await renew('user2');
+        jest.advanceTimersByTime(0);
+        expect(client.auth.authorize).toHaveBeenCalledTimes(1);
+        expect(client.auth.authorize.mock.calls[0][1]).toMatchObject({ clientId: null, token: expect.objectContaining({ clientId: 'user2' }) });
     });
 
     test.each([
