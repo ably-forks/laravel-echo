@@ -145,14 +145,18 @@ describe('AblyRenewalSwitch', () => {
         await connected();
         const publicChannel = echo.channel('r1') as AblyChannel;
         const privateChannel = echo.private('r1') as AblyPrivateChannel;
-        await new Promise((resolve) => publicChannel.subscribed(resolve));
-        await new Promise((resolve) => privateChannel.subscribed(resolve));
+        const presenceChannel = echo.join('r1') as any;
+        // register before any await: a channel can attach (and emit `subscribed`) while another is awaited
+        const subscribedAll = Promise.all([publicChannel, privateChannel, presenceChannel].map((c) => new Promise((resolve) => c.subscribed(resolve))));
+        await subscribedAll;
         await waitForExpect(() => expect(echo.connector.ably.auth.clientId).toBe('user1'));
         const seen = await observe('public:x');
         const publicErrors = jest.fn();
         const privateErrors: any[] = [];
+        const presenceErrors: any[] = [];
         publicChannel.error(publicErrors);
         privateChannel.error((e: any) => privateErrors.push(e));
+        presenceChannel.error((e: any) => presenceErrors.push(e));
         const conn = watchConnection();
 
         mockAuthServer.guestClientId = true;
@@ -164,11 +168,15 @@ describe('AblyRenewalSwitch', () => {
         console.log(`user1 -> guest recovery: ${ms} ms, states: ${conn.states.join(',')}`);
         expect(ms).toBeLessThan(5000);
         expect(conn.count('failed')).toBe(0);
+        expect(conn.count('connected')).toBe(1);
+        expect(conn.count('connecting')).toBeLessThanOrEqual(2);
         expect(await pagePublishSeenAs(seen, 'public:x')).toBe(mockAuthServer.guestId);
         await expectReceives(publicChannel, 'r1');
         await waitForExpect(() => expect(privateErrors.length).toBeGreaterThanOrEqual(1));
+        await waitForExpect(() => expect(presenceErrors.length).toBeGreaterThanOrEqual(1));
         await sleep(1000);
         expectOne403(privateErrors);
+        expectOne403(presenceErrors);
         expect(publicErrors).not.toHaveBeenCalled();
         expect(conn.count('failed')).toBe(0);
         await expectNoUnhandledRejections();
@@ -180,14 +188,18 @@ describe('AblyRenewalSwitch', () => {
         await connected();
         const publicChannel = echo.channel('r2') as AblyChannel;
         const privateChannel = echo.private('r2') as AblyPrivateChannel;
-        await new Promise((resolve) => publicChannel.subscribed(resolve));
-        await new Promise((resolve) => privateChannel.subscribed(resolve));
+        const presenceChannel = echo.join('r2') as any;
+        // register before any await: a channel can attach (and emit `subscribed`) while another is awaited
+        const subscribedAll = Promise.all([publicChannel, privateChannel, presenceChannel].map((c) => new Promise((resolve) => c.subscribed(resolve))));
+        await subscribedAll;
         await waitForExpect(() => expect(echo.connector.ably.auth.clientId).toBe('user1'));
         const seen = await observe('public:x');
         const publicErrors = jest.fn();
         const privateErrors: any[] = [];
+        const presenceErrors: any[] = [];
         publicChannel.error(publicErrors);
         privateChannel.error((e: any) => privateErrors.push(e));
+        presenceChannel.error((e: any) => presenceErrors.push(e));
         const conn = watchConnection();
 
         mockAuthServer.clientId = null; // guestClientId stays false
@@ -198,6 +210,8 @@ describe('AblyRenewalSwitch', () => {
         expect(conn.recoveryMs() ?? Infinity).toBeLessThan(5000);
         expect(echo.connector.ably.auth.clientId).toBeFalsy();
         expect(conn.count('failed')).toBe(0);
+        expect(conn.count('connected')).toBe(1);
+        expect(conn.count('connecting')).toBeLessThanOrEqual(2);
         const stamped = await pagePublishSeenAs(seen, 'public:x');
         expect(stamped ?? null).toBeNull();
         expect(stamped).not.toBe('user1');
@@ -220,8 +234,10 @@ describe('AblyRenewalSwitch', () => {
         expect(members.filter((m) => m.clientId === 'user1')).toStrictEqual([]);
         await expectReceives(publicChannel, 'r2');
         await waitForExpect(() => expect(privateErrors.length).toBeGreaterThanOrEqual(1));
+        await waitForExpect(() => expect(presenceErrors.length).toBeGreaterThanOrEqual(1));
         await sleep(1000);
         expectOne403(privateErrors);
+        expectOne403(presenceErrors);
         expect(publicErrors).not.toHaveBeenCalled();
         await expectNoUnhandledRejections();
     });
@@ -252,6 +268,8 @@ describe('AblyRenewalSwitch', () => {
         console.log(`user1 -> user2 recovery: ${ms} ms, states: ${conn.states.join(',')}`);
         expect(ms).toBeLessThan(5000);
         expect(conn.count('failed')).toBe(0);
+        expect(conn.count('connected')).toBe(1);
+        expect(conn.count('connecting')).toBeLessThanOrEqual(2);
         expect(await pagePublishSeenAs(seen, 'public:x')).toBe('user2');
         await expectReceives(publicChannel, 'r3');
         expect(errorSpy).not.toHaveBeenCalled(); // no 40102 reaches the app
@@ -276,6 +294,7 @@ describe('AblyRenewalSwitch', () => {
         await new Promise((resolve) => publicChannel.subscribed(resolve));
         const errorSpy = jest.fn();
         publicChannel.error(errorSpy);
+        const seen = await observe('public:x');
         const conn = watchConnection();
 
         mockAuthServer.clientId = 'user1';
@@ -286,6 +305,9 @@ describe('AblyRenewalSwitch', () => {
         console.log(`guest -> user1 recovery: ${ms} ms, states: ${conn.states.join(',')}`);
         expect(ms).toBeLessThan(5000);
         expect(conn.count('failed')).toBe(0);
+        expect(conn.count('connected')).toBe(1);
+        expect(conn.count('connecting')).toBeLessThanOrEqual(2);
+        expect(await pagePublishSeenAs(seen, 'public:x')).toBe('user1');
         const privateChannel = echo.private('r4') as AblyPrivateChannel;
         await new Promise((resolve) => privateChannel.subscribed(resolve));
         await attached(privateChannel);
@@ -303,6 +325,7 @@ describe('AblyRenewalSwitch', () => {
         await new Promise((resolve) => publicChannel.subscribed(resolve));
         const errorSpy = jest.fn();
         publicChannel.error(errorSpy);
+        const seen = await observe('public:x');
         const conn = watchConnection();
 
         mockAuthServer.clientId = 'user1';
@@ -310,9 +333,100 @@ describe('AblyRenewalSwitch', () => {
         await waitForExpect(() => expect(echo.connector.ably.auth.clientId).toBe('user1'), 40000, 250);
         await connected();
         await attached(publicChannel);
+        expect(await pagePublishSeenAs(seen, 'public:x')).toBe('user1');
+        expect(conn.count('connected')).toBe(1);
+        expect(conn.count('connecting')).toBeLessThanOrEqual(2);
         console.log(`null -> user1 states: ${conn.states.join(',')}`);
         expect(conn.count('failed')).toBe(0);
         expect(errorSpy).not.toHaveBeenCalled();
+        await expectNoUnhandledRejections();
+    });
+
+    /**
+     * The in-band renewal path (Ably asks a connected client to re-authenticate about 30 s before expiry, so the
+     * connection is never disconnected with 40142). Forced here: right after the mock switches identity, authorize()
+     * is called, so the in-band AUTH carries the new identity (the validator's force-auth trick).
+     */
+    test('in-band renewal user1 -> guest id: connects as the guest, exactly one 403 on the private and one on the presence channel', async () => {
+        mockAuthServer.tokenExpiry = 60; // no timed renewal during the test: the only transition is the forced authorize()
+        mockAuthServer.clientId = 'user1';
+        echo = makeEcho();
+        await connected();
+        const publicChannel = echo.channel('h1') as AblyChannel;
+        const privateChannel = echo.private('h1') as AblyPrivateChannel;
+        const presenceChannel = echo.join('h1') as any;
+        // register before any await: a channel can attach (and emit `subscribed`) while another is awaited
+        const subscribedAll = Promise.all([publicChannel, privateChannel, presenceChannel].map((c) => new Promise((resolve) => c.subscribed(resolve))));
+        await subscribedAll;
+        await attached(publicChannel);
+        await attached(privateChannel);
+        await attached(presenceChannel);
+        await waitForExpect(() => expect(echo.connector.ably.auth.clientId).toBe('user1'));
+        const seen = await observe('public:x');
+        const publicErrors = jest.fn();
+        const privateErrors: any[] = [];
+        const presenceErrors: any[] = [];
+        publicChannel.error(publicErrors);
+        privateChannel.error((e: any) => privateErrors.push(e));
+        presenceChannel.error((e: any) => presenceErrors.push(e));
+        const conn = watchConnection();
+
+        mockAuthServer.guestClientId = true;
+        mockAuthServer.clientId = null;
+        conn.arm();
+        await echo.connector.ably.auth.authorize().catch(() => undefined);
+        await recovered(conn, () => mockAuthServer.guestId);
+
+        console.log(`in-band user1 -> guest recovery: ${conn.recoveryMs()} ms, states: ${conn.states.join(',')}`);
+        expect(echo.connector.ably.auth.clientId).toBe(mockAuthServer.guestId);
+        expect(await pagePublishSeenAs(seen, 'public:x')).toBe(mockAuthServer.guestId);
+        await waitForExpect(() => expect(privateErrors.length).toBeGreaterThanOrEqual(1));
+        await waitForExpect(() => expect(presenceErrors.length).toBeGreaterThanOrEqual(1));
+        await sleep(1500);
+        expectOne403(privateErrors);
+        expectOne403(presenceErrors);
+        expect(publicErrors).not.toHaveBeenCalled();
+        console.log(`in-band final states: ${conn.states.join(',')}`);
+        expect(conn.count('failed')).toBeLessThanOrEqual(1);
+        expect(conn.count('connected')).toBe(1);
+        await expectNoUnhandledRejections();
+    });
+
+    test('in-band renewal user1 -> user2: connects as user2, no error() on any channel, at most one failed, one connected', async () => {
+        mockAuthServer.tokenExpiry = 60;
+        mockAuthServer.clientId = 'user1';
+        echo = makeEcho();
+        await connected();
+        const privateChannel = echo.private('h2') as AblyPrivateChannel;
+        const presenceChannel = echo.join('h2') as any;
+        // register before any await: a channel can attach (and emit `subscribed`) while another is awaited
+        const subscribedAll = Promise.all([privateChannel, presenceChannel].map((c) => new Promise((resolve) => c.subscribed(resolve))));
+        await subscribedAll;
+        await attached(privateChannel);
+        await attached(presenceChannel);
+        await waitForExpect(() => expect(echo.connector.ably.auth.clientId).toBe('user1'));
+        const privateErrors: any[] = [];
+        const presenceErrors: any[] = [];
+        privateChannel.error((e: any) => privateErrors.push(e));
+        presenceChannel.error((e: any) => presenceErrors.push(e));
+        const conn = watchConnection();
+
+        mockAuthServer.clientId = 'user2';
+        conn.arm();
+        await echo.connector.ably.auth.authorize().catch(() => undefined);
+        await recovered(conn, () => 'user2');
+        await attached(privateChannel);
+        await attached(presenceChannel);
+        await sleep(1500);
+
+        console.log(`in-band user1 -> user2 recovery: ${conn.recoveryMs()} ms, states: ${conn.states.join(',')}`);
+        console.log(`in-band user1 -> user2 error() codes: private=[${privateErrors.map((e) => e?.reason?.code ?? e?.code)}] presence=[${presenceErrors.map((e) => e?.reason?.code ?? e?.code)}]`);
+        expect(echo.connector.ably.auth.clientId).toBe('user2');
+        expect(privateErrors).toStrictEqual([]);
+        expect(presenceErrors).toStrictEqual([]);
+        console.log(`in-band final states: ${conn.states.join(',')}`);
+        expect(conn.count('failed')).toBeLessThanOrEqual(1);
+        expect(conn.count('connected')).toBe(1);
         await expectNoUnhandledRejections();
     });
 

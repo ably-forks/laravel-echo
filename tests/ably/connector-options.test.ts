@@ -170,26 +170,34 @@ describe('E5: MAU hints only for 40161, 40168 and 40167, once per code', () => {
 
     beforeEach(() => jest.spyOn(console, 'error').mockImplementation(() => undefined));
 
-    test('40161 logs once, naming clientId, ABLY_MAU_ACCOUNT=true and broadcasting.connections.ably.mau_account', () => {
+    // the exact texts of MAU_HINTS in src/connector/ably-connector.ts, duplicated on purpose
+    const HINT_40161 =
+        'Your Ably account requires an identified client on every connection (MAU billing), but this guest connected without a clientId. ' +
+        'In laravel-broadcaster set ABLY_MAU_ACCOUNT=true (config broadcasting.connections.ably.mau_account) so guests receive a clientId, ' +
+        'or only connect Echo for signed-in users. See "Guest users on MAU-billed Ably accounts" in the README.';
+    const HINT_40168 =
+        'Your Ably account is MAU-billed and only accepts the current @ably/pubsub-device (v3) SDK, but an incompatible or older SDK build connected. ' +
+        'Make sure a single, up-to-date @ably/pubsub-device is installed and that no other Ably SDK creates this connection.';
+    const HINT_40167 =
+        'A server-side Ably client needs the server claim on its token to connect to a MAU-billed account. This is usually a server-side ' +
+        'configuration issue (laravel-broadcaster / token issuing), not a browser issue.';
+    const message = (code: number, hint: string) =>
+        `@ably/laravel-echo: the Ably connection failed (${code}: failure ${code}). ${hint}`;
+
+    test('40161 logs once, with the exact message and hint', () => {
         const { fake, connection } = makeClient();
         new Echo({ broadcaster: 'ably', client: fake });
         fail(connection, 40161);
         fail(connection, 40161);
-        expect(logged()).toHaveLength(1);
-        ['40161', 'clientId', 'ABLY_MAU_ACCOUNT=true', 'broadcasting.connections.ably.mau_account'].forEach((text) =>
-            expect(logged()[0]).toContain(text)
-        );
+        expect(logged()).toEqual([message(40161, HINT_40161)]);
     });
 
-    test('40168 mentions @ably/pubsub-device and v3; 40167 mentions the server claim', () => {
+    test('40168 and 40167 log their exact messages and hints, in order', () => {
         const { fake, connection } = makeClient();
         new Echo({ broadcaster: 'ably', client: fake });
         fail(connection, 40168);
         fail(connection, 40167);
-        expect(logged()).toHaveLength(2);
-        expect(logged()[0]).toContain('@ably/pubsub-device');
-        expect(logged()[0]).toContain('v3');
-        expect(logged()[1]).toContain('server claim');
+        expect(logged()).toEqual([message(40168, HINT_40168), message(40167, HINT_40167)]);
     });
 
     test('once per code: 40161 then 40168 logs two hints', () => {

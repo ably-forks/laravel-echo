@@ -2,6 +2,7 @@ import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import { AblyChannel, AblyPrivateChannel } from '../../src/channel';
+import { createClient } from '@ably/pubsub-device';
 import waitForExpect from 'wait-for-expect';
 import { trackUnhandledRejections } from '../parity/fake-ably';
 
@@ -16,6 +17,7 @@ describe('AblyIdentitySwitch', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
     let echo: Echo;
+    let observer: any;
     let rejections: ReturnType<typeof trackUnhandledRejections>;
 
     beforeAll(async () => {
@@ -77,6 +79,9 @@ describe('AblyIdentitySwitch', () => {
         rejections.stop();
         mockAuthServer.guestClientId = false;
         mockAuthServer.clientId = null;
+        mockAuthServer.publicCapability = ['subscribe', 'history', 'channel-metadata'];
+        observer?.close();
+        observer = undefined;
         const client = echo.connector.ably;
         echo.disconnect();
         await waitForExpect(() => expect(['closed', 'failed']).toContain(client.connection.state));
@@ -84,9 +89,14 @@ describe('AblyIdentitySwitch', () => {
 
     test('guest id -> user1: no error() call, recovers as user1, channels attached, public message received', async () => {
         mockAuthServer.guestClientId = true;
+        mockAuthServer.publicCapability = ['subscribe', 'history', 'channel-metadata', 'publish', 'presence'];
         echo = makeEcho();
         await connected();
         expect(echo.connector.ably.auth.clientId).toBe(mockAuthServer.guestId);
+        // second client with the API key: reads the server-stamped clientId of what the page publishes
+        observer = createClient({ key: testApp.keys[0].keyStr, endpoint: 'nonprod:sandbox' } as any);
+        const seen: Array<{ name: string; clientId: any }> = [];
+        await observer.channels.get('public:x').subscribe((m: any) => seen.push({ name: m.name, clientId: m.clientId }));
 
         const publicChannel = echo.channel('t2') as AblyChannel;
         await new Promise((resolve) => publicChannel.subscribed(resolve));
@@ -105,6 +115,11 @@ describe('AblyIdentitySwitch', () => {
         expect(echo.connector.ably.auth.clientId).toBe('user1');
         expect(echo.connector.ablyAuth.existingToken().clientId).toBe('user1');
         expect(connectionStates).toStrictEqual(['failed', 'connecting', 'connected']);
+
+        const event = `probe-${Math.random().toString(36).slice(2)}`;
+        await echo.connector.ably.channels.get('public:x').publish(event, 'x');
+        await waitForExpect(() => expect(seen.some((m) => m.name === event)).toBe(true));
+        expect(seen.find((m) => m.name === event)?.clientId).toBe('user1');
 
         await expectReceives(publicChannel, 't2');
         expect(errorSpy).toHaveBeenCalledTimes(0); // E3

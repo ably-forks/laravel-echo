@@ -5,7 +5,8 @@
 import { AblyChannel } from '../../src/channel';
 import { AblyAuth } from '../../src/channel/ably/auth';
 import { beginIdentitySwitch, beginRenewalReattach, endRenewalReattach } from '../../src/channel/ably/utils';
-import { ECHO_OPTIONS, ablyError, makeFakeAblyClient, settle, trackUnhandledRejections } from './fake-ably';
+import Echo from '../../src/echo';
+import { FakeEmitter, ECHO_OPTIONS, ablyError, makeFakeAbly, makeFakeAblyClient, settle, trackUnhandledRejections } from './fake-ably';
 
 let unhandled: ReturnType<typeof trackUnhandledRejections>;
 beforeEach(() => (unhandled = trackUnhandledRejections()));
@@ -575,5 +576,109 @@ describe('the renewal re-attach window: the transient 40160 of ably-js re-attach
         fake.transition('failed', ablyError('denied', DENIED));
         expect(errorListener).not.toHaveBeenCalled();
         await settle();
+    });
+});
+
+describe('channelsReattachedByAuth: the connector skips its re-attach once after AblyAuth.onClientIdChanged', () => {
+    /** A real AblyConnector on a fake client (options.client: it has no AblyAuth) plus an AblyAuth wired to it. */
+    const build = () => {
+        jest.useFakeTimers();
+        jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        const connection: any = new FakeEmitter();
+        connection.state = 'connected';
+        const fake: any = { ...makeFakeAbly(), connection, close: jest.fn(), connect: jest.fn(), auth: {} };
+        const echo = new Echo({ broadcaster: 'ably', client: fake });
+        const channels = ['a', 'b'].map((n) => echo.channel(n) as any);
+        channels.forEach((ch) => (ch.channel.state = 'attached'));
+        const auth = new AblyAuth(echo.connector as any, {
+            authEndpoint: 'http://127.0.0.1:1/broadcasting/auth',
+            auth: { headers: {} },
+        } as any);
+        const attachCalls = () => channels.map((ch) => ch.channel.attach.mock.calls.length);
+        const fail = () => connection.emit('failed', { current: 'failed', reason: ablyError('x', SWITCH) });
+        const connect = () => connection.emit('connected', { current: 'connected' });
+        // channels as they are after the failure: not attached
+        const detachAll = () => channels.forEach((ch) => (ch.channel.state = 'failed'));
+        channels.forEach((ch) => ch.channel.attach.mockClear());
+        return { echo, connector: echo.connector as any, auth, channels, attachCalls, fail, connect, detachAll };
+    };
+    afterEach(() => jest.restoreAllMocks());
+
+    test('(a) onClientIdChanged sets the flag; the next connected does not re-attach again: one attach per channel', () => {
+        const { connector, auth, attachCalls, fail, connect, detachAll } = build();
+        expect(connector.channelsReattachedByAuth).toBe(false);
+        fail(); // the 40102 that triggers onClientIdChanged, delivered to every listener first
+        detachAll();
+        auth.onClientIdChanged();
+        expect((auth.ablyClient() as any).connect).toHaveBeenCalledTimes(1);
+        expect(connector.channelsReattachedByAuth).toBe(false); // set only in the setTimeout, after the failed event
+        jest.advanceTimersByTime(0);
+        expect(connector.channelsReattachedByAuth).toBe(true);
+        expect(attachCalls()).toEqual([1, 1]);
+        connect(); // the channels are still failed here (the fake attach() does not change state)
+        expect(attachCalls()).toEqual([1, 1]); // the latch did not attach them a second time
+        expect(connector.channelsReattachedByAuth).toBe(false); // consumed
+    });
+
+    test('(a2) a later reconnect after that does not re-attach either (the latch is disarmed)', () => {
+        const { attachCalls, auth, fail, connect, detachAll } = build();
+        fail();
+        detachAll();
+        auth.onClientIdChanged();
+        jest.advanceTimersByTime(0);
+        connect();
+        connect();
+        expect(attachCalls()).toEqual([1, 1]);
+    });
+
+    test('(b) a failed after the flag is set clears it: the next connected re-attaches non-attached channels', () => {
+        const { connector, auth, attachCalls, fail, connect, detachAll } = build();
+        fail();
+        detachAll();
+        auth.onClientIdChanged();
+        jest.advanceTimersByTime(0);
+        expect(connector.channelsReattachedByAuth).toBe(true);
+        expect(attachCalls()).toEqual([1, 1]);
+        fail(); // the reconnect failed too
+        expect(connector.channelsReattachedByAuth).toBe(false);
+        connect();
+        expect(attachCalls()).toEqual([2, 2]);
+    });
+
+    test('(b2) channels that are attached or attaching are not re-attached by the latch after that', () => {
+        const { channels, connector, auth, attachCalls, fail, connect, detachAll } = build();
+        fail();
+        detachAll();
+        auth.onClientIdChanged();
+        jest.advanceTimersByTime(0);
+        fail();
+        channels[0].channel.state = 'attached';
+        channels[1].channel.state = 'attaching';
+        connect();
+        expect(attachCalls()).toEqual([1, 1]);
+        expect(connector.channelsReattachedByAuth).toBe(false);
+    });
+
+    test('(c) without onClientIdChanged, a plain failed -> connected re-attaches as before', () => {
+        const { connector, attachCalls, fail, connect, detachAll } = build();
+        fail();
+        detachAll();
+        expect(connector.channelsReattachedByAuth).toBe(false);
+        connect();
+        expect(attachCalls()).toEqual([1, 1]);
+        connect(); // no second re-attach without a new failure
+        expect(attachCalls()).toEqual([1, 1]);
+    });
+
+    test('the flag set directly on the connector skips exactly one connected after a failure', () => {
+        const { connector, attachCalls, fail, connect, detachAll } = build();
+        fail();
+        detachAll();
+        connector.channelsReattachedByAuth = true;
+        connect();
+        expect(attachCalls()).toEqual([0, 0]);
+        fail();
+        connect();
+        expect(attachCalls()).toEqual([1, 1]);
     });
 });
