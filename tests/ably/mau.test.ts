@@ -26,6 +26,7 @@ describe('MAU account (mock proxy)', () => {
     let echo: Echo | undefined;
     let errorSpy: jest.SpyInstance;
     let skipReason: string | undefined;
+    let ready = false; // beforeAll completed: the per-test hooks only run then, so a setup failure is the only error
 
     const skipped = () => {
         if (skipReason) {
@@ -61,6 +62,7 @@ describe('MAU account (mock proxy)', () => {
         }
         mockAuthServer = new MockAuthServer(testApp.keys[0].keyStr);
         proxy = await new MauProxy().start();
+        ready = true;
     });
 
     afterAll(async () => {
@@ -73,7 +75,7 @@ describe('MAU account (mock proxy)', () => {
     });
 
     beforeEach(() => {
-        if (skipReason) {
+        if (!ready) {
             return;
         }
         proxy.rejected = 0;
@@ -84,7 +86,7 @@ describe('MAU account (mock proxy)', () => {
     });
 
     afterEach(() => {
-        if (skipReason) {
+        if (!ready) {
             return;
         }
         errorSpy.mockRestore();
@@ -203,10 +205,10 @@ describe('MAU account (mock proxy)', () => {
 
     describe('renewed token with another identity', () => {
         beforeEach(() => {
-            mockAuthServer.tokenExpiry = 6;
+            if (ready) mockAuthServer.tokenExpiry = 6;
         });
         afterEach(() => {
-            mockAuthServer.tokenExpiry = 60;
+            if (ready) mockAuthServer.tokenExpiry = 60;
         });
 
         test('renewal user to guest id reconnects through the proxy as the guest, without a rejection', async () => {
