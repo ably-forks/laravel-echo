@@ -1,7 +1,7 @@
 import type { AblyRealtime, AblyRealtimeChannel } from '../../typings/ably';
 import { EventFormatter } from '../util';
 import { Channel } from './channel';
-import { safeInvoke, isSameError, consumeSwitchError } from './ably/utils';
+import { safeInvoke, isSameError, consumeSwitchError, settleRenewalReattach } from './ably/utils';
 
 /**
  * This class represents an Ably channel.
@@ -94,6 +94,7 @@ export class AblyChannel extends Channel {
         this.channel.on((stateChange) => {
             const { previous, current, reason } = stateChange;
             if (previous !== 'attached' && current == 'attached') {
+                settleRenewalReattach(this.ably, this.name);
                 this.lastStateChangeReason = null;
                 this.subscribedListeners.forEach((listener) => safeInvoke(listener));
             } else if (reason) {

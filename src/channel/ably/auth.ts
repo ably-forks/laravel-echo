@@ -7,6 +7,8 @@ import {
     HTTP_REQUEST_TIMEOUT_MS,
     beginIdentitySwitch,
     endIdentitySwitch,
+    beginRenewalReattach,
+    endRenewalReattach,
 } from './utils';
 import { SequentialAuthTokenRequestExecuter, TOKEN_REQUEST_TIMEOUT_MS } from './token-request';
 import type { AblyChannel } from '../ably-channel';
@@ -59,6 +61,7 @@ export class AblyAuth {
             return;
         }
         beginIdentitySwitch(client);
+        beginRenewalReattach(client); // the transient 40160 of ably-js's own re-attach of private/presence channels
         // after the callback has returned: an authorize() while ably-js still waits for it aborts the connect attempt
         setTimeout(() => {
             if (this.ablyClient() !== client || ['closing', 'closed'].includes(client.connection.state)) {
@@ -201,7 +204,10 @@ export class AblyAuth {
         const client = this.ablyClient();
         client?.connection?.off('failed', this.clientIdSwitchListeners.failed);
         client?.connection?.off('connected', this.clientIdSwitchListeners.connected);
-        if (client) endIdentitySwitch(client);
+        if (client) {
+            endIdentitySwitch(client);
+            endRenewalReattach(client);
+        }
         this.clientIdSwitchListeners = null;
     };
 

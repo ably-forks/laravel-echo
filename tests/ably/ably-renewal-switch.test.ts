@@ -122,15 +122,13 @@ describe('AblyRenewalSwitch', () => {
     const is403 = (e: any) => e?.statusCode === 403 || e?.code === 40300;
 
     /**
-     * The private channel's error() gets exactly one 403 from the re-authorization. The server's attach rejection of
-     * the re-attach made with the guest token (a channel 'failed' state change, 40160) is reported on top of it, so
-     * any other error is a failure here.
+     * After a logout, the private channel's error() gets exactly one error: the broadcaster's 403 from the
+     * re-authorization, as with the in-page logout. The transient 40160 of ably-js's own re-attach is not reported.
      */
     const expectOne403 = (errors: any[]) => {
-        expect(errors.filter(is403)).toHaveLength(1);
-        const others = errors.filter((e) => !is403(e));
-        expect(others.map((e) => e?.reason?.code ?? e?.code).filter((c) => c !== 40160)).toStrictEqual([]);
         console.log(`private error() sequence: ${errors.map((e) => e?.reason?.code ?? e?.code).join(',')}`);
+        expect(errors).toHaveLength(1);
+        expect(is403(errors[0])).toBe(true);
     };
 
     /** Wait for the renewal switch: the connection recovered as the expected identity. */
@@ -258,11 +256,13 @@ describe('AblyRenewalSwitch', () => {
         await expectReceives(publicChannel, 'r3');
         expect(errorSpy).not.toHaveBeenCalled(); // no 40102 reaches the app
         if (privateChannel) {
-            // ably-js re-attaches it with user2's token, which lacks the channel (40160); Echo re-authorizes it for user2
+            // ably-js re-attaches it with user2's token, which lacks the channel (40160, not reported); Echo
+            // re-authorizes it for user2, as after an in-page switch: no error() at all
             await attached(privateChannel);
+            await sleep(1000);
             const codes = privateErrors.map((e) => e?.reason?.code ?? e?.code);
             console.log(`user1 -> user2 private error() sequence: ${codes.join(',')}`);
-            expect(codes.filter((c) => c !== 40160 && c !== undefined)).toStrictEqual([]); // no 40102, no 403
+            expect(privateErrors).toStrictEqual([]);
         }
         await expectNoUnhandledRejections();
     });

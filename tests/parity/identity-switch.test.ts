@@ -4,7 +4,7 @@
  */
 import { AblyChannel } from '../../src/channel';
 import { AblyAuth } from '../../src/channel/ably/auth';
-import { beginIdentitySwitch } from '../../src/channel/ably/utils';
+import { beginIdentitySwitch, beginRenewalReattach, endRenewalReattach } from '../../src/channel/ably/utils';
 import { ECHO_OPTIONS, ablyError, makeFakeAblyClient, settle, trackUnhandledRejections } from './fake-ably';
 
 let unhandled: ReturnType<typeof trackUnhandledRejections>;
@@ -467,5 +467,104 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
         expect(client.auth.authorize).not.toHaveBeenCalled();
         fake.transition('failed', ablyError('x', SWITCH));
         expect(errorListener).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('the renewal re-attach window: the transient 40160 of ably-js re-attaching private/presence channels', () => {
+    const DENIED = 40160;
+
+    test('a 40160 outside a renewal switch is delivered', () => {
+        const client = makeFakeAblyClient('user1');
+        const { fake, errorListener } = listened(client, 'private:ch');
+        fake.transition('failed', ablyError('denied', DENIED));
+        expect(errorListener).toHaveBeenCalledTimes(1);
+    });
+
+    test('a 40160 inside the in-page switch window (no renewal) is delivered', () => {
+        const client = makeFakeAblyClient('user1');
+        const { fake, errorListener } = listened(client, 'private:ch');
+        beginIdentitySwitch(client);
+        fake.transition('failed', ablyError('denied', DENIED));
+        expect(errorListener).toHaveBeenCalledTimes(1);
+    });
+
+    test.each(['private:ch', 'presence:ch'])('the first 40160 on %s is swallowed, the second is delivered', (name) => {
+        const client = makeFakeAblyClient('user1');
+        const { fake, errorListener } = listened(client, name);
+        beginRenewalReattach(client);
+        fake.transition('failed', ablyError('first', DENIED));
+        expect(errorListener).not.toHaveBeenCalled();
+        fake.transition('failed', ablyError('second', DENIED));
+        expect(errorListener).toHaveBeenCalledTimes(1);
+    });
+
+    test('the re-authorize result (403) is delivered', () => {
+        const client = makeFakeAblyClient('user1');
+        const { echoChannel, fake, errorListener } = listened(client, 'private:ch');
+        beginRenewalReattach(client);
+        fake.transition('failed', ablyError('denied', DENIED));
+        const forbidden = { code: 40300, statusCode: 403, message: 'HTTP 403' };
+        echoChannel._alertErrorListeners(forbidden);
+        expect(errorListener).toHaveBeenCalledTimes(1);
+        expect(errorListener).toHaveBeenCalledWith(forbidden);
+    });
+
+    test('a public channel 40160 is never swallowed', () => {
+        const client = makeFakeAblyClient('user1');
+        const { fake, errorListener } = listened(client, 'public:ch');
+        beginRenewalReattach(client);
+        fake.transition('failed', ablyError('denied', DENIED));
+        expect(errorListener).toHaveBeenCalledTimes(1);
+    });
+
+    test('once the channel has attached, a later 40160 is delivered', () => {
+        const client = makeFakeAblyClient('user1');
+        const { fake, errorListener } = listened(client, 'private:ch');
+        beginRenewalReattach(client);
+        fake.transition('attached');
+        fake.transition('failed', ablyError('denied', DENIED));
+        expect(errorListener).toHaveBeenCalledTimes(1);
+    });
+
+    test('ends after 30 s and on release', () => {
+        jest.useFakeTimers();
+        const client = makeFakeAblyClient('user1');
+        const { fake, errorListener } = listened(client, 'private:ch');
+        beginRenewalReattach(client);
+        jest.advanceTimersByTime(30_000);
+        fake.transition('failed', ablyError('late', DENIED));
+        expect(errorListener).toHaveBeenCalledTimes(1);
+
+        const other = makeFakeAblyClient('user1');
+        const second = listened(other, 'private:ch');
+        beginRenewalReattach(other);
+        endRenewalReattach(other);
+        second.fake.transition('failed', ablyError('released', DENIED));
+        expect(second.errorListener).toHaveBeenCalledTimes(1);
+    });
+
+    test('the swallowed 40160 still triggers the re-authorize (AblyAuth.onChannelFailed)', () => {
+        const client = makeFakeAblyClient('user1');
+        const auth = makeAuth(client);
+        const handle = jest.spyOn(auth, 'handleChannelAuthError').mockImplementation(() => undefined);
+        const { echoChannel, fake, errorListener } = listened(client, 'private:ch');
+        fake.on('failed', auth.onChannelFailed(echoChannel));
+        beginRenewalReattach(client);
+        fake.transition('failed', ablyError('denied', DENIED));
+        expect(errorListener).not.toHaveBeenCalled();
+        expect(handle).toHaveBeenCalledTimes(1);
+    });
+
+    test('a renewal switch opens it: switchIdentityOnRenewal', async () => {
+        const client = makeFakeAblyClient('user1');
+        client.connection.id = 'conn-1';
+        client.connection.state = 'connected';
+        const auth = makeAuth(client, { requestTokenFn: async () => ({ token: tokenFor('user2') }) });
+        (auth.ablyConnector as any).ably = client;
+        const { fake, errorListener } = listened(client, 'private:ch');
+        await new Promise((resolve) => auth.options.authCallback(null as any, resolve as any));
+        fake.transition('failed', ablyError('denied', DENIED));
+        expect(errorListener).not.toHaveBeenCalled();
+        await settle();
     });
 });

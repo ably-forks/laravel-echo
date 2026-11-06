@@ -141,10 +141,51 @@ export const endIdentitySwitch = (client: object) => {
     }
 };
 
-/** true = swallow (the first 40102 per channel inside an Echo-initiated switch window) */
+/**
+ * A switch on token renewal (another tab logged in or out) reconnects, and ably-js then re-attaches the attached
+ * channels itself, with the new token and without Echo's pre-attach authorize. A private or presence channel fails
+ * that re-attach with 40160 and Echo re-authorizes it (AblyAuth.onChannelFailed), so the 40160 is transient: until
+ * the channel next attaches, or for at most 30 s, its first 40160 is not reported to error() listeners. The
+ * re-authorize result (attached, or the broadcaster's 403) is reported as usual.
+ */
+const renewalReattachWindows = new WeakMap<object, { done: Set<string>; timer: any }>();
+
+export const beginRenewalReattach = (client: object) => {
+    endRenewalReattach(client);
+    const timer = setTimeout(() => endRenewalReattach(client), IDENTITY_SWITCH_TIMEOUT_MS);
+    timer?.unref?.();
+    renewalReattachWindows.set(client, { done: new Set(), timer });
+};
+
+export const endRenewalReattach = (client: object) => {
+    const w = renewalReattachWindows.get(client);
+    if (w) {
+        clearTimeout(w.timer);
+        renewalReattachWindows.delete(client);
+    }
+};
+
+/** The channel attached: a later 40160 is a real failure. */
+export const settleRenewalReattach = (client: object, channelName: string) => {
+    renewalReattachWindows.get(client)?.done.add(channelName);
+};
+
+const isGuardedChannel = (channelName: string) =>
+    channelName.startsWith('private:') || channelName.startsWith('presence:');
+
+/**
+ * true = swallow: the first 40102 per channel inside an Echo-initiated switch window, or the first 40160 per private
+ * or presence channel of the re-attach after a renewal switch.
+ */
 export const consumeSwitchError = (client: object, channelName: string, err: any): boolean => {
-    const w = client ? switchWindows.get(client) : undefined;
     const code = err?.code ?? err?.reason?.code;
+    if (code === 40160 && isGuardedChannel(channelName)) {
+        const r = client ? renewalReattachWindows.get(client) : undefined;
+        if (!r || r.done.has(channelName)) return false;
+        r.done.add(channelName);
+        return true;
+    }
+    const w = client ? switchWindows.get(client) : undefined;
     if (!w || code !== 40102 || w.suppressed.has(channelName)) return false;
     w.suppressed.add(channelName);
     return true;
