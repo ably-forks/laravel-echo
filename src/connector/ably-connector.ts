@@ -69,6 +69,12 @@ export class AblyConnector extends Connector {
     mauHintsLogged = new Set<number>();
 
     /**
+     * Set by AblyAuth.onClientIdChanged when it has re-attached every channel for a client ID change; the next
+     * `connected` then skips the re-attach below once. Cleared by any later `failed`.
+     */
+    channelsReattachedByAuth = false;
+
+    /**
      * The connection listeners of the re-attach latch (R3), so releaseClient() can remove them (P7). No initializer:
      * connect() sets it from the base constructor, before field initializers run (like ablyAuth).
      */
@@ -177,6 +183,8 @@ export class AblyConnector extends Connector {
         let connectionFailed = this.ably.connection.state === 'failed';
         const failed = (stateChange) => {
             connectionFailed = true;
+            this.channelsReattachedByAuth = false; // that re-attach did not survive this failure
+
             // E5: a hint only for the MAU codes (40161, 40168, 40167), once per code
             const code = stateChange?.reason?.code;
             const hint = code !== undefined ? MAU_HINTS[code] : undefined;
@@ -190,6 +198,10 @@ export class AblyConnector extends Connector {
                 return;
             }
             connectionFailed = false;
+            if (this.channelsReattachedByAuth) {
+                this.channelsReattachedByAuth = false;
+                return;
+            }
             for (const echoChannel of Object.values(this.channels)) {
                 const state = echoChannel.channel.state;
                 if (state !== 'attached' && state !== 'attaching') {

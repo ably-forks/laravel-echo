@@ -221,6 +221,10 @@ export class AblyAuth {
     onClientIdChanged = () => {
         this.ablyClient().connect();
         setTimeout(() => {
+            // these attaches cover this reconnect: the connector's re-attach on the next `connected` must not attach
+            // (and re-authorize, reporting a second 403) the same channels again. Set here, after the `failed` event
+            // that triggered this has reached every listener, so a later failure clears it (AblyConnector).
+            this.ablyConnector.channelsReattachedByAuth = true;
             for (const ablyChannel of Object.values(this.ablyConnector.channels)) {
                 ablyChannel.channel.attach().catch(ablyChannel._alertErrorListeners);
             }
