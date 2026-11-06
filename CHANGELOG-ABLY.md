@@ -8,11 +8,10 @@ Echo's API is unchanged. See "Upgrading to 1.1" in the README.
 
 ### Changed
 
-- Echo now depends on `@ably/pubsub-device@^3` and installs it itself (`npm install @ably/laravel-echo`); `ably@1.x` and `ably@2.x` are no longer used. Echo always uses its own copy and ignores a global `Ably` or `AblyPubSub`, so the 1.0.x snippet `window.Ably = Ably` (or `require('ably')`) can stay but can be removed; while it is there, Echo logs a one-time `console.warn`. A client passed as `options.client` is still used as is. `echo.connector.ably` is now a `PubSubClient` with promise-based APIs.
-- The script-tag build `dist/echo.iife.js` bundles `@ably/pubsub-device`, so it needs no Ably CDN script or global.
+- Echo now depends on `@ably/pubsub-device@^3` and installs it itself (`npm install @ably/laravel-echo@^1.1`); `ably@1.x` and `ably@2.x` are no longer used. Echo always uses its own copy and ignores a global `Ably` or `AblyPubSub`, so the 1.0.x snippet `window.Ably = Ably` (or `require('ably')`) can stay but can be removed; while it is there, Echo logs a one-time `console.warn`. A client passed as `options.client` is still used as is. `echo.connector.ably` is now a `PubSubClient` with promise-based APIs. Apps that use this package only with Pusher, Reverb or socket.io now also install `@ably/pubsub-device` and include it in their bundle (about 100 KB gzipped); they should use upstream `laravel-echo`.
 - Installing and building requires Node.js 22 or later and a bundler that understands ES2020 (webpack 5 or Vite; webpack 4 needs transpiling). Both are inherited from `@ably/pubsub-device`, not an Echo API change; browsers are unaffected.
 - On MAU-billed Ably accounts, device connections must carry a client ID, so guest connections without one are rejected with 40161. Set `ABLY_MAU_ACCOUNT=true` in laravel-broadcaster 1.1.0 or later so guests get a client ID, or only connect Echo for signed-in users.
-- The script-tag build `dist/echo.iife.js` now includes `@ably/pubsub-device`: about 500 KB instead of about 120 KB (about 105 KB instead of about 25 KB gzipped). The ESM and CJS builds don't include it; the app's bundler or Node resolves `@ably/pubsub-device`.
+- The script-tag build `dist/echo.iife.js` now includes `@ably/pubsub-device`, so it needs no Ably CDN script or global: about 500 KB instead of about 116 KB (about 105 KB instead of about 24 KB gzipped). The ESM and CJS builds don't include it; the app's bundler or Node resolves `@ably/pubsub-device`.
 - During a client ID switch that Echo starts (login, or another user logging in), the transient "mismatched clientId" error (40102) is no longer reported to `error()`: the first one per channel is dropped until the connection is back, or for at most 30 s. Other errors are still reported.
 - The MAU console hint is logged only for 40161, 40168 and 40167, once per code, with a specific explanation for each; 40161 names `ABLY_MAU_ACCOUNT=true` (`broadcasting.connections.ably.mau_account`).
 - Logout: call `Echo.connect()` or create a new Echo instance; Echo then connects as the guest (see the README).
@@ -20,7 +19,7 @@ Echo's API is unchanged. See "Upgrading to 1.1" in the README.
 ### Added
 
 - A client ID switch on the same Echo instance: guest to user, and user to another user, including several switches in one page, now reconnects with the new client ID and re-attaches the channels (on MAU-billed accounts this needs guest client IDs from laravel-broadcaster `ABLY_MAU_ACCOUNT=true`).
-- A logout or login in another tab is picked up at this tab's next token renewal (after up to the token lifetime): the connection reconnects once as the new identity (guest, no client ID or another user), typically within a second or two, and re-attaches its channels; private and presence channels are authorized again, with no `error()` call after a login and one 403 after a logout (the transient 40160 of the re-attach is not reported). On MAU-billed accounts without guest client IDs, a switch to no client ID fails with 40161. Previously it stayed disconnected and then `failed`, or stayed connected with a stale client ID. Call `Echo.connect()` in every tab (for example through a `BroadcastChannel`) to switch at once.
+- A logout or login in another tab is picked up at this tab's next token renewal (after up to the token lifetime): the connection reconnects once as the new identity (guest, no client ID or another user), typically within a second or two (when Ably asks the connected client to re-authenticate, it briefly reports `failed` with 40102, which is not passed to `error()`), and re-attaches its channels; private and presence channels are authorized again, with no `error()` call after a login and one 403 after a logout (the transient 40160 of the re-attach is not reported). On MAU-billed accounts without guest client IDs, a switch to no client ID fails with 40161. Previously it stayed disconnected and then `failed`, or stayed connected with a stale client ID. Call `Echo.connect()` in every tab (for example through a `BroadcastChannel`) to switch at once.
 
 ### Fixed
 
@@ -44,6 +43,8 @@ Echo's API is unchanged. See "Upgrading to 1.1" in the README.
 
 ### Known issues
 
+- Another tab's logout or login reaches this tab only at its next connection token renewal (up to laravel-broadcaster's `token_expiry`, 8 hours by default). Call `Echo.connect()` in every tab, for example from a `BroadcastChannel` message, to switch at once.
+- Every client ID switch uses a fresh connection, not a resume, so messages published while the connection switches (about a second) are not delivered. Apps that need them can use channel `rewind` or history.
 - Access to private and presence channels can be lost briefly when the connection token is renewed after it expires: laravel-broadcaster keeps a token's channel capabilities only while that token is unexpired, so the renewed token has only the `public:*` capability, private and presence channels fail with 40160 and are re-authorized, and messages broadcast in that gap are lost. This needs a laravel-broadcaster fix; the sandbox test for it is skipped until then.
 
 ### Internal changes

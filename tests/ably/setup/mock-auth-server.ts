@@ -13,6 +13,12 @@ type channels = Array<string>;
  *   `guest:<random>.<tag>`, stable until `rotateGuestId()` (the broadcaster issues a fresh one after logout);
  * - a presented token's claims (capability, iat, exp) are reused only for the same clientId (identity-scoped claims);
  * - private and presence channels are denied (403) when there is no user, also in guest-id mode.
+ * It copies the broadcaster's behaviour, not its exact formats or checks. Known gaps:
+ * - the guest id only looks like the broadcaster's (`guest:<random>.<tag>`); the tag is random, not an HMAC;
+ * - a guest id changes only when a test calls `rotateGuestId()` (the broadcaster issues a fresh one per session and
+ *   after logout);
+ * - a requested channel is granted `['*']`, also for channels the broadcaster would not authorize;
+ * - a presented token's signature is not verified (only its expiry and clientId).
  */
 export class MockAuthServer {
     keyName: string;
