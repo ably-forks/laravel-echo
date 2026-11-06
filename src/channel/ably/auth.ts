@@ -31,7 +31,8 @@ export class AblyAuth {
         queryTime: true,
         useTokenAuth: true,
         authCallback: async (_, callback) => {
-            const wasClosed = this.isClosedOrClosing();
+            const client = this.ablyClient(); // the client this token is for: Echo.connect() may replace it meanwhile
+            const wasClosed = this.isClosedOrClosing(client);
             let tokenDetails;
             try {
                 const { token } = await this.authRequestExecuter.request(null);
@@ -40,9 +41,9 @@ export class AblyAuth {
                 callback(error, null);
                 return;
             }
-            if (!wasClosed && this.isClosedOrClosing()) {
-                // Echo.disconnect() ran while the token was requested: handing it over would make ably-js open the
-                // closed connection again (RTC8c)
+            if (!wasClosed && (this.isClosedOrClosing(client) || this.ablyClient() !== client)) {
+                // Echo.disconnect() (or Echo.connect(), which replaces the client) ran while the token was requested:
+                // handing it over would make ably-js open the closed connection again (RTC8c)
                 callback('laravel-echo: the connection was closed while a token was requested', null);
                 return;
             }
@@ -93,7 +94,7 @@ export class AblyAuth {
     };
 
     /** The connection was closed (or is closing) by the app: nothing Echo scheduled earlier may open it again. */
-    isClosedOrClosing = () => ['closing', 'closed'].includes(this.ablyClient()?.connection?.state);
+    isClosedOrClosing = (client: any) => ['closing', 'closed'].includes(client?.connection?.state);
 
     requestToken = async (channelName: string, existingToken: string) => {
         let postData = JSON.stringify({ channel_name: channelName, token: existingToken });
@@ -268,7 +269,7 @@ export class AblyAuth {
 
     tryAuthorizeOnSameConnection = (authOptions?: AuthOptions, callback?: (error, TokenDetails) => void) => {
         const client = this.ablyClient();
-        if (this.isClosedOrClosing()) {
+        if (this.isClosedOrClosing(client)) {
             // a token request that finished after Echo.disconnect(): authorize() on a closed connection reconnects it
             callback?.(new Error('laravel-echo: the connection is closed'), null);
             return;
