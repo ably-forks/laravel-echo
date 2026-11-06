@@ -2,11 +2,11 @@
  * clientId switching without network. E1 authOptionsForToken, E2 re-armable 40102 handler, E3 switch window,
  * E4 error de-dup and an MAU 40161 attach failure (no unhandled rejection).
  */
-import { AblyChannel } from '../../src/channel';
+import { AblyChannel, AblyPresenceChannel } from '../../src/channel';
 import { AblyAuth } from '../../src/channel/ably/auth';
 import { beginIdentitySwitch, beginRenewalReattach, endRenewalReattach } from '../../src/channel/ably/utils';
 import Echo from '../../src/echo';
-import { FakeEmitter, ECHO_OPTIONS, ablyError, makeFakeAbly, makeFakeAblyClient, settle, trackUnhandledRejections } from './fake-ably';
+import { FakeEmitter, ECHO_OPTIONS, stubAuth, ablyError, makeFakeAbly, makeFakeAblyClient, settle, trackUnhandledRejections } from './fake-ably';
 
 let unhandled: ReturnType<typeof trackUnhandledRejections>;
 beforeEach(() => (unhandled = trackUnhandledRejections()));
@@ -478,6 +478,56 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
         expect(order).toEqual(['callback']);
         expect(client.auth.authorize).not.toHaveBeenCalled();
         fake.transition('failed', ablyError('x', SWITCH));
+        expect(errorListener).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('E3 + E4: a presence channel gets the same failure through its state change and its enter() rejection', () => {
+    const setup = () => {
+        const client = makeFakeAblyClient('user1');
+        const fake = client.channels.get('presence:room');
+        let rejectEnter!: (e: any) => void;
+        fake.presence.enter.mockImplementation(() => new Promise((_, reject) => (rejectEnter = reject)));
+        const echoChannel = new AblyPresenceChannel(client, 'presence:room', ECHO_OPTIONS, stubAuth);
+        const errorListener = jest.fn();
+        echoChannel.error(errorListener);
+        fake.transition('attached'); // starts enter()
+        return { client, fake, errorListener, rejectEnter: (e: any) => rejectEnter(e) };
+    };
+
+    test('inside a switch window: the swallowed 40102 state change and the enter() rejection of the same 40102 give no error() call', async () => {
+        const { client, fake, errorListener, rejectEnter } = setup();
+        beginIdentitySwitch(client);
+        fake.transition('failed', ablyError('mismatched clientId', SWITCH));
+        expect(errorListener).not.toHaveBeenCalled();
+        rejectEnter(ablyError('mismatched clientId', SWITCH)); // a distinct object, same code and message
+        await settle();
+        expect(errorListener).not.toHaveBeenCalled();
+    });
+
+    test('a different error after that is still delivered', async () => {
+        const { client, fake, errorListener, rejectEnter } = setup();
+        beginIdentitySwitch(client);
+        fake.transition('failed', ablyError('mismatched clientId', SWITCH));
+        rejectEnter(ablyError('denied', 40300));
+        await settle();
+        expect(errorListener).toHaveBeenCalledTimes(1);
+        expect(errorListener.mock.calls[0][0].code).toBe(40300);
+    });
+
+    test('a new 40102 outside the window, on a new enter() attempt, is delivered', async () => {
+        const { fake, errorListener, rejectEnter } = setup();
+        fake.transition('attached'); // a later attempt: the E4 count restarts
+        rejectEnter(ablyError('mismatched clientId', SWITCH)); // no window, no state change reported it
+        await settle();
+        expect(errorListener).toHaveBeenCalledTimes(1);
+    });
+
+    test('an enter() rejection while the channel is attached is always delivered', async () => {
+        const { fake, errorListener, rejectEnter } = setup();
+        fake.state = 'attached';
+        rejectEnter(ablyError('denied', 40160));
+        await settle();
         expect(errorListener).toHaveBeenCalledTimes(1);
     });
 });
