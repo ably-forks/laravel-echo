@@ -208,37 +208,44 @@ export class AblyAuth {
     };
 
     /**
-     * Runs `proceed` now, unless the connection is `initialized` or `connecting`: then once it is `connected`.
-     * `disconnected` is transient, so the wait goes on. `failed`, `closing`/`closed` (Echo.disconnect(), or
-     * Echo.connect() replacing the client) and `suspended` end it: the attach is abandoned with that error, and the
-     * connector's re-attach on the next `connected` (or the app's own attach) covers it later. The listeners are
-     * always removed.
+     * Runs `proceed` once the connection is `connected`: now if it already is, otherwise after waiting for it from
+     * `initialized`, `connecting` or `disconnected` (authorize() in `disconnected` would trigger an early reconnect in
+     * ably-js, and while connecting it restarts the attempt, RTC8b). The attach is abandoned with an error, and
+     * authorize() is never called, when the connection is `failed`, `suspended`, `closing` or `closed`, at entry or
+     * while waiting (the error is the connection's reason, or code 80000). The connector's re-attach on the next
+     * `connected` (or the app's own attach) covers it later. A single connection listener is used and always removed.
      */
     whenConnectedOrSettled = (client: any, onAbandon: (error: any) => void, proceed: () => void) => {
         const connection = client?.connection;
-        if (!connection || !['initialized', 'connecting'].includes(connection.state)) {
+        const abandon = (state: string, reason?: any) =>
+            onAbandon(
+                reason ??
+                    Object.assign(new Error(`laravel-echo: the connection is ${state}, the channel was not authorized`), {
+                        code: 80000,
+                    })
+            );
+        const waitStates = ['initialized', 'connecting', 'disconnected'];
+        const abandonStates = ['failed', 'suspended', 'closing', 'closed'];
+        const state = connection?.state;
+        if (!connection || (!waitStates.includes(state) && !abandonStates.includes(state))) {
             proceed();
             return;
         }
-        const events = ['connected', 'failed', 'closing', 'closed', 'suspended'];
-        const handlers: Record<string, (stateChange?: any) => void> = {};
-        const cleanup = () => events.forEach((event) => connection.off(event, handlers[event]));
-        events.forEach((event) => {
-            handlers[event] = (stateChange?: any) => {
-                cleanup();
-                if (event === 'connected') {
-                    proceed();
-                    return;
-                }
-                onAbandon(
-                    stateChange?.reason ??
-                        Object.assign(new Error(`laravel-echo: the connection is ${event}, the channel was not authorized`), {
-                            code: 80000,
-                        })
-                );
-            };
-            connection.on(event, handlers[event]);
-        });
+        if (abandonStates.includes(state)) {
+            abandon(state, connection.errorReason);
+            return;
+        }
+        const listener = (stateChange?: any) => {
+            const current = stateChange?.current;
+            if (current === 'connected') {
+                connection.off(listener);
+                proceed();
+            } else if (abandonStates.includes(current)) {
+                connection.off(listener);
+                abandon(current, stateChange?.reason);
+            } // initialized, connecting, disconnected: keep waiting
+        };
+        connection.on(listener);
     };
 
     clientIdSwitchListeners: { failed: (stateChange?: any) => void; connected: () => void } | null = null;

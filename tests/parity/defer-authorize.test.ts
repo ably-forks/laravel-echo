@@ -1,6 +1,7 @@
 /**
  * Patched _attach / AblyAuth.whenConnectedOrSettled: the pre-attach authorize() waits for `connected` while the
- * connection is `initialized` or `connecting` (ably-js aborts and restarts a connecting attempt on authorize(), RTC8b).
+ * connection is `initialized`, `connecting` or `disconnected` (authorize() restarts a connecting attempt, RTC8b, and
+ * triggers an early reconnect from disconnected), and is abandoned, authorize() never called, on failed or suspended.
  * Own file: attach.ts patches the RealtimeChannel prototype once per module instance.
  */
 import { AblyAuth } from '../../src/channel/ably/auth';
@@ -53,6 +54,12 @@ const makeClient = (state: string) => {
 const listenerCount = (connection: any) =>
     Object.values(connection.events as Record<string, Function[]>).reduce((n, l) => n + l.length, 0) + connection.any.length;
 
+const spyOnOff = (connection: any) => {
+    const on = jest.spyOn(connection, 'on');
+    const off = jest.spyOn(connection, 'off');
+    return { on, off };
+};
+
 describe('pre-attach authorize waits for `connected`', () => {
     test.each(['initialized', 'connecting'])('%s: authorize() runs only after `connected`; the attach then succeeds', async (state) => {
         const { client, connection } = makeClient(state);
@@ -66,6 +73,55 @@ describe('pre-attach authorize waits for `connected`', () => {
         await attached;
         expect(client.auth.authorize).toHaveBeenCalledTimes(1);
         expect(listenerCount(connection)).toBe(base);
+    });
+
+    test.each(['initialized', 'connecting', 'disconnected'])(
+        'a token arriving while %s waits for connected; authorize() is not called before, one listener, removed after',
+        async (state) => {
+            const { client, connection } = makeClient(state);
+            const { on, off } = spyOnOff(connection);
+            const base = listenerCount(connection);
+            const attached = client.channels.get('private:p').attach();
+            await tick(60);
+            expect(client.auth.authorize).not.toHaveBeenCalled();
+            expect(on).toHaveBeenCalledTimes(1);
+            expect(on.mock.calls[0]).toHaveLength(1); // a single all-events listener
+            expect(listenerCount(connection)).toBe(base + 1);
+            connection.set('connected');
+            await attached;
+            expect(client.auth.authorize).toHaveBeenCalledTimes(1);
+            expect(off).toHaveBeenCalledTimes(1);
+            expect(off.mock.calls[0][0]).toBe(on.mock.calls[0][0]);
+            expect(listenerCount(connection)).toBe(base);
+        }
+    );
+
+    test.each(['failed', 'suspended'])('entry in %s: abandoned with the connection error, authorize() never called', async (state) => {
+        const { client, connection } = makeClient(state);
+        const reason = Object.assign(new Error(`conn ${state}`), { code: 80002 });
+        connection.errorReason = reason;
+        const { on } = spyOnOff(connection);
+        await expect(client.channels.get('private:p').attach()).rejects.toBe(reason);
+        expect(client.auth.authorize).not.toHaveBeenCalled();
+        expect(on).not.toHaveBeenCalled();
+        expect(listenerCount(connection)).toBe(0);
+    });
+
+    test('entry in failed without an errorReason: rejected with code 80000', async () => {
+        const { client } = makeClient('failed');
+        await expect(client.channels.get('private:p').attach()).rejects.toMatchObject({ code: 80000 });
+        expect(client.auth.authorize).not.toHaveBeenCalled();
+    });
+
+    test('disconnected, then suspended while waiting: abandoned', async () => {
+        const { client, connection } = makeClient('disconnected');
+        const attached = client.channels.get('private:p').attach();
+        await tick();
+        const reason = Object.assign(new Error('suspended'), { code: 80002 });
+        connection.set('suspended', reason);
+        await expect(attached).rejects.toBe(reason);
+        expect(client.auth.authorize).not.toHaveBeenCalled();
+        expect(listenerCount(connection)).toBe(0);
     });
 
     test('disconnected is transient: it keeps waiting, and authorize() runs after the next `connected`', async () => {
