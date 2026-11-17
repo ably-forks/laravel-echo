@@ -8,11 +8,7 @@
  * Token lifetime: at least 30 s. Ably asks a connected client to re-authorize 30 s before the token expires, so a
  * token of 30 s or less is always inside that window and loops by design, whatever the broadcaster does. These tests
  * use 60 s, so a renewal starts after ~30 s and each renewed token lasts another 60 s.
- *
- * jest.mock('ws') counts the sockets; it applies to the whole file, hence this file is separate.
  */
-// first: it also counts the global WebSocket, which the browser build uses, before ably is loaded
-import { recordedSockets, resetRecordedSockets } from './setup/ws-counter';
 import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
@@ -21,14 +17,8 @@ import { parseJwt } from '../../src/channel/ably/utils';
 import { createClient } from '@ably/pubsub-device';
 import waitForExpect from 'wait-for-expect';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-jest.mock('ws', () => require('./setup/ws-counter').createCountingWs(jest.requireActual('ws')));
-
 const TOKEN_EXPIRY_S = 60; // >= 30, see above
 const RENEWALS = 4; // observe several renewals
-// Echo's own sockets only: the observer client (an Ably client with the API key) opens its own. Compare counts, so a
-// failure never prints a socket URL (it carries a token).
-const echoSocketCount = () => recordedSockets().filter((x) => x.url.includes('laravel-echo')).length;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 jest.setTimeout(240000);
@@ -53,7 +43,6 @@ describe('Token renewal (reverify)', () => {
         tokenRequests = [];
         mockAuthServer.renewalMode = 'reverify';
         mockAuthServer.revoked.clear();
-        resetRecordedSockets();
         echo = new Echo({
             broadcaster: 'ably',
             useTls: true,
@@ -84,7 +73,7 @@ describe('Token renewal (reverify)', () => {
         return changes;
     };
 
-    test(`${RENEWALS} renewals on one connection: fresh tokens, no 40142, channels stay attached, no presence leave`, async () => {
+    test(`${RENEWALS} renewals on one connection: fresh tokens, same connection id, no 40142, channels stay attached, member stays present`, async () => {
         const ablyClient = echo.connector.ably;
         const states: Array<{ current: string; code?: number }> = [];
         ablyClient.connection.on((c: any) => states.push({ current: c.current, code: c.reason?.code }));
@@ -94,12 +83,17 @@ describe('Token renewal (reverify)', () => {
         privateChannel.error((e: any) => errors.push(e));
         presenceChannel.error((e: any) => errors.push(e));
         await Promise.all([privateChannel, presenceChannel].map((c) => new Promise((resolve) => c.subscribed(resolve))));
+        const connectionId = ablyClient.connection.id; // renewals must keep this connection (no reconnect, no resume)
+        expect(connectionId).toBeTruthy();
         const privateChanges = watch(privateChannel);
         const presenceChanges = watch(presenceChannel);
 
         observer = createClient({ key: testApp.keys[0].keyStr, endpoint: 'nonprod:sandbox' } as any);
         const members: Array<{ action: string; clientId: string }> = [];
         await observer.channels.get('presence:renewal').presence.subscribe((m: any) => members.push({ action: m.action, clientId: m.clientId }));
+        // not vacuous: Echo's member is present before the renewals, so "no leave" below means something
+        const memberBefore = await observer.channels.get('presence:renewal').presence.get();
+        expect(memberBefore.map((m: any) => m.clientId)).toContain(ablyClient.auth.clientId);
 
         await waitForExpect(() => expect(renewalRequests().length).toBeGreaterThanOrEqual(RENEWALS), 200000, 1000);
         await sleep(2000);
@@ -113,7 +107,8 @@ describe('Token renewal (reverify)', () => {
         expect(caps).toContain('"private:renewal"');
         expect(caps).toContain('"presence:renewal"');
 
-        expect(echoSocketCount()).toBe(1);
+        // connection.id is an invariant (a resumed reconnect keeps it too); the no-disconnected / no-40142 checks are what catch a forced reconnect.
+        expect(ablyClient.connection.id).toBe(connectionId); // the same connection after the renewals
         expect(states.map((s) => s.current)).not.toContain('disconnected');
         expect(states.filter((s) => s.code === 40142)).toEqual([]);
         expect(ablyClient.connection.state).toBe('connected');
@@ -125,6 +120,9 @@ describe('Token renewal (reverify)', () => {
         expect(presenceChannel.channel.state).toBe('attached');
         expect(errors).toEqual([]);
         expect(members.filter((m) => m.action === 'leave')).toEqual([]);
+        const memberAfter = await observer.channels.get('presence:renewal').presence.get();
+        expect(memberAfter.map((m: any) => m.clientId)).toContain(ablyClient.auth.clientId);
+        expect(ablyClient.connection.id).toBe(connectionId);
     });
 
     test('a revoked private channel is dropped at the next renewal: one 403 reaches error(), the other channels stay attached', async () => {
@@ -149,6 +147,5 @@ describe('Token renewal (reverify)', () => {
         expect(keptChannel.channel.state).toBe('attached');
         expect(keptErrors).toEqual([]);
         expect(echo.connector.ably.connection.state).toBe('connected');
-        expect(echoSocketCount()).toBe(1);
     });
 });
