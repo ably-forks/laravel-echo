@@ -11,8 +11,19 @@ type channels = Array<string>;
  * without running actual PHP server. It mirrors laravel-broadcaster 1.1:
  * - `guestClientId` = `ABLY_MAU_ACCOUNT=true`: a request without a user (`clientId` null) is signed with a guest id
  *   `guest:<random>.<tag>`, stable until `rotateGuestId()` (the broadcaster issues a fresh one after logout);
- * - a presented token's claims (capability, iat, exp) are reused only for the same clientId (identity-scoped claims);
+ * - a connection renewal (`channel_name` null) with a valid token of the same clientId follows `renewalMode`:
+ *   - 'reverify' (default, the fixed broadcaster): a fresh iat/exp, and the capability is the public claims plus the
+ *     presented private:/presence: channels that are still allowed (see `revoke()`/`isAllowed`);
+ *   - 'reuse' (the old broadcaster, laravel-broadcaster 1.0.8): the presented token's iat, exp and capability, so the
+ *     renewed token is byte-identical and ably-js keeps asking for re-auth in the last 30 s (an AUTH loop, then 40142);
+ * - a channel-auth request (`channel_name` set) adds that channel to the presented token's claims, as before;
+ * - a presented token's claims are used only for the same clientId (identity-scoped claims);
+ * - a channel that is revoked (`revoke()`, or `isAllowed` returning false) is denied with a 403 on a channel-auth
+ *   request, and dropped from the capability on a renewal;
  * - private and presence channels are denied (403) when there is no user, also in guest-id mode.
+ * Use a `tokenExpiry` of at least 30 s when testing renewals: Ably asks a connected client to re-authorize 30 s before
+ * the token expires, so a token of 30 s or less is always inside that window and renews in a loop, by design, in both
+ * modes. Short-TTL suites that rely on a renewal returning the same claims set `renewalMode = 'reuse'` explicitly.
  * It copies the broadcaster's behaviour, not its exact formats or checks. Known gaps:
  * - the guest id only looks like the broadcaster's (`guest:<random>.<tag>`); the tag is random, not an HMAC;
  * - a guest id changes only when a test calls `rotateGuestId()` (the broadcaster issues a fresh one per session and
@@ -31,7 +42,17 @@ export class MockAuthServer {
 
     userInfo = { id: 'sacOO7@github.com', name: 'sacOO7' }; // Used for presence
 
-    tokenExpiry = 60; // seconds, mirrors AblyBroadcaster's `token_expiry` config
+    tokenExpiry = 60; // seconds, mirrors AblyBroadcaster's `token_expiry` config; use >= 30 for renewal tests (see above)
+
+    renewalMode: 'reuse' | 'reverify' = 'reverify'; // how a connection renewal (channel_name null) treats the presented token
+
+    /** Guarded channels that are no longer authorized (a user lost access). */
+    revoked = new Set<string>();
+    /** Optional predicate: return false to deny a guarded channel. */
+    isAllowedFn?: (channelName: string) => boolean;
+    revoke = (channelName: string) => this.revoked.add(channelName);
+    unrevoke = (channelName: string) => this.revoked.delete(channelName);
+    isAllowed = (channelName: string) => !this.revoked.has(channelName) && (this.isAllowedFn?.(channelName) ?? true);
 
     publicCapability = ['subscribe', 'history', 'channel-metadata']; // operations granted on `public:*`; tests may widen it
 
@@ -94,6 +115,9 @@ export class MockAuthServer {
             // the broadcaster's AccessDeniedHttpException, as Echo's authEndpoint path reports it
             throw httpError(`HTTP 403: no user for ${channelName}`, 403, 40300);
         }
+        if (!isNullOrUndefinedOrEmpty(channelName) && this.isGuardedChannel(channelName) && !this.isAllowed(channelName)) {
+            throw httpError(`HTTP 403: access to ${channelName} is not allowed`, 403, 40300);
+        }
         const clientId = this.signedClientId();
         let serverTime = await this.ablyClient.time();
         // identity-scoped claims: reuse a presented token's claims only when it was signed for the same clientId
@@ -103,9 +127,21 @@ export class MockAuthServer {
             (parseJwt(token).payload['x-ably-clientId'] ?? null) === clientId
         ) {
             const { payload } = parseJwt(token);
-            iat = payload.iat;
-            exp = payload.exp;
-            capabilities = JSON.parse(payload['x-ably-capability']);
+            const presented = JSON.parse(payload['x-ably-capability']);
+            if (isNullOrUndefinedOrEmpty(channelName) && this.renewalMode === 'reverify') {
+                // connection renewal: fresh lifetime; keep only the presented guarded channels that are still allowed
+                iat = Math.round(serverTime / 1000);
+                exp = iat + this.tokenExpiry;
+                for (const name of Object.keys(presented)) {
+                    if (this.isGuardedChannel(name) && this.isAllowed(name)) {
+                        capabilities[name] = presented[name];
+                    }
+                }
+            } else {
+                iat = payload.iat;
+                exp = payload.exp;
+                capabilities = presented;
+            }
         } else {
             iat = Math.round(serverTime / 1000);
             exp = iat + this.tokenExpiry; /* time of expiration in seconds */

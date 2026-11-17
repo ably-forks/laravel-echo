@@ -47,12 +47,13 @@ Echo's API is unchanged. See "Upgrading to 1.1" in the README.
 
 - Another tab's logout or login reaches this tab only at its next connection token renewal (up to laravel-broadcaster's `token_expiry`, 8 hours by default). Call `Echo.connect()` in every tab, for example from a `BroadcastChannel` message, to switch at once.
 - Every client ID switch uses a fresh connection, not a resume, so messages published while the connection switches (about a second) are not delivered. Apps that need them can use channel `rewind` or history.
-- Access to private and presence channels can be lost briefly when the connection token is renewed after it expires: laravel-broadcaster keeps a token's channel capabilities only while that token is unexpired, so the renewed token has only the `public:*` capability, private and presence channels fail with 40160 and are re-authorized, and messages broadcast in that gap are lost. This needs a laravel-broadcaster fix; the sandbox test for it is skipped until then.
+- Access to private and presence channels can be lost briefly when the connection token is renewed after it expires: laravel-broadcaster keeps a token's channel capabilities only while that token is unexpired, so the renewed token has only the `public:*` capability, private and presence channels fail with 40160 and are re-authorized, and messages broadcast in that gap are lost. This needs a laravel-broadcaster fix; the sandbox test for it (`token-renewal`) now checks the renewal behaviour of the fixed broadcaster instead (see Internal changes).
 
 ### Internal changes
 
 - Internal behaviour changes inherited from ably-js v3 (error shapes, MsgPack in browsers, subscribe-capability errors, asynchronous callbacks, and failures of `whisper`, `enter`, `update` and `leave` called without a callback now reach `error()` listeners); see the ably-js v3 migration guide: https://github.com/ably/ably-js/blob/main/docs/migration-guides/v3/lib.md. Pull requests: https://github.com/ably-forks/laravel-echo/pull/50, https://github.com/ably-forks/laravel-echo/pull/51, https://github.com/ably-forks/laravel-echo/pull/52, https://github.com/ably-forks/laravel-echo/pull/53.
 - CI runs the Ably tests against both the Node and the browser build of `@ably/pubsub-device`; the browser-build job is blocking.
+- Sandbox tests: `MockAuthServer` has `renewalMode` (`'reverify'` by default, as the fixed broadcaster; `'reuse'` is the old behaviour) and `revoke()`; `token-renewal` runs 60 s tokens across several renewals (a token of 30 s or less always renews in a loop, by design), and `ws-startup-subscribe` checks that a startup private/presence subscribe opens one WebSocket.
 
 ### Release
 
