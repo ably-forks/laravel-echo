@@ -53,7 +53,7 @@ npm run dev
 ```
 - **Login and user switch in a single-page app.** An Ably connection cannot change its client ID, so when a user logs in, or another user logs in, the next private or presence channel request returns a token for the new client ID and Echo reconnects with it and re-attaches all existing channels (see [Fix clientId mismatch](https://github.com/ably-forks/laravel-echo/pull/38)). This also works for a second switch in the same page. The transient "mismatched clientId" error (40102) of such a switch is not reported to `error()`.
 - **After logout, call `Echo.connect()` or create a new Echo instance.** Echo closes the old connection and connects as a guest; subscribe to your channels again. Private and presence channels are then denied by your broadcaster, as for any guest. On MAU-billed Ably accounts, guests need a client ID: see "Guest users on MAU-billed Ably accounts" below.
-- **Logout or login in another tab.** Other open tabs switch to the new identity (a guest, no client ID, or another user) at their next connection token renewal, so after up to the token lifetime (laravel-broadcaster's `token_expiry`, 8 hours by default). They reconnect once as the new identity (typically within a second or two) and re-attach their channels. When Ably asks a connected page to re-authenticate (with long-lived tokens, shortly before they expire), the connection briefly reports `failed` (40102, not passed to `error()`) before it reconnects. Private and presence channels are authorized again, as after an in-page switch: after a login they attach without any `error()` call, and after a logout `error()` receives the broadcaster's denial (403) once per private or presence channel. On MAU-billed accounts without guest client IDs, a switch to no client ID fails with 40161 (see "Guest users on MAU-billed Ably accounts"). To switch every tab at once, tell the other tabs to call `Echo.connect()`, for example with a [`BroadcastChannel`](https://developer.mozilla.org/docs/Web/API/BroadcastChannel):
+- **Logout or login in another tab.** Other open tabs switch to the new identity (a guest, no client ID, or another user) at their next connection token renewal, so after up to the token lifetime (laravel-broadcaster's `token_expiry`, 8 hours by default). They reconnect once as the new identity (typically within a second or two) and re-attach their channels. When Ably asks a connected page to re-authenticate (with long-lived tokens, shortly before they expire), the connection briefly reports `failed` (40102, not passed to `error()`) before it reconnects. Private and presence channels are authorized again, as after an in-page switch: after a login, channels the new user is authorised for attach without any `error()` call (others report the broadcaster's denial, 403, once), and after a logout `error()` receives the broadcaster's denial (403) once per private or presence channel. On MAU-billed accounts without guest client IDs, a switch to no client ID fails with 40161 (see "Guest users on MAU-billed Ably accounts"). To switch every tab at once, tell the other tabs to call `Echo.connect()`, for example with a [`BroadcastChannel`](https://developer.mozilla.org/docs/Web/API/BroadcastChannel):
 ```js
 const authTabs = new BroadcastChannel('auth');
 authTabs.onmessage = () => window.Echo.connect(); // then subscribe to your channels again
@@ -62,6 +62,8 @@ authTabs.onmessage = () => window.Echo.connect(); // then subscribe to your chan
 authTabs.postMessage('identity-changed');
 window.Echo.connect();
 ```
+
+If the login or logout regenerated the CSRF token, refresh it before `Echo.connect()`: Echo reads `window.Laravel.csrfToken`, then the `csrfToken` option, then the `<meta name="csrf-token">` tag, and an outdated token fails the auth request with 419.
 
 ## Upgrading to 1.1
 
@@ -158,7 +160,7 @@ This library uses [semantic versioning](http://semver.org/). For each release, t
 5. Make a PR against `master`.
 6. Once the PR is approved, merge it into `master`.
 7. Add a tag and push it to origin - e.g.: `git tag ably-echo-1.0.3 && git push origin ably-echo-1.0.3`.
-8. Publish npm package on npmjs.com.
+8. Publish npm package on npmjs.com. For 1.1.0, publish straight to `latest` (a plain `npm publish`, no `next` tag, no beta) once PRs 54, 55 and 56 are merged.
 9. Visit https://github.com/ably-forks/laravel-echo/tags and add release notes to the release (generally you can just copy the notes you added to the CHANGELOG).
 10. Update the [Ably Changelog](https://changelog.ably.com/) (via [headwayapp](https://headwayapp.co/)) with these changes (again, you can just copy the notes you added to the CHANGELOG).
 
