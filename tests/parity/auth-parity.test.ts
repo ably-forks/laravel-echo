@@ -219,6 +219,20 @@ describe('nothing Echo scheduled reopens a connection the app closed (RTC8c: aut
         expect(cb.mock.calls[0][1]).toBeNull();
     });
 
+    test('a token request that started on a closed client and is still pending when Echo.connect() replaces it is not delivered', async () => {
+        const pending = deferred();
+        const { auth, client, connector } = makeAuth(() => pending.promise);
+        client.connection.state = 'closed'; // the app called authorize() on a closed client: the closed check is skipped
+        const cb = jest.fn();
+        const run = (auth.options.authCallback as any)({}, cb);
+        connector.ably = { connection: { state: 'connecting', on: jest.fn(), off: jest.fn() }, auth: {}, connect: jest.fn() };
+        pending.resolve({ token: makeJwt() });
+        await run;
+        expect(cb).toHaveBeenCalledTimes(1);
+        expect(cb.mock.calls[0][0]).toContain('closed while a token was requested');
+        expect(cb.mock.calls[0][1]).toBeNull();
+    });
+
     test('a token request that starts on a closed connection (the app calls authorize() itself) is still delivered', async () => {
         const { auth, client } = makeAuth(async () => ({ token: makeJwt() }));
         client.connection.state = 'closed';

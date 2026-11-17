@@ -734,6 +734,28 @@ describe('channelsReattachedByAuth: the connector skips its re-attach once after
         expect(connector.channelsReattachedByAuth).toBe(false);
     });
 
+    test.each(['failed', 'closing', 'closed'])('(d) the connection is %s when the timer runs: no latch, no attach', (state) => {
+        const { connector, auth, attachCalls, fail, detachAll } = build();
+        fail();
+        detachAll();
+        auth.onClientIdChanged();
+        (connector.ably.connection as any).state = state; // failed again, or closed by the app, before the timer
+        jest.advanceTimersByTime(0);
+        expect(connector.channelsReattachedByAuth).toBe(false);
+        expect(attachCalls()).toEqual([0, 0]);
+    });
+
+    test('(e) the client was replaced when the timer runs: the new client\'s channels are not attached, no latch', () => {
+        const { connector, auth, attachCalls, fail, detachAll } = build();
+        fail();
+        detachAll();
+        auth.onClientIdChanged();
+        connector.ably = { connection: new FakeEmitter(), auth: {}, connect: jest.fn() }; // a direct connector.connect()
+        jest.advanceTimersByTime(0);
+        expect(connector.channelsReattachedByAuth).toBe(false);
+        expect(attachCalls()).toEqual([0, 0]);
+    });
+
     test('(c) without onClientIdChanged, a plain failed -> connected re-attaches as before', () => {
         const { connector, attachCalls, fail, connect, detachAll } = build();
         fail();

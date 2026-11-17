@@ -41,7 +41,7 @@ export class AblyAuth {
                 callback(error, null);
                 return;
             }
-            if (!wasClosed && (this.isClosedOrClosing(client) || this.ablyClient() !== client)) {
+            if (this.ablyClient() !== client || (!wasClosed && this.isClosedOrClosing(client))) {
                 // Echo.disconnect() (or Echo.connect(), which replaces the client) ran while the token was requested:
                 // handing it over would make ably-js open the closed connection again (RTC8c)
                 callback('laravel-echo: the connection was closed while a token was requested', null);
@@ -242,8 +242,14 @@ export class AblyAuth {
      * There's a separate test case added for user login flow => ably-user-login.test.ts.
      */
     onClientIdChanged = () => {
-        this.ablyClient().connect();
+        const client = this.ablyClient();
+        client.connect();
         setTimeout(() => {
+            // Echo.connect() replaced the client, or this connection failed again or was closed meanwhile: setting the
+            // latch now would make the next `connected` skip the connector's re-attach
+            if (this.ablyClient() !== client || ['failed', 'closing', 'closed'].includes(client.connection?.state)) {
+                return;
+            }
             // these attaches cover this reconnect: the connector's re-attach on the next `connected` must not attach
             // (and re-authorize, reporting a second 403) the same channels again. Set here, after the `failed` event
             // that triggered this has reached every listener, so a later failure clears it (AblyConnector).
