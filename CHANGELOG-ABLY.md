@@ -23,6 +23,7 @@ Echo's API is unchanged. See "Upgrading to 1.1" in the README.
 
 ### Fixed
 
+- A private or presence channel subscribed while the connection is still connecting (for example right after `Echo.private()` at startup) no longer aborts and restarts the connection attempt: Echo waits for `connected` before its pre-attach authorize(), so the page opens one WebSocket instead of two (and no leaked `ws-up` connectivity probe). If the connection fails, closes or suspends meanwhile, the attach fails with that error.
 - Callbacks of `whisper`, `enter`, `update`, `leave` and `here` run exactly once; exceptions in callbacks and listeners no longer become unhandled promise rejections or stop other listeners.
 - One attach failure is reported to `error()` once, also when both the channel state change and the `attach()` rejection report it (the state-change payload is unchanged); subscribe errors that no channel state change reported still reach `error()`.
 - Auth endpoint: cookies are sent cross-origin only for a lowercase `authorization` header, as with ably 1.x and 2.x; error codes come from the HTTP status; invalid tokens are rejected with code 50000 and no longer replace the cached token; a `requestTokenFn` that never settles no longer blocks other token requests forever (each request is bounded by 30 s; an auth-endpoint request by `httpRequestTimeout` + 1 s if that is longer); `httpRequestTimeout` applies to auth requests.

@@ -178,19 +178,66 @@ export class AblyAuth {
                     // get upgraded token with channel access
                     const echoChannel = this.getChannel(channelName);
                     this.setPresenceInfo(echoChannel, info);
-                    this.tryAuthorizeOnSameConnection(
-                        this.authOptionsForToken(jwtToken),
-                        (err, _tokenDetails) => {
-                            if (err) {
-                                errorCallback(err);
-                            } else {
-                                this.removeExpired(channelName);
-                                errorCallback(null);
-                            }
+                    // authorize() while ably-js is still connecting aborts and restarts that connection attempt (RTC8b):
+                    // an extra socket, and a leaked slow-connection timer. Wait for `connected` first.
+                    this.whenConnectedOrSettled(ablyClient, errorCallback, () => {
+                        if (this.ablyClient() !== ablyClient) {
+                            // Echo.connect() replaced the client while waiting; authorize() would act on the new one
+                            errorCallback(
+                                Object.assign(new Error('laravel-echo: the client was replaced while waiting for connected'), {
+                                    code: 80000,
+                                })
+                            );
+                            return;
                         }
-                    );
+                        this.tryAuthorizeOnSameConnection(
+                            this.authOptionsForToken(jwtToken),
+                            (err, _tokenDetails) => {
+                                if (err) {
+                                    errorCallback(err);
+                                } else {
+                                    this.removeExpired(channelName);
+                                    errorCallback(null);
+                                }
+                            }
+                        );
+                    });
                 })
                 .catch((err) => errorCallback(err));
+        });
+    };
+
+    /**
+     * Runs `proceed` now, unless the connection is `initialized` or `connecting`: then once it is `connected`.
+     * `disconnected` is transient, so the wait goes on. `failed`, `closing`/`closed` (Echo.disconnect(), or
+     * Echo.connect() replacing the client) and `suspended` end it: the attach is abandoned with that error, and the
+     * connector's re-attach on the next `connected` (or the app's own attach) covers it later. The listeners are
+     * always removed.
+     */
+    whenConnectedOrSettled = (client: any, onAbandon: (error: any) => void, proceed: () => void) => {
+        const connection = client?.connection;
+        if (!connection || !['initialized', 'connecting'].includes(connection.state)) {
+            proceed();
+            return;
+        }
+        const events = ['connected', 'failed', 'closing', 'closed', 'suspended'];
+        const handlers: Record<string, (stateChange?: any) => void> = {};
+        const cleanup = () => events.forEach((event) => connection.off(event, handlers[event]));
+        events.forEach((event) => {
+            handlers[event] = (stateChange?: any) => {
+                cleanup();
+                if (event === 'connected') {
+                    proceed();
+                    return;
+                }
+                onAbandon(
+                    stateChange?.reason ??
+                        Object.assign(new Error(`laravel-echo: the connection is ${event}, the channel was not authorized`), {
+                            code: 80000,
+                        })
+                );
+            };
+            connection.on(event, handlers[event]);
         });
     };
 
