@@ -212,8 +212,11 @@ export class AblyAuth {
      * `initialized`, `connecting` or `disconnected` (authorize() in `disconnected` would trigger an early reconnect in
      * ably-js, and while connecting it restarts the attempt, RTC8b). The attach is abandoned with an error, and
      * authorize() is never called, when the connection is `failed`, `suspended`, `closing` or `closed`, at entry or
-     * while waiting (the error is the connection's reason, or code 80000). The connector's re-attach on the next
-     * `connected` (or the app's own attach) covers it later. A single connection listener is used and always removed.
+     * while waiting (the error is the connection's reason, or code 80000). The channel stays `initialized`: the error is
+     * reported to the attach caller (the channel's error callbacks) and the app attaches again. The connector's re-attach
+     * latch only arms on `failed`; neither ably-js nor Echo re-attaches an attach abandoned on `suspended`, `closing` or
+     * `closed`. A single connection listener is used and always removed; an exception thrown by `proceed` while waiting
+     * is reported through `onAbandon` too (ably-js would only log it).
      */
     whenConnectedOrSettled = (client: any, onAbandon: (error: any) => void, proceed: () => void) => {
         const connection = client?.connection;
@@ -239,7 +242,13 @@ export class AblyAuth {
             const current = stateChange?.current;
             if (current === 'connected') {
                 connection.off(listener);
-                proceed();
+                try {
+                    proceed();
+                } catch (e) {
+                    // ably-js's EventEmitter only logs a listener's exception: report it to the attach, as the
+                    // immediate path does (its .catch(errorCallback))
+                    onAbandon(e);
+                }
             } else if (abandonStates.includes(current)) {
                 connection.off(listener);
                 abandon(current, stateChange?.reason);

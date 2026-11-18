@@ -174,4 +174,26 @@ describe('pre-attach authorize waits for `connected`', () => {
         expect(client.auth.authorize).not.toHaveBeenCalled();
         expect(replacement.auth.authorize).not.toHaveBeenCalled();
     });
+
+    test('proceed throws synchronously after `connected`: the error reaches the attach error callback once, the listener is removed', async () => {
+        const { client, connection } = makeClient('connecting');
+        const base = listenerCount(connection);
+        const boom = new Error('proceed threw');
+        // authOptionsForToken reads auth.clientId inside the deferred proceed; make that step throw once connected
+        Object.defineProperty(client.auth, 'clientId', {
+            get: () => {
+                if (connection.state === 'connected') throw boom;
+                return 'user1';
+            },
+        });
+        const attached = client.channels.get('private:p').attach();
+        attached.catch(() => void 0);
+        await tick();
+        expect(listenerCount(connection)).toBe(base + 1);
+        connection.set('connected');
+        await expect(attached).rejects.toBe(boom); // the attach callback was called with the error, exactly once
+        expect(client.auth.authorize).not.toHaveBeenCalled();
+        expect(listenerCount(connection)).toBe(base);
+        expect(connection.listenerErrors).toHaveLength(0); // not swallowed by the emitter
+    });
 });
