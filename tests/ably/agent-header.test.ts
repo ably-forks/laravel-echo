@@ -4,7 +4,6 @@
  */
 import * as http from 'http';
 import { AddressInfo } from 'net';
-import * as Ably from '@ably/pubsub-device';
 import Echo from '../../src/echo';
 import { AblyConnector } from '../../src/connector/ably-connector';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -16,7 +15,6 @@ describe('Ably-Agent header', () => {
     const seen: Array<{ url: string; headers: http.IncomingHttpHeaders }> = [];
 
     beforeAll(async () => {
-        global.Ably = Ably;
         server = http.createServer((req, res) => {
             seen.push({ url: req.url, headers: req.headers });
             res.setHeader('content-type', 'application/json');

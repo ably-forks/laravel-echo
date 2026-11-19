@@ -1,7 +1,7 @@
 import type { AblyRealtime, AblyRealtimeChannel } from '../../typings/ably';
 import { EventFormatter } from '../util';
 import { Channel } from './channel';
-import { safeInvoke, isSameError } from './ably/utils';
+import { safeInvoke, isSameError, consumeSwitchError, settleRenewalReattach } from './ably/utils';
 
 /**
  * This class represents an Ably channel.
@@ -94,6 +94,7 @@ export class AblyChannel extends Channel {
         this.channel.on((stateChange) => {
             const { previous, current, reason } = stateChange;
             if (previous !== 'attached' && current == 'attached') {
+                settleRenewalReattach(this.ably, this.name);
                 this.lastStateChangeReason = null;
                 this.subscribedListeners.forEach((listener) => safeInvoke(listener));
             } else if (reason) {
@@ -102,7 +103,8 @@ export class AblyChannel extends Channel {
                 this._alertErrorListeners(stateChange);
             }
         });
-        this.channel.attach().catch(this._alertErrorListeners);
+        // E4: a rejection that the state change above already reported is not reported again
+        this.channel.attach().catch(this._subscribeErrorHandler());
     }
 
     /**
@@ -239,10 +241,10 @@ export class AblyChannel extends Channel {
     }
 
     _alertErrorListeners = (err: any) => {
-        if (err) {
-            this.lastAlertedError = err;
-            this.errorListeners.forEach((listener) => safeInvoke(listener, err));
-        }
+        if (!err) return;
+        if (consumeSwitchError(this.ably, this.name, err)) return; // expected 40102 of an Echo-initiated identity switch
+        this.lastAlertedError = err;
+        this.errorListeners.forEach((listener) => safeInvoke(listener, err));
     };
 
     /**

@@ -151,3 +151,19 @@ export const makeJwt = (capability: Record<string, string[]> = { 'private:*': ['
         '.sig'
     );
 };
+
+/**
+ * A fake ably client that also has a connection emitter (with `connect`) and an `auth` (clientId, authorize), for
+ * the identity-switch tests. `makeFakeAbly` itself is unchanged.
+ */
+export const makeFakeAblyClient = (clientId?: string | null) => {
+    const connection: any = new FakeEmitter();
+    const client: any = makeFakeAbly();
+    client.connect = jest.fn(); // Echo's onClientIdChanged calls client.connect()
+    client.connection = connection;
+    client.auth = {
+        clientId,
+        authorize: jest.fn(() => Promise.resolve({})) as jest.Mock<Promise<any>, any[]>,
+    };
+    return client;
+};

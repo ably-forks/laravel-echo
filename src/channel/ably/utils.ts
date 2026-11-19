@@ -1,4 +1,7 @@
 import type { TokenDetails } from '../../../typings/ably';
+// Single install: Echo always uses its own copy of @ably/pubsub-device (a dependency). The ESM/CJS builds keep this
+// import external, so the app's bundler resolves it; the IIFE build bundles it.
+import * as BundledAbly from '@ably/pubsub-device';
 
 /**
  * Invokes a user-supplied callback/listener so that an exception it throws (or a promise it rejects) is reported
@@ -115,20 +118,105 @@ export const fullUrl = (url: string) => {
 };
 
 /**
+ * E3: an Echo-initiated identity switch (a token for another clientId, including null -> user) makes the server
+ * reject the in-band AUTH with 40102 while the reconnect is already under way, and the channels then recover by
+ * themselves. Within a per-client switch window, the first 40102 per channel is not reported to error() listeners.
+ * The window closes on the next `connected`, a `failed` other than 40102, releaseClient() or after 30 s.
+ */
+const IDENTITY_SWITCH_TIMEOUT_MS = 30_000;
+const switchWindows = new WeakMap<object, { suppressed: Set<string>; timer: any }>();
+
+export const beginIdentitySwitch = (client: object) => {
+    endIdentitySwitch(client);
+    const timer = setTimeout(() => endIdentitySwitch(client), IDENTITY_SWITCH_TIMEOUT_MS);
+    timer?.unref?.();
+    switchWindows.set(client, { suppressed: new Set(), timer });
+};
+
+export const endIdentitySwitch = (client: object) => {
+    const w = switchWindows.get(client);
+    if (w) {
+        clearTimeout(w.timer);
+        switchWindows.delete(client);
+    }
+};
+
+/**
+ * A switch on token renewal (another tab logged in or out) reconnects, and ably-js then re-attaches the attached
+ * channels itself, with the new token and without Echo's pre-attach authorize. A private or presence channel fails
+ * that re-attach with 40160 and Echo re-authorizes it (AblyAuth.onChannelFailed), so the 40160 is transient: until
+ * the channel next attaches, or for at most 30 s, its first 40160 is not reported to error() listeners. The
+ * re-authorize result (attached, or the broadcaster's 403) is reported as usual.
+ */
+const renewalReattachWindows = new WeakMap<object, { done: Set<string>; timer: any }>();
+
+export const beginRenewalReattach = (client: object) => {
+    endRenewalReattach(client);
+    const timer = setTimeout(() => endRenewalReattach(client), IDENTITY_SWITCH_TIMEOUT_MS);
+    timer?.unref?.();
+    renewalReattachWindows.set(client, { done: new Set(), timer });
+};
+
+export const endRenewalReattach = (client: object) => {
+    const w = renewalReattachWindows.get(client);
+    if (w) {
+        clearTimeout(w.timer);
+        renewalReattachWindows.delete(client);
+    }
+};
+
+/** The channel attached: a later 40160 is a real failure. */
+export const settleRenewalReattach = (client: object, channelName: string) => {
+    renewalReattachWindows.get(client)?.done.add(channelName);
+};
+
+const isGuardedChannel = (channelName: string) =>
+    channelName.startsWith('private:') || channelName.startsWith('presence:');
+
+/**
+ * true = swallow: the first 40102 per channel inside an Echo-initiated switch window, or the first 40160 per private
+ * or presence channel of the re-attach after a renewal switch.
+ */
+export const consumeSwitchError = (client: object, channelName: string, err: any): boolean => {
+    const code = err?.code ?? err?.reason?.code;
+    if (code === 40160 && isGuardedChannel(channelName)) {
+        const r = client ? renewalReattachWindows.get(client) : undefined;
+        if (!r || r.done.has(channelName)) return false;
+        r.done.add(channelName);
+        return true;
+    }
+    const w = client ? switchWindows.get(client) : undefined;
+    if (!w || code !== 40102 || w.suppressed.has(channelName)) return false;
+    w.suppressed.add(channelName);
+    return true;
+};
+
+/**
  * Default timeout for HTTP requests, matching ably-js's default `httpRequestTimeout`.
  */
 export const HTTP_REQUEST_TIMEOUT_MS = 10000;
 
 /**
- * Resolves the Ably library global (R4): the bare `Ably` (webpack ProvidePlugin friendly) or the CDN's `AblyPubSub`,
- * whichever has `createClient`. Returns undefined when neither does.
+ * The Ably library Echo uses: always its own `@ably/pubsub-device`. A global `Ably` or `AblyPubSub` (the 1.0.x README
+ * snippet `window.Ably = Ably`, or the CDN bundle) is never read, so a legacy ably v1/v2 global cannot break Echo.
  */
-export const resolveAblyLib = (): any => {
-    const candidates = [
-        typeof Ably !== 'undefined' ? Ably : undefined,
-        typeof AblyPubSub !== 'undefined' ? AblyPubSub : undefined,
-    ];
-    return candidates.find((lib) => typeof lib?.createClient === 'function');
+export const resolveAblyLib = (): any => BundledAbly;
+
+let ignoredGlobalsWarned = false;
+
+/**
+ * Logs one `console.warn` per page when a global `Ably` or `AblyPubSub` exists, because Echo ignores it. Only checks
+ * whether the globals exist; their values are never used.
+ */
+export const warnIfAblyGlobalsIgnored = (): void => {
+    if (ignoredGlobalsWarned || (typeof Ably === 'undefined' && typeof AblyPubSub === 'undefined')) {
+        return;
+    }
+    ignoredGlobalsWarned = true;
+    console.warn(
+        '@ably/laravel-echo: the global `Ably` / `AblyPubSub` is ignored; Echo uses its own @ably/pubsub-device. ' +
+            'You can remove `window.Ably = ...` (and the Ably CDN script) unless your own code uses it.'
+    );
 };
 
 /**

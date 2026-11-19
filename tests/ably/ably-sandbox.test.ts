@@ -1,5 +1,4 @@
 import { setup, tearDown } from './setup/sandbox';
-import * as Ably from '@ably/pubsub-device';
 import { createHttpClient } from '@ably/pubsub-server';
 
 jest.setTimeout(20000);
@@ -7,7 +6,6 @@ describe('AblySandbox', () => {
     let testApp;
 
     beforeAll(async () => {
-        global.Ably = Ably;
         testApp = await setup();
     });
 

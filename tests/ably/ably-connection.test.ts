@@ -2,7 +2,6 @@ import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import safeAssert from './setup/utils';
-import * as Ably from '@ably/pubsub-device';
 jest.setTimeout(20000);
 describe('AblyConnection', () => {
     let testApp: any;
@@ -10,7 +9,6 @@ describe('AblyConnection', () => {
     let echo: Echo;
 
     beforeAll(async () => {
-        global.Ably = Ably;
         testApp = await setup();
         mockAuthServer = new MockAuthServer(testApp.keys[0].keyStr);
     });

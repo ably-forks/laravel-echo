@@ -41,9 +41,8 @@ describe('auth token path (review §9.1 combined design)', () => {
         delete (globalThis as any).Ably;
     });
 
-    test('R6: httpError is a real v3 ErrorInfo when the global is v3, plain Error otherwise', () => {
-        expect(httpError('x', 500, 50000)).not.toBeInstanceOf(AblyDevice.ErrorInfo);
-        (globalThis as any).Ably = AblyDevice;
+    test("R6: httpError is a real v3 ErrorInfo (Echo's own @ably/pubsub-device), whatever the globals", () => {
+        (globalThis as any).Ably = { Realtime: jest.fn() }; // a legacy global is ignored
         const e: any = httpError('x', 403, 40300, new Error('c'));
         expect(e).toBeInstanceOf(AblyDevice.ErrorInfo);
         expect(e).toMatchObject({ code: 40300, statusCode: 403, message: 'x' });
