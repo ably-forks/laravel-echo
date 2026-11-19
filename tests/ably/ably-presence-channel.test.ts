@@ -5,6 +5,11 @@ import { AblyPresenceChannel } from '../../src/channel';
 import safeAssert from './setup/utils';
 
 jest.setTimeout(20000);
+
+let channelCounter = 0;
+// Unique per test and per run: a previous test's connection may still be a member of a shared channel for a moment.
+const uniqueChannel = (label: string) => `${label}-${Date.now()}-${++channelCounter}`;
+
 describe('AblyPresenceChannel', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
@@ -36,7 +41,7 @@ describe('AblyPresenceChannel', () => {
     });
 
     test('channel subscription', (done) => {
-        const presenceChannel = echo.join('test') as AblyPresenceChannel;
+        const presenceChannel = echo.join(uniqueChannel('subscription')) as AblyPresenceChannel;
         presenceChannel.subscribed(() => {
             presenceChannel.unregisterSubscribed();
             done();
@@ -44,7 +49,7 @@ describe('AblyPresenceChannel', () => {
     });
 
     test('channel member list change', (done) => {
-        const presenceChannel = echo.join('test') as AblyPresenceChannel;
+        const presenceChannel = echo.join(uniqueChannel('list')) as AblyPresenceChannel;
         presenceChannel.here((members, err) => {
             safeAssert(
                 () => {
@@ -61,7 +66,7 @@ describe('AblyPresenceChannel', () => {
     });
 
     test('member joined', (done) => {
-        const presenceChannel = echo.join('test') as AblyPresenceChannel;
+        const presenceChannel = echo.join(uniqueChannel('joined')) as AblyPresenceChannel;
         presenceChannel.joining((memberData, memberMetaData) => {
             safeAssert(
                 () => {
@@ -75,7 +80,7 @@ describe('AblyPresenceChannel', () => {
     });
 
     test('member left', (done) => {
-        const presenceChannel = echo.join('test') as AblyPresenceChannel;
+        const presenceChannel = echo.join(uniqueChannel('left')) as AblyPresenceChannel;
         presenceChannel.leaving((memberData, memberMetaData) => {
             safeAssert(
                 () => {
