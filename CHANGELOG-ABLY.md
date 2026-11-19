@@ -4,64 +4,68 @@
 
 [Full Changelog](https://github.com/ably-forks/laravel-echo/compare/ably-echo-1.0.6...ably-echo-1.1.0)
 
-Echo's API is unchanged. See [UPDATING.md](UPDATING.md#10x--110) for the upgrade steps.
+Echo 1.1.0 is a minor release. The Echo API and its options are unchanged, so most apps only change one install line.
 
-### Changed
+You now install a single package. Echo brings Ably's library with it, so you no longer install `ably` or set `window.Ably`. Users can now log in, switch user and log out repeatedly, in this tab or another, without a page reload, and Echo now works with Ably accounts that bill by monthly active users (MAU). The release also fixes problems you may have hit in 1.0.x, such as a private channel that restarted the first connection attempt.
 
-- Echo now depends on `@ably/pubsub-device@^3` and installs it itself (`npm install @ably/laravel-echo@^1.1`); `ably@1.x` and `ably@2.x` are no longer used. Echo always uses its own copy and ignores a global `Ably` or `AblyPubSub` (one-time `console.warn`); a client passed as `options.client` is still used as is. `echo.connector.ably` is now a `PubSubClient` with promise-based APIs. Apps that use this package only with Pusher, Reverb or socket.io now also bundle `@ably/pubsub-device` (about 75 KB gzipped). See [UPDATING.md](UPDATING.md#install-and-the-ably-global).
-- Installing and building requires Node.js 22 or later and a bundler that understands ES2020 (inherited from `@ably/pubsub-device`; browsers are unaffected).
-- On MAU-billed Ably accounts, guest connections without a client ID are rejected with 40161: set `ABLY_MAU_ACCOUNT=true` in laravel-broadcaster 1.1.0 or later, or only connect Echo for signed-in users. See [UPDATING.md](UPDATING.md#guest-users-on-mau-billed-ably-accounts).
-- The script-tag build `dist/echo.iife.js` now includes `@ably/pubsub-device` (about 500 KB instead of about 116 KB; about 105 KB instead of about 24 KB gzipped). The ESM and CJS builds don't include it.
-- During a client ID switch that Echo starts, the short "mismatched clientId" error (40102) is no longer reported to `error()`. Echo drops the first one per channel, until the connection is back or for at most 30 s. After a switch on token renewal (a login or logout in another tab), Echo also drops the first 40160 of each private or presence channel while it subscribes again, for at most 30 s. Echo recovers from it by authorizing the channel again. Other errors are still reported. See [UPDATING.md](UPDATING.md#error-after-a-switch).
-- The MAU console hint is logged only for 40161, 40168 and 40167, once per code, with a specific explanation for each.
-- Logout: call `Echo.connect()` or `Echo.disconnect()` as part of logout, or the page keeps the old user's channel access until its token expires. `Echo.connect()` then connects as a guest. Echo does not switch a client passed as `options.client`: change its authentication or replace it.
+Below is an overview of the main changes. Please refer to [UPDATING.md](UPDATING.md#10x--110) for the full details, including what to change in your app.
 
-### Added
+### What you need to do
 
-- Login and user switch without a page reload (for logout, see the Logout bullet above). Echo now reconnects with the new client ID and subscribes to your channels again, for guest to user and user to another user, including several switches in one page. On MAU-billed accounts this needs guest client IDs (`ABLY_MAU_ACCOUNT=true` in laravel-broadcaster). See [UPDATING.md](UPDATING.md#login-user-switch-and-logout-in-the-same-page).
-- A logout or login in another tab is picked up at the next token request for another identity, at the latest at the next connection token renewal. The tab reconnects once as the new identity (a guest, no client ID or another user) and subscribes to its channels again. Echo authorizes private and presence channels again. Previously the tab stayed disconnected and then `failed`, or stayed connected with a stale client ID. Call `Echo.connect()` in every tab to switch at once. See [UPDATING.md](UPDATING.md#logout-or-login-in-another-tab).
+1. **Install the new version:** run `npm install @ably/laravel-echo@^1.1`. This is the only package to install. See [Install and the `Ably` global](UPDATING.md#install-and-the-ably-global).
+2. **Remove the Ably lines (optional):** delete `window.Ably = Ably`, the `ably` import and the `ably` dependency if nothing else uses it. If you leave them, Echo ignores them and logs one `console.warn`. Delete an Ably CDN `<script>` tag too, because `dist/echo.iife.js` now includes Ably's library.
+3. **Use Node.js 22 or later** on machines that install and build your app, and a bundler that understands ES2020 (webpack 5 or Vite). Browsers are not affected. Older Node versions are not supported: npm warns (or fails with engine-strict), and builds can break. See [Requirements](UPDATING.md#requirements).
+4. **Call `Echo.connect()` or `Echo.disconnect()` when a user logs out.** If you do not, the page keeps the old user's access to its private and presence channels until the connection token expires (8 hours by default). See [Logout without a page reload](UPDATING.md#logout-without-a-page-reload).
+5. **On a MAU-billed Ably account:** set `ABLY_MAU_ACCOUNT=true` in laravel-broadcaster 1.1.0 or later, or only connect Echo for signed-in users. If you do not, guest connections fail with error 40161. See [Guest users on MAU-billed Ably accounts](UPDATING.md#guest-users-on-mau-billed-ably-accounts).
 
-### Fixed
+### Easier install
 
-- A private or presence channel subscribed while the connection is still connecting (for example right after `Echo.private()` at startup) no longer aborts and restarts the connection attempt: Echo waits for `connected` before its pre-attach authorize(), so the attempt is not restarted. Echo waits from `initialized`, `connecting` or `disconnected`; if the connection is `failed`, `suspended`, `closing` or `closed`, at the call or while waiting, the attach fails with that error. Covered by the `defer-authorize` parity tests.
-- Callbacks of `whisper`, `enter`, `update`, `leave` and `here` run exactly once; exceptions in callbacks and listeners no longer become unhandled promise rejections or stop other listeners.
-- One attach failure is reported to `error()` once, also when both the channel state change and the `attach()` rejection report it (the state-change payload is unchanged); subscribe errors that no channel state change reported still reach `error()`.
-- Auth endpoint: cookies are sent cross-origin only for a lowercase `authorization` header, as with ably 1.x and 2.x; error codes come from the HTTP status; invalid tokens are rejected with code 50000 and no longer replace the cached token; a `requestTokenFn` that never settles no longer blocks other token requests forever (each request is bounded by 30 s; an auth-endpoint request by `httpRequestTimeout` + 1 s if that is longer); `httpRequestTimeout` applies to auth requests.
-- `environment`, `realtimeHost` and `restHost` are mapped to `endpoint` with a warning instead of being ignored.
-- `import { Channel } from '@ably/laravel-echo'` works again.
-- After `Echo.disconnect()`, Echo no longer reopens the connection by itself (for example when a token request finishes late, or a private channel is authorized); call `Echo.connect()` to reconnect (with `options.client`, `Echo.connect()` does not reopen the client you supplied: call `client.connect()` yourself).
-- Attach and presence edge cases: concurrent attaches during authorization (a caller that awaits its attach is rejected when the authorization or the ATTACH fails), leaving a channel while it authorizes, `stopListening` / `stopListeningToAll` bookkeeping (`stopListeningToAll()` no longer removes `listen()` listeners), `listenToAll` with `namespace: false`, no duplicate presence enter after a resumed reconnect, and a re-enter when the last `enter()` failed.
-- Channels subscribed before a failed connection are re-attached when it recovers, for example after login or a user switch.
-- The pre-attach authorize hook is per client: each Echo instance uses its own authorizer, and clients Echo doesn't create use ably's attach unchanged.
-- Echo-only options (auth headers, bearer and CSRF tokens) are no longer passed into the Ably client options.
-- Socket IDs and tokens with non-Latin-1 client IDs work in browsers.
-- `private()`, `join()` and `leaveChannel()` work with `options.client`; `encryptedPrivate()` throws a clear error with the Ably broadcaster; relative auth endpoints resolve against the page URL; cached-token capabilities are matched by channel name.
-- Calling `Echo.connect()` (or the connector's `connect()`) again leaves the existing Echo channels and closes the previous Ably client (a user-supplied `options.client` is not closed); callers re-subscribe after `connect()` is called again.
-- The `token` option is still passed to the Ably client (as in 1.0.6), so a configured initial token is used before `authCallback`.
-- A hung `requestTokenFn` is bounded by 30 s, independent of `httpRequestTimeout`.
-- `socketId()` works with very large clientIds.
-- A supplied `options.client` no longer keeps Echo's recovery listeners after `Echo.connect()` is called again.
-- A supplied `options.client` that is already `failed` when Echo connects has its channels re-attached when it recovers.
+- You get one package to install, with no matching Ably version to pick. Echo depends on Ably's `@ably/pubsub-device` v3 and always uses its own copy. `ably` 1.x and 2.x are no longer used.
+- A client you create yourself and pass as `options.client` is still used as is.
+- **Ably client options or `echo.connector.ably`:** `echo.connector.ably` is now a `PubSubClient`, and behaviour inherited from ably-js v3 changed (error shapes, MsgPack in browsers, asynchronous callbacks). See the [ably-js v3 migration guide](https://github.com/ably/ably-js/blob/main/docs/migration-guides/v3/lib.md).
+- **Server-side rendering:** create Echo only in the browser, for example `if (typeof window !== 'undefined') { window.Echo = new Echo({ broadcaster: 'ably' }); }`. Echo created during server-side rendering opens a device connection from the server.
+- If you use the script-tag build, you no longer need an Ably CDN script. The file `dist/echo.iife.js` grows from about 116 KB to about 500 KB (about 24 KB to about 105 KB gzipped). The ESM and CJS builds do not include Ably's library.
+- If you use this package only with Pusher, Reverb or socket.io, your bundle now also includes `@ably/pubsub-device` (about 75 KB gzipped). Use upstream `laravel-echo` instead.
+- The old options `environment`, `realtimeHost` and `restHost` are mapped to `endpoint`, with a console warning, so your settings keep working. Switch to `endpoint` when you can.
 
-### Known issues
+### Login, user switch and logout without a page reload
 
-- Another tab's logout or login reaches this tab at its next connection token renewal at the latest (up to laravel-broadcaster's `token_expiry`, 8 hours by default).
-- Every client ID switch uses a fresh connection, not a resume: messages published while it switches are not delivered.
-- Private and presence channels can lose access briefly when the connection token is renewed after it expires: the renewed token gets public claims only, and Echo re-authorizes private and presence channels as they report 40160 (see https://github.com/ably/laravel-broadcaster/issues/55; the sandbox test for it (`token-renewal`) now checks the renewal behaviour of the fixed broadcaster instead, see Internal changes).
+- **Login:** a guest who logs in keeps working, as in 1.0.x, and now it keeps working after every further switch. Echo reconnects with the new user's ID and subscribes to your channels again. See [Login, user switch and logout in the same page](UPDATING.md#login-user-switch-and-logout-in-the-same-page).
+- **Switching users:** one user can log out and another log in on the same page, as often as needed. Channels the new user may not use report one 403 to `error()`.
+- **Other tabs:** a login or logout in another tab now switches this tab too. Before, such a tab stayed disconnected and then failed, or kept a stale user ID.
+  - When: at the latest when the connection token is next renewed. The tab reconnects once as the new user and Echo asks your server to authorize its private and presence channels again.
+  - To switch every tab at once, call `Echo.connect()` in each of them. See [Logout or login in another tab](UPDATING.md#logout-or-login-in-another-tab).
+- **Cleaner errors:** during a switch, the first short "mismatched clientId" error (40102) of each channel is not sent to `error()`. Other errors, and a repeated 40102, still are. See [`error()` after a switch](UPDATING.md#error-after-a-switch).
+- **CSRF:** Laravel changes the CSRF token at login and logout. Refresh it before you call `Echo.connect()`, or the auth request fails with 419. See [CSRF tokens and 419 errors](UPDATING.md#csrf-tokens-and-419-errors).
+- **Your own client:** Echo does not switch a client that you pass as `options.client`. Change its authentication or replace it.
+- **`token` option:** if you set it, every new client from `Echo.connect()` gets it again (as in 1.0.x). After a login or logout, pass a fresh `token` or omit it. See [Echo options and defaults](UPDATING.md#echo-options-and-defaults).
 
-Details and workarounds: [Known limitations](UPDATING.md#known-limitations).
+### MAU-billed Ably accounts
 
-### Internal changes
+- Guests, login, user switch and logout all work on MAU-billed accounts when laravel-broadcaster 1.1.0 or later has `ABLY_MAU_ACCOUNT=true`. The broadcaster then gives each guest a client ID.
+- Echo explains the MAU errors 40161, 40168 and 40167 once each in the browser console, with the setting to change.
+- Echo 1.0.x is rejected on MAU-billed accounts (error 40168), so do not roll back there.
+- If a connection fails and later recovers, for example when a guest is rejected and the user then logs in, Echo attaches the channels you had subscribed to again.
+- See [Guest users on MAU-billed Ably accounts](UPDATING.md#guest-users-on-mau-billed-ably-accounts).
 
-- Internal behaviour changes inherited from ably-js v3 (error shapes, MsgPack in browsers, subscribe-capability errors, asynchronous callbacks, and failures of `whisper`, `enter`, `update` and `leave` called without a callback now reach `error()` listeners); see the ably-js v3 migration guide: https://github.com/ably/ably-js/blob/main/docs/migration-guides/v3/lib.md. Pull requests: https://github.com/ably-forks/laravel-echo/pull/50, https://github.com/ably-forks/laravel-echo/pull/51, https://github.com/ably-forks/laravel-echo/pull/52, https://github.com/ably-forks/laravel-echo/pull/53.
-- CI runs the Ably tests against both the Node and the browser build of `@ably/pubsub-device`; the browser-build job is blocking.
-- Sandbox tests: `MockAuthServer` has `renewalMode` (`'reverify'` by default, as the fixed broadcaster; `'reuse'` is the old behaviour) and `revoke()`; and `token-renewal` runs 60 s tokens across several renewals (a token of 30 s or less always renews in a loop, by design) and checks the connection id stays the same, no 40142 or disconnect, growing token expiry, attached channels and the presence member staying present.
-- MAU e2e tests now run against a real MAU-enforced sandbox app (`mauEnforced`) instead of a local proxy.
+### More reliable connections and channels
 
-### Release
-
-- 1.1.0 is published straight to `latest` (no `next` tag, no beta) once PRs 54, 55, 56 and the README/UPDATING.md docs PR are merged, so a `^1.0` range resolves to 1.1.0 after that.
-- Rollback: see "Rolling back" in [UPDATING.md](UPDATING.md#rolling-back).
+- **Startup:** a private or presence channel that you subscribe to right after `new Echo(...)` no longer restarts the connection attempt. Echo waits until the connection is `connected`.
+- **Disconnect:** after `Echo.disconnect()`, Echo no longer reopens the connection by itself. Call `Echo.connect()` to reconnect.
+- **Token renewal:** with laravel-broadcaster 1.1.0 or later, a renewed connection token is a fresh one. Before, the repeated token requests ended in a forced disconnect (40142) at each expiry. Private and presence channels can still lose access for a moment after an expired token is renewed (see [Known limitations](UPDATING.md#known-limitations)).
+- **Auth requests:** `httpRequestTimeout` now also applies to the request to your auth endpoint. A custom token function (`requestTokenFn`) that never finishes no longer blocks other requests: each one stops after 30 s. An empty or invalid token gives a clear error and is no longer kept.
+- **Auth error codes:** an error from your auth endpoint now has a code taken from the HTTP status (for example 403 gives 40300). If your `error()` handler checks codes, review it.
+- **Channel callbacks and listeners:** channels now handle the following correctly:
+  - A callback or listener that throws no longer stops the other listeners.
+  - A channel you leave while it is being authorized is no longer attached afterwards.
+  - Two attaches at the same time no longer interfere.
+  - `joining()` and `here()` fire once, not twice, after a reconnect that resumed.
+  - `stopListening()` and `stopListeningToAll()` remove exactly the listeners you added. `stopListeningToAll()` no longer removes `listen()` listeners, as with Pusher.
+  - `listenToAll` works with `namespace: false`.
+  - Socket IDs and tokens work with non-Latin-1 client IDs.
+- **Attach errors:** a channel that fails to attach now reports the error to `error()` once. In 1.0.x it could be reported twice.
+- **Unchanged from 1.0.6:** callbacks of `whisper`, `enter`, `update`, `leave` and `here` run once, `import { Channel } from '@ably/laravel-echo'` works, and auth requests to a different origin send cookies only when the `authorization` header is set in lowercase.
+- **Encrypted private channels:** `encryptedPrivate()` now throws a clear "not supported" error with the Ably broadcaster. In 1.0.x it failed with a confusing TypeError.
 
 ## [v1.0.6](https://github.com/ably-forks/laravel-echo/tree/ably-echo-1.0.6)
 
