@@ -14,7 +14,7 @@ Echo's API is unchanged. See [UPDATING.md](UPDATING.md#10x--110) for the upgrade
 - The script-tag build `dist/echo.iife.js` now includes `@ably/pubsub-device` (about 500 KB instead of about 116 KB; about 105 KB instead of about 24 KB gzipped). The ESM and CJS builds don't include it.
 - During a client ID switch that Echo starts, the short "mismatched clientId" error (40102) is no longer reported to `error()`. Echo drops the first one per channel, until the connection is back or for at most 30 s. After a switch on token renewal (a login or logout in another tab), Echo also drops the first 40160 of each private or presence channel while it subscribes again, for at most 30 s. Echo recovers from it by authorizing the channel again. Other errors are still reported. See [UPDATING.md](UPDATING.md#error-after-a-switch).
 - The MAU console hint is logged only for 40161, 40168 and 40167, once per code, with a specific explanation for each.
-- Logout: call `Echo.connect()` or `Echo.disconnect()` as part of logout, or the page keeps the old user's channel access until its token expires. `Echo.connect()` then connects as a guest. Echo does not switch a client passed as `options.client`: change its authentication or replace it.
+- Logout: call `Echo.connect()` or `Echo.disconnect()` as part of logout, or the page keeps the old user's channel access until its token expires. `Echo.connect()` then connects as a guest, unless a signed-in `token` option is still set. Echo does not switch a client passed as `options.client`: change its authentication or replace it.
 
 ### Added
 
