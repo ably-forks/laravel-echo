@@ -151,8 +151,11 @@ export class AblyAuth {
     tryAuthorizeOnSameConnection = (authOptions?: AuthOptions, callback?: (error, TokenDetails) => void) => {
         this.ablyClient().auth
             .authorize(null, authOptions)
-            .then((tokenDetails) => callback?.(null, tokenDetails))
-            .catch((err) => callback?.(err, null));
+            .then(
+                (tokenDetails) => callback?.(null, tokenDetails),
+                (err) => callback?.(err, null)
+            )
+            .catch((e) => console.error('laravel-echo: unexpected error after authorize', e));
     }
 
     onChannelFailed = (echoAblyChannel: AblyChannel) => (stateChange: ChannelStateChange) => {

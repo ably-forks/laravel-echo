@@ -1,5 +1,6 @@
 import { AblyChannel } from './ably-channel';
 import { AblyAuth } from './ably/auth';
+import { safeInvoke } from './ably/utils';
 
 export class AblyPrivateChannel extends AblyChannel {
     constructor(ably: any, name: string, options: any, auth: AblyAuth) {
@@ -13,8 +14,10 @@ export class AblyPrivateChannel extends AblyChannel {
     whisper(eventName: string, data: any, callback?: Function): AblyPrivateChannel {
         this.channel
             .publish(`client-${eventName}`, data)
-            .then(() => callback?.(null))
-            .catch((err) => callback ? callback(err) : this._alertErrorListeners(err));
+            .then(
+                () => safeInvoke(callback, null),
+                (err) => (callback ? safeInvoke(callback, err) : this._alertErrorListeners(err))
+            );
         return this;
     }
 }
