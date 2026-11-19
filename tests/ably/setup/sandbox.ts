@@ -10,10 +10,19 @@ const SETUP_ATTEMPT_TIMEOUT_MS = 5000;
  * those up to 3 attempts of 5 s with a short backoff, so a transient outage doesn't fail a whole suite. The worst
  * case (3 x 5 s + 1 s + 2 s = 18 s) fits the 20 s beforeAll timeout of the shortest sandbox suites.
  */
-const creatNewApp = async () => {
-    let body = {
+export interface SetupOptions {
+    /**
+     * Create the app on a MAU-enforced test account (`mauEnforced` in the sandbox app spec): connections need an
+     * identified client, so a null or '*' clientId is refused with 40161. Absent (the default) leaves enforcement off.
+     */
+    mau?: boolean;
+}
+
+const creatNewApp = async (options: SetupOptions = {}) => {
+    const body: Record<string, unknown> = {
         keys: [{}],
         namespaces: [],
+        ...(options.mau ? { mauEnforced: true } : {}),
     };
     for (let attempt = 1; ; attempt++) {
         try {

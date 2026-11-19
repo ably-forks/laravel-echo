@@ -54,6 +54,7 @@ Echo's API is unchanged. See "Upgrading to 1.1" in the README.
 - Internal behaviour changes inherited from ably-js v3 (error shapes, MsgPack in browsers, subscribe-capability errors, asynchronous callbacks, and failures of `whisper`, `enter`, `update` and `leave` called without a callback now reach `error()` listeners); see the ably-js v3 migration guide: https://github.com/ably/ably-js/blob/main/docs/migration-guides/v3/lib.md. Pull requests: https://github.com/ably-forks/laravel-echo/pull/50, https://github.com/ably-forks/laravel-echo/pull/51, https://github.com/ably-forks/laravel-echo/pull/52, https://github.com/ably-forks/laravel-echo/pull/53.
 - CI runs the Ably tests against both the Node and the browser build of `@ably/pubsub-device`; the browser-build job is blocking.
 - Sandbox tests: `MockAuthServer` has `renewalMode` (`'reverify'` by default, as the fixed broadcaster; `'reuse'` is the old behaviour) and `revoke()`; and `token-renewal` runs 60 s tokens across several renewals (a token of 30 s or less always renews in a loop, by design) and checks the connection id stays the same, no 40142 or disconnect, growing token expiry, attached channels and the presence member staying present.
+- MAU e2e tests now run against a real MAU-enforced sandbox app (`mauEnforced`) instead of a local proxy.
 
 ### Release
 

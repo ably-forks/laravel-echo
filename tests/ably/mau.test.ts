@@ -1,9 +1,6 @@
 /**
- * MAU (monthly active users) behaviour of Echo, against a normal sandbox app behind MauProxy, which emulates the MAU
- * rule "a connection needs an identified client" (40161 for a null or '*' clientId). Only Echo goes through the proxy:
- * the mock auth server talks to the sandbox directly.
- *
- * TODO: once the Ably sandbox can create MAU-enabled apps, replace this proxy with the existing sandbox setup (`setup()` in tests/ably/setup/sandbox.ts, which takes no arguments today) called with a new optional options object that enables MAU on the test app, e.g. `setup({ mau: true })`, and run this suite directly against that app. Never use a real MAU key.
+ * MAU (monthly active users) behaviour of Echo, against a real MAU-enforced sandbox app (`setup({ mau: true })`): the
+ * server requires an identified client, so a connection with a null or '*' clientId is refused with 40161.
  *
  * Skip behaviour: the other sandbox suites have no skip mechanism (an unreachable sandbox fails their beforeAll).
  * Locally, beforeAll remembers the reason and each test returns early with a console.warn instead; in CI
@@ -12,7 +9,6 @@
 import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
-import { MauProxy } from './setup/mau-proxy';
 import { AblyChannel, AblyPrivateChannel } from '../../src/channel';
 import { AblyConnector } from '../../src/connector';
 import { trackUnhandledRejections } from '../parity/fake-ably';
@@ -84,10 +80,9 @@ const dumpHintDiagnostics = (hints: any[][]) => {
     );
 };
 
-describe('MAU account (mock proxy)', () => {
+describe('MAU account (real MAU-enforced sandbox app)', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
-    let proxy: MauProxy;
     let echo: Echo | undefined;
     let errorSpy: jest.SpyInstance;
     let skipReason: string | undefined;
@@ -102,11 +97,7 @@ describe('MAU account (mock proxy)', () => {
     const connectEcho = () =>
         new Echo({
             broadcaster: 'ably',
-            endpoint: 'localhost',
-            port: proxy.port,
-            tls: false,
-            fallbackHosts: [],
-            useBinaryProtocol: false,
+            endpoint: 'nonprod:sandbox',
             requestTokenFn: mockAuthServer.getSignedToken,
             echoMessages: true,
         });
@@ -116,7 +107,7 @@ describe('MAU account (mock proxy)', () => {
     beforeAll(async () => {
         patchConnector();
         try {
-            testApp = await setup();
+            testApp = await setup({ mau: true });
         } catch (err: any) {
             const code = err?.code ?? err?.cause?.code;
             const unreachable = code === 50000 || code === 50003 || /ENOTFOUND|ECONNREFUSED|EAI_AGAIN|fetch failed|ETIMEDOUT/i.test(String(err?.message));
@@ -127,15 +118,11 @@ describe('MAU account (mock proxy)', () => {
             return;
         }
         mockAuthServer = new MockAuthServer(testApp.keys[0].keyStr);
-        proxy = await new MauProxy().start();
         ready = true;
     });
 
     afterAll(async () => {
         unpatchConnector();
-        if (proxy) {
-            await proxy.stop();
-        }
         if (testApp) {
             await tearDown(testApp);
         }
@@ -148,7 +135,6 @@ describe('MAU account (mock proxy)', () => {
         diag.events = [];
         diag.connectors = [];
         diag.t0 = Date.now();
-        proxy.rejected = 0;
         mockAuthServer.clientId = null;
         mockAuthServer.guestClientId = false;
         mockAuthServer.rotateGuestId();
@@ -176,7 +162,6 @@ describe('MAU account (mock proxy)', () => {
         const ably = echo.connector.ably;
         await waitForExpect(() => expect(ably.connection.state).toBe('failed'));
         expect(ably.connection.errorReason?.code).toBe(40161);
-        expect(proxy.rejected).toBeGreaterThanOrEqual(1);
         expect(errorSpy).toHaveBeenCalledTimes(1);
         const message = String(errorSpy.mock.calls[0][0]);
         expect(message).toContain('40161');
@@ -190,7 +175,6 @@ describe('MAU account (mock proxy)', () => {
         await connected(echo);
         const guestId = echo.connector.ably.auth.clientId;
         expect(guestId).toMatch(/^guest:/);
-        expect(proxy.rejected).toBe(0);
 
         const publicChannel = echo.channel('mau') as AblyChannel;
         await new Promise((resolve) => publicChannel.subscribed(resolve));
@@ -219,7 +203,6 @@ describe('MAU account (mock proxy)', () => {
 
         expect(publicError).not.toHaveBeenCalled();
         expect(privateError).not.toHaveBeenCalled();
-        expect(proxy.rejected).toBe(0);
         expect(hintCalls()).toHaveLength(0);
     });
 
@@ -256,7 +239,6 @@ describe('MAU account (mock proxy)', () => {
         const guestErr: any = await new Promise((resolve) => guestPrivate.error(resolve));
         expect(guestErr.statusCode === 403 || guestErr.code === 40300).toBe(true);
 
-        expect(proxy.rejected).toBe(0);
         expect(hintCalls()).toHaveLength(0);
         await new Promise((resolve) => setTimeout(resolve, 50)); // let Node emit pending unhandledRejection events
         rejections.stop();
@@ -274,7 +256,6 @@ describe('MAU account (mock proxy)', () => {
         const newClient = echo.connector.ably;
         await waitForExpect(() => expect(newClient.connection.state).toBe('failed'));
         expect(newClient.connection.errorReason?.code).toBe(40161);
-        expect(proxy.rejected).toBeGreaterThanOrEqual(1);
         dumpHintDiagnostics(hintCalls());
         expect(hintCalls()).toHaveLength(1);
         expect(String(hintCalls()[0][0])).toContain('ABLY_MAU_ACCOUNT=true');
@@ -294,7 +275,7 @@ describe('MAU account (mock proxy)', () => {
             }
         });
 
-        test('renewal user to guest id reconnects through the proxy as the guest, without a rejection', async () => {
+        test('renewal user to guest id reconnects as the guest, without a rejection', async () => {
             if (skipped()) return;
             mockAuthServer.guestClientId = true;
             mockAuthServer.clientId = 'user1';
@@ -318,7 +299,6 @@ describe('MAU account (mock proxy)', () => {
             await new Promise((resolve) => setTimeout(resolve, 200));
             await mockAuthServer.broadcast('public:mau', 'mau-event', JSON.stringify({ ok: true }));
             await received;
-            expect(proxy.rejected).toBe(0);
             expect(hintCalls()).toHaveLength(0);
         });
 
@@ -333,7 +313,6 @@ describe('MAU account (mock proxy)', () => {
             mockAuthServer.clientId = null; // guestClientId stays false: MAU rejects the anonymous reconnect
             await waitForExpect(() => expect(client.connection.state).toBe('failed'), 40000, 250);
             expect(client.connection.errorReason?.code).toBe(40161);
-            expect(proxy.rejected).toBeGreaterThanOrEqual(1);
             dumpHintDiagnostics(hintCalls());
             expect(hintCalls()).toHaveLength(1);
             expect(String(hintCalls()[0][0])).toContain('ABLY_MAU_ACCOUNT=true');
