@@ -23,6 +23,7 @@ Echo's API is unchanged. See "Upgrading to 1.1" in the README.
 
 ### Fixed
 
+- A private or presence channel subscribed while the connection is still connecting (for example right after `Echo.private()` at startup) no longer aborts and restarts the connection attempt: Echo waits for `connected` before its pre-attach authorize(), so the attempt is not restarted. Echo waits from `initialized`, `connecting` or `disconnected`; if the connection is `failed`, `suspended`, `closing` or `closed`, at the call or while waiting, the attach fails with that error. Covered by the `defer-authorize` parity tests.
 - Callbacks of `whisper`, `enter`, `update`, `leave` and `here` run exactly once; exceptions in callbacks and listeners no longer become unhandled promise rejections or stop other listeners.
 - One attach failure is reported to `error()` once, also when both the channel state change and the `attach()` rejection report it (the state-change payload is unchanged); subscribe errors that no channel state change reported still reach `error()`.
 - Auth endpoint: cookies are sent cross-origin only for a lowercase `authorization` header, as with ably 1.x and 2.x; error codes come from the HTTP status; invalid tokens are rejected with code 50000 and no longer replace the cached token; a `requestTokenFn` that never settles no longer blocks other token requests forever (each request is bounded by 30 s; an auth-endpoint request by `httpRequestTimeout` + 1 s if that is longer); `httpRequestTimeout` applies to auth requests.
@@ -46,12 +47,13 @@ Echo's API is unchanged. See "Upgrading to 1.1" in the README.
 
 - Another tab's logout or login reaches this tab only at its next connection token renewal (up to laravel-broadcaster's `token_expiry`, 8 hours by default). Call `Echo.connect()` in every tab, for example from a `BroadcastChannel` message, to switch at once.
 - Every client ID switch uses a fresh connection, not a resume, so messages published while the connection switches (about a second) are not delivered. Apps that need them can use channel `rewind` or history.
-- Access to private and presence channels can be lost briefly when the connection token is renewed after it expires: laravel-broadcaster keeps a token's channel capabilities only while that token is unexpired, so the renewed token has only the `public:*` capability, private and presence channels fail with 40160 and are re-authorized, and messages broadcast in that gap are lost. This needs a laravel-broadcaster fix; the sandbox test for it is skipped until then.
+- Access to private and presence channels can be lost briefly when the connection token is renewed after it expires: laravel-broadcaster keeps a token's channel capabilities only while that token is unexpired, so the renewed token has only the `public:*` capability, private and presence channels fail with 40160 and are re-authorized, and messages broadcast in that gap are lost. This needs a laravel-broadcaster fix; the sandbox test for it (`token-renewal`) now checks the renewal behaviour of the fixed broadcaster instead (see Internal changes).
 
 ### Internal changes
 
 - Internal behaviour changes inherited from ably-js v3 (error shapes, MsgPack in browsers, subscribe-capability errors, asynchronous callbacks, and failures of `whisper`, `enter`, `update` and `leave` called without a callback now reach `error()` listeners); see the ably-js v3 migration guide: https://github.com/ably/ably-js/blob/main/docs/migration-guides/v3/lib.md. Pull requests: https://github.com/ably-forks/laravel-echo/pull/50, https://github.com/ably-forks/laravel-echo/pull/51, https://github.com/ably-forks/laravel-echo/pull/52, https://github.com/ably-forks/laravel-echo/pull/53.
 - CI runs the Ably tests against both the Node and the browser build of `@ably/pubsub-device`; the browser-build job is blocking.
+- Sandbox tests: `MockAuthServer` has `renewalMode` (`'reverify'` by default, as the fixed broadcaster; `'reuse'` is the old behaviour) and `revoke()`; and `token-renewal` runs 60 s tokens across several renewals (a token of 30 s or less always renews in a loop, by design) and checks the connection id stays the same, no 40142 or disconnect, growing token expiry, attached channels and the presence member staying present.
 
 ### Release
 

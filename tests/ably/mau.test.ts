@@ -282,10 +282,16 @@ describe('MAU account (mock proxy)', () => {
 
     describe('renewed token with another identity', () => {
         beforeEach(() => {
-            if (ready) mockAuthServer.tokenExpiry = 6;
+            if (ready) {
+                mockAuthServer.tokenExpiry = 6;
+                mockAuthServer.renewalMode = 'reuse'; // 6 s tokens renew in the 30 s window by design
+            }
         });
         afterEach(() => {
-            if (ready) mockAuthServer.tokenExpiry = 60;
+            if (ready) {
+                mockAuthServer.tokenExpiry = 60;
+                mockAuthServer.renewalMode = 'reverify';
+            }
         });
 
         test('renewal user to guest id reconnects through the proxy as the guest, without a rejection', async () => {

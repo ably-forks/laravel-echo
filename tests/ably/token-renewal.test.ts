@@ -1,17 +1,32 @@
+/**
+ * Connection token renewal with the fixed laravel-broadcaster (MockAuthServer renewalMode 'reverify', the default):
+ * a renewal request ({channel_name: null, token: <valid token>}) gets a fresh iat/exp, with the public claims plus the
+ * presented private/presence channels that are still authorized. Before the fix the broadcaster reused the presented
+ * token's iat/exp, so every "renewed" token was byte-identical, ably-js (which asks to re-authorize 30 s before expiry)
+ * looped on AUTH for the last 30 s, then the server closed the connection with 40142 and the page reconnected.
+ *
+ * Token lifetime: at least 30 s. Ably asks a connected client to re-authorize 30 s before the token expires, so a
+ * token of 30 s or less is always inside that window and loops by design, whatever the broadcaster does. These tests
+ * use 60 s, so a renewal starts after ~30 s and each renewed token lasts another 60 s.
+ */
 import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import { AblyChannel } from '../../src/channel';
 import { parseJwt } from '../../src/channel/ably/utils';
+import { createClient } from '@ably/pubsub-device';
 import waitForExpect from 'wait-for-expect';
 
-const TOKEN_EXPIRY_S = 6;
+const TOKEN_EXPIRY_S = 60; // >= 30, see above
+const RENEWALS = 4; // observe several renewals
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-jest.setTimeout(TOKEN_EXPIRY_S * 1000 + 30000);
-describe('Token renewal', () => {
+jest.setTimeout(240000);
+describe('Token renewal (reverify)', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
     let echo: Echo;
+    let observer: any;
     let tokenRequests: Array<{ channelName: string | null; existingToken: string | null; token: string }>;
 
     beforeAll(async () => {
@@ -26,78 +41,113 @@ describe('Token renewal', () => {
 
     beforeEach(() => {
         tokenRequests = [];
+        mockAuthServer.renewalMode = 'reverify';
+        mockAuthServer.revoked.clear();
         echo = new Echo({
             broadcaster: 'ably',
             useTls: true,
             endpoint: 'nonprod:sandbox',
+            useBinaryProtocol: false,
             requestTokenFn: async (channelName, existingToken) => {
                 const response = await mockAuthServer.getSignedToken(channelName, existingToken);
                 tokenRequests.push({ channelName, existingToken, token: response.token });
                 return response;
             },
-        });
+        } as any);
     });
 
-    afterEach((done) => {
+    afterEach(async () => {
+        observer?.close();
+        observer = undefined;
         echo.disconnect();
-        echo.connector.ably.connection.once('closed', () => {
-            done();
-        });
+        await new Promise<void>((resolve) => echo.connector.ably.connection.once('closed', () => resolve()));
     });
 
-    // Skipped: laravel-broadcaster's getSignedToken (AblyBroadcaster.php) keeps the claims of the existing token only
-    // while it is still valid (Utils::isJwtValid). Once it has expired, the renewal request ({channel_name: null,
-    // token: <expired token>}) gets a token with the public claims only. Reproduced on the live sandbox: after every
-    // expiry the private channel fails with 40160 and Echo re-authorizes it through handleChannelAuthError, and
-    // broadcasts sent in that window are lost. Un-skip once the broadcaster keeps private claims on renewal.
-    test.skip('private access survives a token renewal (skipped: laravel-broadcaster drops private claims on renewal: the renewed token has only public:* capability, the channel fails with 40160)', async () => {
+    const renewalRequests = () => tokenRequests.filter((r) => r.channelName === null && r.existingToken);
+    const expOf = (token: string) => parseJwt(token).payload.exp as number;
+    const is403 = (e: any) => e?.code === 40300 || e?.statusCode === 403 || e?.reason?.code === 40300;
+
+    const watch = (ch: AblyChannel) => {
+        const changes: any[] = [];
+        ch.channel.on((stateChange: any) => changes.push(stateChange));
+        return changes;
+    };
+
+    test(`${RENEWALS} renewals on one connection: fresh tokens, same connection id, no 40142, channels stay attached, member stays present`, async () => {
         const ablyClient = echo.connector.ably;
+        const states: Array<{ current: string; code?: number }> = [];
+        ablyClient.connection.on((c: any) => states.push({ current: c.current, code: c.reason?.code }));
         const privateChannel = echo.private('renewal') as AblyChannel;
-        const received: Array<string> = [];
-        let onReceived: () => void;
-        privateChannel.listen('.renewalEvent', (data) => {
-            received.push(data);
-            onReceived?.();
-        });
-        await new Promise((resolve) => privateChannel.subscribed(resolve));
+        const presenceChannel = echo.join('renewal') as any;
+        const errors: any[] = [];
+        privateChannel.error((e: any) => errors.push(e));
+        presenceChannel.error((e: any) => errors.push(e));
+        await Promise.all([privateChannel, presenceChannel].map((c) => new Promise((resolve) => c.subscribed(resolve))));
+        const connectionId = ablyClient.connection.id; // renewals must keep this connection (no reconnect, no resume)
+        expect(connectionId).toBeTruthy();
+        const privateChanges = watch(privateChannel);
+        const presenceChanges = watch(presenceChannel);
 
-        const channelStateChanges: Array<any> = [];
-        privateChannel.channel.on((stateChange) => channelStateChanges.push(stateChange));
-        // ably-js clears auth.tokenDetails while it re-authorizes, so take the expiry from the issued tokens
-        const initialExpires = Math.max(...tokenRequests.map(({ token }) => parseJwt(token).payload.exp)) * 1000;
+        observer = createClient({ key: testApp.keys[0].keyStr, endpoint: 'nonprod:sandbox' } as any);
+        const members: Array<{ action: string; clientId: string }> = [];
+        await observer.channels.get('presence:renewal').presence.subscribe((m: any) => members.push({ action: m.action, clientId: m.clientId }));
+        // not vacuous: Echo's member is present before the renewals, so "no leave" below means something
+        const memberBefore = await observer.channels.get('presence:renewal').presence.get();
+        expect(memberBefore.map((m: any) => m.clientId)).toContain(ablyClient.auth.clientId);
 
-        // A renewal has happened once the client holds a token with a later expiry
-        await waitForExpect(
-            () => expect(ablyClient.auth.tokenDetails?.expires).toBeGreaterThan(initialExpires),
-            TOKEN_EXPIRY_S * 1000 + 15000,
-            100
-        );
-        const renewal = tokenRequests.find(
-            ({ channelName, existingToken, token }) =>
-                channelName === null && existingToken && parseJwt(token).payload.exp * 1000 > initialExpires
-        );
-        expect(renewal).toBeDefined(); // renewed through the auth endpoint, sending the existing token
-        expect(parseJwt(renewal.token).payload['x-ably-capability']).toContain('"private:renewal"');
+        await waitForExpect(() => expect(renewalRequests().length).toBeGreaterThanOrEqual(RENEWALS), 200000, 1000);
+        await sleep(2000);
 
-        await waitForExpect(() => expect(ablyClient.connection.state).toBe('connected'), 10000, 100);
+        const exps = renewalRequests().map((r) => expOf(r.token));
+        console.log(`renewal exps: ${exps.join(',')}; auth requests: ${tokenRequests.length}`);
+        for (let i = 1; i < exps.length; i++) expect(exps[i]).toBeGreaterThan(exps[i - 1]); // fresh exp each time
+        // no AUTH loop: a few requests per renewal, not one every ~200 ms
+        expect(tokenRequests.length).toBeLessThan(10 + RENEWALS * 4);
+        const caps = parseJwt(renewalRequests()[0].token).payload['x-ably-capability'];
+        expect(caps).toContain('"private:renewal"');
+        expect(caps).toContain('"presence:renewal"');
 
-        // Broadcast after the renewal and wait for it; fail fast if the channel loses access instead
-        await new Promise<void>((resolve, reject) => {
-            const timer = setTimeout(() => reject(new Error('broadcast after renewal not received')), 10000);
-            const done = (err?: Error) => {
-                clearTimeout(timer);
-                privateChannel.channel.off('failed', onFailed);
-                err ? reject(err) : resolve();
-            };
-            const onFailed = (stateChange) => done(new Error(`channel failed: ${stateChange.reason?.code}`));
-            onReceived = () => done();
-            privateChannel.channel.on('failed', onFailed);
-            mockAuthServer.broadcast('private:renewal', 'renewalEvent', 'after renewal').catch(done);
-        });
-
-        expect(received).toStrictEqual(['after renewal']);
+        // connection.id is an invariant (a resumed reconnect keeps it too); the no-disconnected / no-40142 checks are what catch a forced reconnect.
+        expect(ablyClient.connection.id).toBe(connectionId); // the same connection after the renewals
+        // A transport drop on a shared CI network (e.g. 80xxx, resumed with the same connection id) is not a renewal fault. Fail only on a
+        // disconnect with no reason or a token error (40100-40199, incl. 40142); the no-40142 and same-connection.id checks stay the guard.
+        expect(states.filter((s) => s.current === 'disconnected' && (s.code === undefined || (s.code >= 40100 && s.code < 40200)))).toEqual([]);
+        expect(states.filter((s) => s.code === 40142)).toEqual([]);
+        expect(ablyClient.connection.state).toBe('connected');
+        for (const changes of [privateChanges, presenceChanges]) {
+            expect(changes.filter((c) => c.reason?.code === 40160)).toEqual([]);
+            expect(changes.map((c) => c.current)).not.toContain('failed');
+        }
         expect(privateChannel.channel.state).toBe('attached');
-        expect(channelStateChanges.filter((stateChange) => stateChange.reason?.code === 40160)).toStrictEqual([]);
-        expect(channelStateChanges.map((stateChange) => stateChange.current)).not.toContain('failed');
+        expect(presenceChannel.channel.state).toBe('attached');
+        expect(errors).toEqual([]);
+        expect(members.filter((m) => m.action === 'leave')).toEqual([]);
+        const memberAfter = await observer.channels.get('presence:renewal').presence.get();
+        expect(memberAfter.map((m: any) => m.clientId)).toContain(ablyClient.auth.clientId);
+        expect(ablyClient.connection.id).toBe(connectionId);
+    });
+
+    test('a revoked private channel is dropped at the next renewal: one 403 reaches error(), the other channels stay attached', async () => {
+        const privateChannel = echo.private('revoked') as AblyChannel;
+        const keptChannel = echo.private('kept') as AblyChannel;
+        const privateErrors: any[] = [];
+        const keptErrors: any[] = [];
+        privateChannel.error((e: any) => privateErrors.push(e));
+        keptChannel.error((e: any) => keptErrors.push(e));
+        await Promise.all([privateChannel, keptChannel].map((c) => new Promise((resolve) => c.subscribed(resolve))));
+
+        mockAuthServer.revoke('private:revoked');
+        const before = renewalRequests().length;
+        await waitForExpect(() => expect(renewalRequests().length).toBeGreaterThan(before), 60000, 500);
+        await waitForExpect(() => expect(privateErrors.filter(is403).length).toBeGreaterThanOrEqual(1), 30000, 500);
+        await sleep(5000);
+
+        // ably-js's own channel failure (40160: the server detaches the channel when the renewed token drops it) reaches
+        // error() first, then exactly one 403 (40300) when Echo's re-authorization is refused; nothing else
+        expect(privateErrors.map((e) => e?.reason?.code ?? e?.code)).toEqual([40160, 40300]);
+        expect(privateChannel.channel.state).not.toBe('attached');
+        expect(keptChannel.channel.state).toBe('attached');
+        expect(keptErrors).toEqual([]);
+        expect(echo.connector.ably.connection.state).toBe('connected');
     });
 });

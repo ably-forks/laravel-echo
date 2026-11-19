@@ -178,20 +178,83 @@ export class AblyAuth {
                     // get upgraded token with channel access
                     const echoChannel = this.getChannel(channelName);
                     this.setPresenceInfo(echoChannel, info);
-                    this.tryAuthorizeOnSameConnection(
-                        this.authOptionsForToken(jwtToken),
-                        (err, _tokenDetails) => {
-                            if (err) {
-                                errorCallback(err);
-                            } else {
-                                this.removeExpired(channelName);
-                                errorCallback(null);
-                            }
+                    // authorize() while ably-js is still connecting aborts and restarts that connection attempt (RTC8b):
+                    // an extra socket, and a leaked slow-connection timer. Wait for `connected` first.
+                    this.whenConnectedOrSettled(ablyClient, errorCallback, () => {
+                        if (this.ablyClient() !== ablyClient) {
+                            // Echo.connect() replaced the client while waiting; authorize() would act on the new one
+                            errorCallback(
+                                Object.assign(new Error('laravel-echo: the client was replaced while waiting for connected'), {
+                                    code: 80000,
+                                })
+                            );
+                            return;
                         }
-                    );
+                        this.tryAuthorizeOnSameConnection(
+                            this.authOptionsForToken(jwtToken),
+                            (err, _tokenDetails) => {
+                                if (err) {
+                                    errorCallback(err);
+                                } else {
+                                    this.removeExpired(channelName);
+                                    errorCallback(null);
+                                }
+                            }
+                        );
+                    });
                 })
                 .catch((err) => errorCallback(err));
         });
+    };
+
+    /**
+     * Runs `proceed` once the connection is `connected`: now if it already is, otherwise after waiting for it from
+     * `initialized`, `connecting` or `disconnected` (authorize() in `disconnected` would trigger an early reconnect in
+     * ably-js, and while connecting it restarts the attempt, RTC8b). The attach is abandoned with an error, and
+     * authorize() is never called, when the connection is `failed`, `suspended`, `closing` or `closed`, at entry or
+     * while waiting (the error is the connection's reason, or code 80000). The channel stays `initialized`: the error is
+     * reported to the attach caller (the channel's error callbacks) and the app attaches again. The connector's re-attach
+     * latch only arms on `failed`; neither ably-js nor Echo re-attaches an attach abandoned on `suspended`, `closing` or
+     * `closed`. A single connection listener is used and always removed; an exception thrown by `proceed` while waiting
+     * is reported through `onAbandon` too (ably-js would only log it).
+     */
+    whenConnectedOrSettled = (client: any, onAbandon: (error: any) => void, proceed: () => void) => {
+        const connection = client?.connection;
+        const abandon = (state: string, reason?: any) =>
+            onAbandon(
+                reason ??
+                    Object.assign(new Error(`laravel-echo: the connection is ${state}, the channel was not authorized`), {
+                        code: 80000,
+                    })
+            );
+        const waitStates = ['initialized', 'connecting', 'disconnected'];
+        const abandonStates = ['failed', 'suspended', 'closing', 'closed'];
+        const state = connection?.state;
+        if (!connection || (!waitStates.includes(state) && !abandonStates.includes(state))) {
+            proceed();
+            return;
+        }
+        if (abandonStates.includes(state)) {
+            abandon(state, connection.errorReason);
+            return;
+        }
+        const listener = (stateChange?: any) => {
+            const current = stateChange?.current;
+            if (current === 'connected') {
+                connection.off(listener);
+                try {
+                    proceed();
+                } catch (e) {
+                    // ably-js's EventEmitter only logs a listener's exception: report it to the attach, as the
+                    // immediate path does (its .catch(errorCallback))
+                    onAbandon(e);
+                }
+            } else if (abandonStates.includes(current)) {
+                connection.off(listener);
+                abandon(current, stateChange?.reason);
+            } // initialized, connecting, disconnected: keep waiting
+        };
+        connection.on(listener);
     };
 
     clientIdSwitchListeners: { failed: (stateChange?: any) => void; connected: () => void } | null = null;

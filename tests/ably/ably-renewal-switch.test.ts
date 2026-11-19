@@ -36,6 +36,7 @@ describe('AblyRenewalSwitch', () => {
         mockAuthServer.guestClientId = false;
         mockAuthServer.rotateGuestId();
         mockAuthServer.tokenExpiry = 6;
+        mockAuthServer.renewalMode = 'reuse'; // TTL <= 30 s loops even with fresh tokens (Ably asks for re-auth 30 s before expiry); these suites test the identity switch, not renewal freshness, so keep the old reuse behaviour
         mockAuthServer.publicCapability = ['subscribe', 'history', 'channel-metadata', 'publish', 'presence'];
         rejections = trackUnhandledRejections();
     });
@@ -45,6 +46,7 @@ describe('AblyRenewalSwitch', () => {
         mockAuthServer.clientId = null;
         mockAuthServer.guestClientId = false;
         mockAuthServer.tokenExpiry = 60;
+        mockAuthServer.renewalMode = 'reverify';
         mockAuthServer.publicCapability = ['subscribe', 'history', 'channel-metadata'];
         observer?.close();
         observer = undefined;

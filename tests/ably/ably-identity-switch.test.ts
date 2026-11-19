@@ -46,7 +46,9 @@ describe('AblyIdentitySwitch', () => {
 
     const trackStates = (emitter: any) => {
         const states: string[] = [];
-        emitter.on((stateChange: any) => states.push(stateChange.current));
+        // an in-band authorize() on a connected connection emits `update` (current === previous), not a state transition:
+        // since Echo waits for `connected` before its pre-attach authorize, one follows each reconnect
+        emitter.on((stateChange: any) => states.push(stateChange.current === stateChange.previous ? 'update' : stateChange.current));
         return states;
     };
 
@@ -168,6 +170,9 @@ describe('AblyIdentitySwitch', () => {
 
         expect(count(connectionStates, 'failed')).toBeLessThanOrEqual(2);
         expect(count(connectionStates, 'connected')).toBe(2);
+        // the in-band authorize() after each reconnect (and for the trigger channels) is an `update`, never another transition
+        expect(count(connectionStates, 'update')).toBeLessThanOrEqual(4);
+        expect(count(connectionStates, 'connecting')).toBe(2);
         expect(errorSpy).toHaveBeenCalledTimes(0); // E3
         await expectNoUnhandledRejections();
     });
