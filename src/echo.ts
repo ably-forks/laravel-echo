@@ -39,6 +39,10 @@ export default class Echo {
      * Create a new connection.
      */
     connect(): void {
+        if (this.connector instanceof AblyConnector) {
+            this.connector.releaseClient(); // P7: Echo.connect() called again replaces the connector
+        }
+
         if (this.options.broadcaster == 'ably') {
             this.connector = new AblyConnector(this.options);
         } else if (this.options.broadcaster == 'reverb') {

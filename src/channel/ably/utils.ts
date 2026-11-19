@@ -46,7 +46,13 @@ export const parseJwt = (jwtToken: string): { header: any; payload: any } => {
 
 // RSA4f - omitted `capability` property
 export const toTokenDetails = (jwtToken: string): TokenDetails | any => {
-    const { payload } = parseJwt(jwtToken);
+    let payload;
+    try {
+        payload = parseJwt(jwtToken).payload;
+    } catch (e) {
+        // a coded error instead of an opaque SyntaxError/TypeError reaching error() listeners / ably's authCallback
+        throw httpError('Auth token is not a valid JWT', 500, 50000, e);
+    }
     return {
         clientId: payload['x-ably-clientId'],
         expires: payload.exp * 1000, // Convert Seconds to ms
@@ -69,7 +75,8 @@ export const fromBase64UrlEncoded = (base64: string): string => {
     const base64WithPadding = base64Encoded + padding;
 
     if (isBrowser) {
-        return atob(base64WithPadding);
+        // P8: atob yields bytes (Latin-1 chars); decode them as UTF-8
+        return new TextDecoder().decode(Uint8Array.from(atob(base64WithPadding), (c) => c.charCodeAt(0)));
     }
     return Buffer.from(base64WithPadding, 'base64').toString();
 };
@@ -83,7 +90,14 @@ export const fromBase64UrlEncoded = (base64: string): string => {
 export const toBase64UrlEncoded = (text: string): string => {
     let encoded = ''
     if (isBrowser) {
-        encoded = btoa(text);
+        // P8: btoa only accepts Latin-1; encode the UTF-8 bytes instead. Build the binary string in chunks: passing
+        // every byte as an argument can exceed the engine's argument limit for large inputs.
+        const bytes = new TextEncoder().encode(text);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000) as unknown as number[]);
+        }
+        encoded = btoa(binary);
     } else {
         encoded = Buffer.from(text).toString('base64');
     }
@@ -93,13 +107,9 @@ export const toBase64UrlEncoded = (text: string): string => {
 const isAbsoluteUrl = (url: string) => (url && url.indexOf('http://') === 0) || url.indexOf('https://') === 0;
 
 export const fullUrl = (url: string) => {
-    if (!isAbsoluteUrl(url) && typeof window != 'undefined') {
-        const host = window?.location?.hostname;
-        const port = window?.location?.port;
-        const protocol = window?.location?.protocol.replace(':', '');
-        if (host && port && protocol) {
-            return protocol + '://' + host + ':' + port + url;
-        }
+    if (!isAbsoluteUrl(url) && typeof window != 'undefined' && window?.location?.href) {
+        // P9: resolve against the page URL, like the browser does (keeps the port, handles paths without a leading /)
+        return new URL(url, window.location.href).href;
     }
     return url;
 };
@@ -109,8 +119,25 @@ export const fullUrl = (url: string) => {
  */
 export const HTTP_REQUEST_TIMEOUT_MS = 10000;
 
-const httpError = (message: string, statusCode: number, code: number, cause?: any): Error => {
-    const error: any = new Error(message);
+/**
+ * Resolves the Ably library global (R4): the bare `Ably` (webpack ProvidePlugin friendly) or the CDN's `AblyPubSub`,
+ * whichever has `createClient`. Returns undefined when neither does.
+ */
+export const resolveAblyLib = (): any => {
+    const candidates = [
+        typeof Ably !== 'undefined' ? Ably : undefined,
+        typeof AblyPubSub !== 'undefined' ? AblyPubSub : undefined,
+    ];
+    return candidates.find((lib) => typeof lib?.createClient === 'function');
+};
+
+/**
+ * Builds an error for Echo's auth path (R6). Uses the resolved library's `ErrorInfo` when available, so `instanceof
+ * Ably.ErrorInfo` and `toString()` are consistent in every runtime; falls back to a plain `Error`.
+ */
+export const httpError = (message: string, statusCode: number, code: number, cause?: any): Error => {
+    const ErrorInfo = resolveAblyLib()?.ErrorInfo;
+    const error: any = typeof ErrorInfo === 'function' ? new ErrorInfo(message, code, statusCode) : new Error(message);
     error.statusCode = statusCode;
     error.code = code;
     if (cause !== undefined) {
@@ -119,18 +146,21 @@ const httpError = (message: string, statusCode: number, code: number, cause?: an
     return error;
 };
 
-const hasHeader = (headers: Record<string, any>, name: string) =>
-    Object.keys(headers).some((key) => key.toLowerCase() === name.toLowerCase());
+const deleteHeader = (headers: Record<string, any>, name: string) =>
+    Object.keys(headers)
+        .filter((key) => key.toLowerCase() === name.toLowerCase())
+        .forEach((key) => delete headers[key]);
 
 /**
  * Sends an HTTP request using `fetch` and resolves with the parsed JSON response body, or `null` if the body is empty.
  *
  * Rejects with an error carrying `statusCode` and `code` if:
  * - the request fails at the network level or does not complete within `timeoutMs` (code 50003 for a timeout, 50000 otherwise);
- * - the response status is not 2xx (`code` is taken from an Ably-style `error.code` in the body, otherwise `statusCode * 100`);
+ * - the response status is not 2xx (`code` is always `statusCode * 100`; body codes are never adopted, see R9);
  * - a 2xx response body is not valid JSON (code 50000).
  *
- * Credentials (cookies) are sent cross-origin when an `Authorization` header is set, as ably-js's XHR client did.
+ * Credentials (cookies) are sent cross-origin only when the headers contain the exact lowercase key `authorization`,
+ * as ably-js's XHR client (`"authorization" in headers`) did. A capitalised `Authorization` header uses `same-origin`.
  */
 export const httpRequestAsync = async (
     options: {
@@ -142,7 +172,7 @@ export const httpRequestAsync = async (
     timeoutMs = HTTP_REQUEST_TIMEOUT_MS
 ): Promise<any> => {
     const headers = { ...options.headers };
-    delete headers['Content-Length']; // computed by fetch; setting it explicitly is refused by browsers
+    deleteHeader(headers, 'Content-Length'); // computed by fetch; any casing (Node fetch rejects/stalls on a wrong value)
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
@@ -152,7 +182,7 @@ export const httpRequestAsync = async (
             method: options.method.toUpperCase(),
             headers,
             body: options.body,
-            credentials: hasHeader(headers, 'Authorization') ? 'include' : 'same-origin',
+            credentials: Object.prototype.hasOwnProperty.call(headers, 'authorization') ? 'include' : 'same-origin',
             signal: controller.signal,
         });
         text = await response.text();
@@ -177,8 +207,9 @@ export const httpRequestAsync = async (
 
     if (!response.ok) {
         const errorDetails = body?.error ?? body;
-        const message = errorDetails?.message ?? (text !== '' && parseError ? text : response.statusText);
-        throw httpError(`HTTP ${response.status}: ${message}`, response.status, errorDetails?.code ?? response.status * 100);
+        const m = errorDetails?.message;
+        const message = (typeof m === 'string' && m) || text.slice(0, 200) || response.statusText;
+        throw httpError(`HTTP ${response.status}: ${message}`, response.status, response.status * 100);
     }
     if (parseError) {
         throw httpError(

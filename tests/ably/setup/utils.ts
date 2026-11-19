@@ -26,7 +26,6 @@ export const httpPostAsync = async (url: string, postData: any) => {
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            'Content-Length': postData.length,
         },
         body: postData,
     };
