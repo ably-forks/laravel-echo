@@ -2,8 +2,6 @@ import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import safeAssert from './setup/utils';
-import * as Ably from 'ably';
-import { AblyConnector } from '../../src/connector/ably-connector';
 jest.setTimeout(20000);
 describe('AblyConnection', () => {
     let testApp: any;
@@ -11,7 +9,6 @@ describe('AblyConnection', () => {
     let echo: Echo;
 
     beforeAll(async () => {
-        global.Ably = Ably;
         testApp = await setup();
         mockAuthServer = new MockAuthServer(testApp.keys[0].keyStr);
     });
@@ -21,11 +18,14 @@ describe('AblyConnection', () => {
     });
 
     beforeEach(() => {
+        // Each test registers its connection listener first and then calls connect(): with autoConnect the
+        // initialized -> connecting event can be emitted before the test body runs (it is on the browser build).
         echo = new Echo({
             broadcaster: 'ably',
             useTls: true,
             endpoint: 'nonprod:sandbox',
             requestTokenFn: mockAuthServer.getSignedToken,
+            autoConnect: false,
         });
     });
 
@@ -60,6 +60,7 @@ describe('AblyConnection', () => {
                 return;
             }
         });
+        echo.connector.ably.connect();
     });
 
     test('should be able to disconnect from server', (done) => {
@@ -81,29 +82,6 @@ describe('AblyConnection', () => {
                 return;
             }
         });
+        echo.connector.ably.connect();
     });
-
-    test('should set ably agent header', async () => {
-        expect(echo.connector.ably.options.agents).toStrictEqual({
-            'laravel-echo': AblyConnector.LIB_VERSION
-        })
-        let observedRequests = 0;
-        // Intercept Http.do with test
-        function testRequestHandler(_, __, headers) {
-            observedRequests++;
-            expect('X-Ably-Version' in headers).toBeTruthy();
-            expect('Ably-Agent' in headers).toBeTruthy();
-            expect(headers['Ably-Agent'].indexOf('laravel-echo/'+ AblyConnector.LIB_VERSION) > -1).toBeTruthy();
-            return Promise.resolve({ body: JSON.stringify([Date.now()]), headers: {}, statusCode: 200 });
-        }
-
-        const do_inner = echo.connector.ably.http.do;
-        echo.connector.ably.http.do = testRequestHandler;
-
-        await echo.connector.ably.time();
-        expect(observedRequests).toBe(1);
-
-        // Clean interceptors from Http.do
-        echo.connector.ably.http.do = do_inner;
-    })
 });

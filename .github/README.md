@@ -1,21 +1,24 @@
 ## Introduction
 This repository is a fork of https://github.com/laravel/echo. It adheres to public interface methods from base repository. It will be synced regularly with the base repository to make sure all the code is up to date.
-Ably-specific implementation is added to support native [ably-js](https://github.com/ably/ably-js).
+Ably-specific implementation is added to support native [ably-js](https://github.com/ably/ably-js) via the [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) package.
+
+> **Upgrading from 1.0.x?** See [UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/HEAD/UPDATING.md#10x--110).
+
+## Requirements
+1. Node.js version >= 22 to install and build, required by `@ably/pubsub-device` v3 (browsers are unaffected)
 
 ## Installation 
- Install `@ably/laravel-echo` (wrapper for pluggable lib) and latest version of `ably` (pluggable lib) using npm.
+ Install `@ably/laravel-echo` using npm. It depends directly on Ably's [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) v3, which npm installs with it, so you don't need to install `ably` or `@ably/pubsub-device` yourself.
 
 ```bash
-npm install @ably/laravel-echo ably@2.x
+npm install @ably/laravel-echo@^1.1
 ```
 
 Once Echo is installed, you are ready to create a fresh Echo instance in your application's JavaScript. A great place to do this is at the bottom of the `resources/js/bootstrap.js` file that is included with the Laravel framework. By default, an example Echo configuration is already included in this file; however, the default configuration in the `bootstrap.js` file is intended for Pusher. You may copy the configuration below to transition your configuration to Ably.
 
 ```js
 import Echo from '@ably/laravel-echo';
-import * as Ably from 'ably';
 
-window.Ably = Ably; // make globally accessible to Echo
 window.Echo = new Echo({
     broadcaster: 'ably',
 });
@@ -50,7 +53,11 @@ Once you have uncommented and adjusted the Echo configuration according to your 
 ```shell
 npm run dev
 ```
-- If you are using SPA on client side, on user login, new clientId is assigned to the token. So, connection goes into failed state for next channel attach. We have fixed this issue. Now, it immediately reconnects again, reattaching all existing channels. See [Fix clientId mismatch](https://github.com/ably-forks/laravel-echo/pull/38) for more details. On user logout, connection+channels goes into failed state, and doesn't reconnect again. Hence, you need to create a new Echo instance after user logs out.
+- Echo 1.1.0 handles login and user switches without a page reload, and recovers from a logout at the next token renewal. As part of logout, call `Echo.connect()` (then subscribe to your channels again) or `Echo.disconnect()`: otherwise the page keeps the old user's channel access until its token expires. See [UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/HEAD/UPDATING.md#login-user-switch-and-logout-in-the-same-page) for login, user switches, other open tabs, your own Ably client and MAU-billed accounts.
+
+## Guest users on MAU-billed Ably accounts
+> **Note:** On MAU-billed Ably accounts, guests need a guest client ID from the broadcaster: use laravel-broadcaster 1.1.0 or later, set `ABLY_MAU_ACCOUNT=true`, and add `'mau_account' => env('ABLY_MAU_ACCOUNT', false)` to `config/broadcasting.php`. Without this, guest connections fail with error 40161.
+> See [Guest users on MAU-billed Ably accounts in UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/HEAD/UPDATING.md#guest-users-on-mau-billed-ably-accounts) for the config lines and options.
 
 ## Working with laravel sanctum/ support channel auth using custom implementation
 - There is an explicit section for [Authorizing Private/Presence Broadcast Channels](https://laravel.com/docs/sanctum#authorizing-private-broadcast-channels).
@@ -58,7 +65,7 @@ npm run dev
 ```js
     echo = new Echo({
             broadcaster: 'ably',
-            useTls: true,
+            tls: true,
             requestTokenFn: async (channelName: string, existingToken: string) => {
                 let postData = { channel_name: channelName, token: existingToken };
                 const res = await axios.post("/api/broadcasting/auth", postData);
@@ -118,7 +125,7 @@ Echo.leaveChannel(echoPresenceChannel.name);
 1. Fork it.
 2. Create your feature branch (`git checkout -b my-new-feature`).
 3. Commit your changes (`git commit -am 'Add some feature'`).
-4. Ensure you have added suitable tests and the test suite is passing (run `vendor/bin/phpunit`)
+4. Ensure you have added suitable tests and the test suite is passing (run `npm test`)
 4. Push to the branch (`git push origin my-new-feature`).
 5. Create a new Pull Request.
 
@@ -127,20 +134,19 @@ Echo.leaveChannel(echoPresenceChannel.name);
 This library uses [semantic versioning](http://semver.org/). For each release, the following needs to be done:
 
 1. Create a new branch for the release, named like `release/1.0.3` (where `1.0.3` is what you're releasing, being the new version).
-2. Update the `LIB_VERSION` in `src/connector/ably-connector.ts`.
-3. Update `version` in `pakckage.json`.
-4. Run [`github_changelog_generator`](https://github.com/github-changelog-generator/github-changelog-generator) to automate the update of the [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md). This may require some manual intervention, both in terms of how the command is run and how the change log file is modified. Your mileage may vary:
+2. Update `version` in `package.json`.
+3. Run [`github_changelog_generator`](https://github.com/github-changelog-generator/github-changelog-generator) to automate the update of the [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md). This may require some manual intervention, both in terms of how the command is run and how the change log file is modified. Your mileage may vary:
   - The command you will need to run will look something like this: `github_changelog_generator -u ably-forks -p laravel-echo --since-tag ably-echo-1.0.3 --output delta.md --token $GITHUB_TOKEN_WITH_REPO_ACCESS`. Generate token [here](https://github.com/settings/tokens/new?description=GitHub%20Changelog%20Generator%20token).
   - Using the command above, `--output delta.md` writes changes made after `--since-tag` to a new file.
   - The contents of that new file (`delta.md`) then need to be manually inserted at the top of the [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md), changing the "Unreleased" heading and linking with the current version numbers.
   - Also ensure that the "Full Changelog" link points to the new version tag instead of the `HEAD`.
-5. Commit generated [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md) file at root.
-6. Make a PR against `main`.
-7. Once the PR is approved, merge it into `main`.
-8. Add a tag and push it to origin - e.g.: `git tag ably-echo-1.0.3 && git push origin ably-echo-1.0.3`.
-9. Publish npm package on npmjs.com.
-10. Visit https://github.com/ably-forks/laravel-echo/tags and add release notes to the release (generally you can just copy the notes you added to the CHANGELOG).
-11. Update the [Ably Changelog](https://changelog.ably.com/) (via [headwayapp](https://headwayapp.co/)) with these changes (again, you can just copy the notes you added to the CHANGELOG).
+4. Commit generated [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md) file at root.
+5. Make a PR against `master`.
+6. Once the PR is approved, merge it into `master`.
+7. Add a tag and push it to origin - e.g.: `git tag ably-echo-1.0.3 && git push origin ably-echo-1.0.3`.
+8. Publish npm package on npmjs.com.
+9. Visit https://github.com/ably-forks/laravel-echo/tags and add release notes to the release (generally you can just copy the notes you added to the CHANGELOG).
+10. Update the [Ably Changelog](https://changelog.ably.com/) (via [headwayapp](https://headwayapp.co/)) with these changes (again, you can just copy the notes you added to the CHANGELOG).
 
 ## Note 
 - Current `README` is newly created and located under `.github/README.md`.

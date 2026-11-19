@@ -9,14 +9,26 @@ on:
 
 jobs:
   tests:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
+
+    strategy:
+      # The suite uses the live Ably sandbox (one sandbox app per leg); one flaky leg must not cancel the others.
+      fail-fast: false
+      matrix:
+        node-version: [22, 24]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: ESLint
         run: npm run lint
@@ -26,3 +38,26 @@ jobs:
 
       - name: Run build
         run: npm run build
+
+      - name: Smoke-test the built bundles (self-contained IIFE, ESM/CJS export surface)
+        run: npm run test:bundles
+
+  browser-build:
+    # tests/ably against @ably/pubsub-device's browser build (dist/index.js), which users actually ship (R15).
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Execute tests against the browser build
+        run: npm run test:browser-build

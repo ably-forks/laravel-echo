@@ -1,4 +1,31 @@
 import type { TokenDetails } from '../../../typings/ably';
+// Single install: Echo always uses its own copy of @ably/pubsub-device (a dependency). The ESM/CJS builds keep this
+// import external, so the app's bundler resolves it; the IIFE build bundles it.
+import * as BundledAbly from '@ably/pubsub-device';
+
+/**
+ * Invokes a user-supplied callback/listener so that an exception it throws (or a promise it rejects) is reported
+ * and never fed back into Echo's own promise chains. ably 1.x behaved the same way: its EventEmitter logged
+ * "Unexpected listener exception" and carried on.
+ */
+export const safeInvoke = (fn: Function | undefined | null, ...args: any[]): void => {
+    if (!fn) return;
+    const report = (e: any) => console.error('laravel-echo: exception in user callback', e);
+    try {
+        const result = fn(...args);
+        if (result && typeof result.then === 'function') {
+            result.then(undefined, report);
+        }
+    } catch (e) {
+        report(e);
+    }
+};
+
+/**
+ * Whether two ably errors describe the same failure: the same object, or the same code and message.
+ */
+export const isSameError = (a: any, b: any): boolean =>
+    !!a && !!b && (a === b || (a.code !== undefined && a.code === b.code && a.message === b.message));
 
 export const isNullOrUndefined = (obj) => obj == null || obj === undefined;
 export const isEmptyString = (stringToCheck, ignoreSpaces = true) =>
@@ -22,7 +49,13 @@ export const parseJwt = (jwtToken: string): { header: any; payload: any } => {
 
 // RSA4f - omitted `capability` property
 export const toTokenDetails = (jwtToken: string): TokenDetails | any => {
-    const { payload } = parseJwt(jwtToken);
+    let payload;
+    try {
+        payload = parseJwt(jwtToken).payload;
+    } catch (e) {
+        // a coded error instead of an opaque SyntaxError/TypeError reaching error() listeners / ably's authCallback
+        throw httpError('Auth token is not a valid JWT', 500, 50000, e);
+    }
     return {
         clientId: payload['x-ably-clientId'],
         expires: payload.exp * 1000, // Convert Seconds to ms
@@ -45,7 +78,8 @@ export const fromBase64UrlEncoded = (base64: string): string => {
     const base64WithPadding = base64Encoded + padding;
 
     if (isBrowser) {
-        return atob(base64WithPadding);
+        // P8: atob yields bytes (Latin-1 chars); decode them as UTF-8
+        return new TextDecoder().decode(Uint8Array.from(atob(base64WithPadding), (c) => c.charCodeAt(0)));
     }
     return Buffer.from(base64WithPadding, 'base64').toString();
 };
@@ -59,7 +93,14 @@ export const fromBase64UrlEncoded = (base64: string): string => {
 export const toBase64UrlEncoded = (text: string): string => {
     let encoded = ''
     if (isBrowser) {
-        encoded = btoa(text);
+        // P8: btoa only accepts Latin-1; encode the UTF-8 bytes instead. Build the binary string in chunks: passing
+        // every byte as an argument can exceed the engine's argument limit for large inputs.
+        const bytes = new TextEncoder().encode(text);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000) as unknown as number[]);
+        }
+        encoded = btoa(binary);
     } else {
         encoded = Buffer.from(text).toString('base64');
     }
@@ -69,51 +110,202 @@ export const toBase64UrlEncoded = (text: string): string => {
 const isAbsoluteUrl = (url: string) => (url && url.indexOf('http://') === 0) || url.indexOf('https://') === 0;
 
 export const fullUrl = (url: string) => {
-    if (!isAbsoluteUrl(url) && typeof window != 'undefined') {
-        const host = window?.location?.hostname;
-        const port = window?.location?.port;
-        const protocol = window?.location?.protocol.replace(':', '');
-        if (host && port && protocol) {
-            return protocol + '://' + host + ':' + port + url;
-        }
+    if (!isAbsoluteUrl(url) && typeof window != 'undefined' && window?.location?.href) {
+        // P9: resolve against the page URL, like the browser does (keeps the port, handles paths without a leading /)
+        return new URL(url, window.location.href).href;
     }
     return url;
 };
 
-let httpClient: any;
-function httpRequest(options, callback) {
-    if (!httpClient) {
-        httpClient = new Ably.Rest.Platform.Http();
-    }
-    // Automatically set by browser
-    options.method = options.method.toLowerCase();
-    if (isBrowser) {
-        delete options.headers['Content-Length']; // XHR warning - Refused to set unsafe header "Content-Length"
-    }
-    httpClient
-        .doUri(options.method, options.uri, options.headers, options.body, options.paramsIfNoHeaders || {})
-        .then((result) => callback(result.error, result.body))
-        .catch(callback);
-}
+/**
+ * E3: an Echo-initiated identity switch (a token for another clientId, including null -> user) makes the server
+ * reject the in-band AUTH with 40102 while the reconnect is already under way, and the channels then recover by
+ * themselves. Within a per-client switch window, the first 40102 per channel is not reported to error() listeners.
+ * The window closes on the next `connected`, a `failed` other than 40102, releaseClient() or after 30 s.
+ */
+const IDENTITY_SWITCH_TIMEOUT_MS = 30_000;
+const switchWindows = new WeakMap<object, { suppressed: Set<string>; timer: any }>();
 
-export const httpRequestAsync = (options): Promise<any> => {
-    return new Promise((resolve, reject) => {
-        httpRequest(options, function (err: any, res: any) {
-            if (err) {
-                reject(err);
-            } else {
-                if (typeof res === 'string') {
-                    resolve(JSON.parse(res));
-                } else if (!isBrowser && Buffer.isBuffer(res)) {
-                    try {
-                        resolve(JSON.parse(res.toString()));
-                    } catch (e) {
-                        resolve(res);
-                    }
-                } else {
-                    resolve(res);
-                }
-            }
+export const beginIdentitySwitch = (client: object) => {
+    endIdentitySwitch(client);
+    const timer = setTimeout(() => endIdentitySwitch(client), IDENTITY_SWITCH_TIMEOUT_MS);
+    timer?.unref?.();
+    switchWindows.set(client, { suppressed: new Set(), timer });
+};
+
+export const endIdentitySwitch = (client: object) => {
+    const w = switchWindows.get(client);
+    if (w) {
+        clearTimeout(w.timer);
+        switchWindows.delete(client);
+    }
+};
+
+/**
+ * A switch on token renewal (another tab logged in or out) reconnects, and ably-js then re-attaches the attached
+ * channels itself, with the new token and without Echo's pre-attach authorize. A private or presence channel fails
+ * that re-attach with 40160 and Echo re-authorizes it (AblyAuth.onChannelFailed), so the 40160 is transient: until
+ * the channel next attaches, or for at most 30 s, its first 40160 is not reported to error() listeners. The
+ * re-authorize result (attached, or the broadcaster's 403) is reported as usual.
+ */
+const renewalReattachWindows = new WeakMap<object, { done: Set<string>; timer: any }>();
+
+export const beginRenewalReattach = (client: object) => {
+    endRenewalReattach(client);
+    const timer = setTimeout(() => endRenewalReattach(client), IDENTITY_SWITCH_TIMEOUT_MS);
+    timer?.unref?.();
+    renewalReattachWindows.set(client, { done: new Set(), timer });
+};
+
+export const endRenewalReattach = (client: object) => {
+    const w = renewalReattachWindows.get(client);
+    if (w) {
+        clearTimeout(w.timer);
+        renewalReattachWindows.delete(client);
+    }
+};
+
+/** The channel attached: a later 40160 is a real failure. */
+export const settleRenewalReattach = (client: object, channelName: string) => {
+    renewalReattachWindows.get(client)?.done.add(channelName);
+};
+
+const isGuardedChannel = (channelName: string) =>
+    channelName.startsWith('private:') || channelName.startsWith('presence:');
+
+/**
+ * true = swallow: the first 40102 per channel inside an Echo-initiated switch window, or the first 40160 per private
+ * or presence channel of the re-attach after a renewal switch.
+ */
+export const consumeSwitchError = (client: object, channelName: string, err: any): boolean => {
+    const code = err?.code ?? err?.reason?.code;
+    if (code === 40160 && isGuardedChannel(channelName)) {
+        const r = client ? renewalReattachWindows.get(client) : undefined;
+        if (!r || r.done.has(channelName)) return false;
+        r.done.add(channelName);
+        return true;
+    }
+    const w = client ? switchWindows.get(client) : undefined;
+    if (!w || code !== 40102 || w.suppressed.has(channelName)) return false;
+    w.suppressed.add(channelName);
+    return true;
+};
+
+/**
+ * Default timeout for HTTP requests, matching ably-js's default `httpRequestTimeout`.
+ */
+export const HTTP_REQUEST_TIMEOUT_MS = 10000;
+
+/**
+ * The Ably library Echo uses: always its own `@ably/pubsub-device`. A global `Ably` or `AblyPubSub` (the 1.0.x README
+ * snippet `window.Ably = Ably`, or the CDN bundle) is never read, so a legacy ably v1/v2 global cannot break Echo.
+ */
+export const resolveAblyLib = (): any => BundledAbly;
+
+let ignoredGlobalsWarned = false;
+
+/**
+ * Logs one `console.warn` per page when a global `Ably` or `AblyPubSub` exists, because Echo ignores it. Only checks
+ * whether the globals exist; their values are never used.
+ */
+export const warnIfAblyGlobalsIgnored = (): void => {
+    if (ignoredGlobalsWarned || (typeof Ably === 'undefined' && typeof AblyPubSub === 'undefined')) {
+        return;
+    }
+    ignoredGlobalsWarned = true;
+    console.warn(
+        '@ably/laravel-echo: the global `Ably` / `AblyPubSub` is ignored; Echo uses its own @ably/pubsub-device. ' +
+            'You can remove `window.Ably = ...` (and the Ably CDN script) unless your own code uses it.'
+    );
+};
+
+/**
+ * Builds an error for Echo's auth path (R6). Uses the resolved library's `ErrorInfo` when available, so `instanceof
+ * Ably.ErrorInfo` and `toString()` are consistent in every runtime; falls back to a plain `Error`.
+ */
+export const httpError = (message: string, statusCode: number, code: number, cause?: any): Error => {
+    const ErrorInfo = resolveAblyLib()?.ErrorInfo;
+    const error: any = typeof ErrorInfo === 'function' ? new ErrorInfo(message, code, statusCode) : new Error(message);
+    error.statusCode = statusCode;
+    error.code = code;
+    if (cause !== undefined) {
+        error.cause = cause;
+    }
+    return error;
+};
+
+const deleteHeader = (headers: Record<string, any>, name: string) =>
+    Object.keys(headers)
+        .filter((key) => key.toLowerCase() === name.toLowerCase())
+        .forEach((key) => delete headers[key]);
+
+/**
+ * Sends an HTTP request using `fetch` and resolves with the parsed JSON response body, or `null` if the body is empty.
+ *
+ * Rejects with an error carrying `statusCode` and `code` if:
+ * - the request fails at the network level or does not complete within `timeoutMs` (code 50003 for a timeout, 50000 otherwise);
+ * - the response status is not 2xx (`code` is always `statusCode * 100`; body codes are never adopted, see R9);
+ * - a 2xx response body is not valid JSON (code 50000).
+ *
+ * Credentials (cookies) are sent cross-origin only when the headers contain the exact lowercase key `authorization`,
+ * as ably-js's XHR client (`"authorization" in headers`) did. A capitalised `Authorization` header uses `same-origin`.
+ */
+export const httpRequestAsync = async (
+    options: {
+        uri: string;
+        method: string;
+        headers?: Record<string, any>;
+        body?: string;
+    },
+    timeoutMs = HTTP_REQUEST_TIMEOUT_MS
+): Promise<any> => {
+    const headers = { ...options.headers };
+    deleteHeader(headers, 'Content-Length'); // computed by fetch; any casing (Node fetch rejects/stalls on a wrong value)
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let response: Response;
+    let text: string;
+    try {
+        response = await fetch(options.uri, {
+            method: options.method.toUpperCase(),
+            headers,
+            body: options.body,
+            credentials: Object.prototype.hasOwnProperty.call(headers, 'authorization') ? 'include' : 'same-origin',
+            signal: controller.signal,
         });
-    });
+        text = await response.text();
+    } catch (err) {
+        if (controller.signal.aborted) {
+            throw httpError(`Request to ${options.uri} timed out after ${timeoutMs}ms`, 500, 50003, err);
+        }
+        throw httpError(`Request to ${options.uri} failed: ${err?.message ?? err}`, 500, 50000, err);
+    } finally {
+        clearTimeout(timer);
+    }
+
+    let body: any = null;
+    let parseError: any;
+    if (text !== '') {
+        try {
+            body = JSON.parse(text);
+        } catch (err) {
+            parseError = err;
+        }
+    }
+
+    if (!response.ok) {
+        const errorDetails = body?.error ?? body;
+        const m = errorDetails?.message;
+        const message = (typeof m === 'string' && m) || text.slice(0, 200) || response.statusText;
+        throw httpError(`HTTP ${response.status}: ${message}`, response.status, response.status * 100);
+    }
+    if (parseError) {
+        throw httpError(
+            `Expected a JSON response from ${options.uri} (HTTP ${response.status}), got: ${text.slice(0, 100)}`,
+            500,
+            50000,
+            parseError
+        );
+    }
+    return body;
 };

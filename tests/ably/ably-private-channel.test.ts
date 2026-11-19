@@ -3,7 +3,6 @@ import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import safeAssert from './setup/utils';
 import { AblyChannel, AblyPrivateChannel } from '../../src/channel';
-import * as Ably from 'ably';
 
 jest.setTimeout(20000);
 describe('AblyPrivateChannel', () => {
@@ -12,7 +11,6 @@ describe('AblyPrivateChannel', () => {
     let echo: Echo;
 
     beforeAll(async () => {
-        global.Ably = Ably;
         testApp = await setup();
         mockAuthServer = new MockAuthServer(testApp.keys[0].keyStr);
     });
@@ -22,6 +20,7 @@ describe('AblyPrivateChannel', () => {
     });
 
     beforeEach(() => {
+        mockAuthServer.renewalMode = 'reverify'; // the default; individual tests opt into 'reuse'
         echo = new Echo({
             broadcaster: 'ably',
             useTls: true,
@@ -58,6 +57,10 @@ describe('AblyPrivateChannel', () => {
     });
 
     test('channel subscription error, token expired', (done) => {
+        // The 3 s channel token must stay expired for the test to see an error. On a connection renewal ('reverify', the
+        // default) the mock issues a fresh full-length token and drops the short-lived exp, so no error would ever occur;
+        // 'reuse' (old broadcaster) returns the same iat/exp, so the 3 s token expires inside Ably's 30 s re-auth window.
+        mockAuthServer.renewalMode = 'reuse';
         mockAuthServer.setAuthExceptions(['private:shortLivedChannel']);
         const privateChannel = echo.private('shortLivedChannel') as AblyChannel;
         privateChannel.error((stateChangeError) => {

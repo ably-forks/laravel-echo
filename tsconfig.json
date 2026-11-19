@@ -8,6 +8,7 @@
         "target": "es6",
         "isolatedModules": false,
         "esModuleInterop": true,
+        "resolveJsonModule": true,
         "typeRoots": [
             "node_modules/@types"
         ],

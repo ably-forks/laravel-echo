@@ -1,5 +1,5 @@
-import * as ably from 'ably';
-export type AblyRealtime = ably.Realtime;
+import type * as ably from '@ably/pubsub-device';
+export type AblyRealtime = ably.PubSubClient;
 export type AblyRealtimeChannel = ably.RealtimeChannel;
 export type ChannelStateChange = ably.ChannelStateChange;
 export type AuthOptions = ably.AuthOptions;

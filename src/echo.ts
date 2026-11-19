@@ -1,4 +1,5 @@
-import type { Channel, PresenceChannel } from './channel';
+import { Channel } from './channel';
+import type { PresenceChannel } from './channel';
 import { AblyConnector, Connector, PusherConnector, SocketIoConnector, NullConnector } from './connector';
 
 /**
@@ -38,6 +39,10 @@ export default class Echo {
      * Create a new connection.
      */
     connect(): void {
+        if (this.connector instanceof AblyConnector) {
+            this.connector.releaseClient(); // P7: Echo.connect() called again replaces the connector
+        }
+
         if (this.options.broadcaster == 'ably') {
             this.connector = new AblyConnector(this.options);
         } else if (this.options.broadcaster == 'reverb') {
@@ -197,6 +202,7 @@ export default class Echo {
 /**
  * Export channel classes for TypeScript.
  */
-export { Connector, Channel, PresenceChannel };
+export { Connector, Channel };
+export type { PresenceChannel };
 
 export { EventFormatter } from './util';

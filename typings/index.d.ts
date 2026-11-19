@@ -1,6 +1,7 @@
 // libs required to be set globally before initializing echo instance (currently used in tests)
 declare global {
     var Ably: any;
+    var AblyPubSub: any;
     var Pusher: any;
     var io: any;
     var Vue: any;

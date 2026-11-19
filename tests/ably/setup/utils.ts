@@ -18,7 +18,7 @@ export const execute = (fn: Function, times: number) => {
     }
 };
 
-export const httpPostAsync = async (url: string, postData: any) => {
+export const httpPostAsync = async (url: string, postData: any, timeoutMs?: number) => {
     postData = JSON.stringify(postData);
     let postOptions = {
         uri: url,
@@ -26,11 +26,10 @@ export const httpPostAsync = async (url: string, postData: any) => {
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            'Content-Length': postData.length,
         },
         body: postData,
     };
-    return await httpRequestAsync(postOptions);
+    return await httpRequestAsync(postOptions, timeoutMs);
 };
 
 export const httpDeleteAsync = async (url: string, headers: any) => {
