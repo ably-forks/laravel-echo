@@ -131,9 +131,9 @@ Echo.leaveChannel(echoPresenceChannel.name);
 
 
 ## Release Process
-This library uses [semantic versioning](http://semver.org/). Below, `<version>` is the version being released (e.g. `1.1.1`) and the git tag is `ably-echo-<version>`. Releases are published manually, from a tarball that CI has built and verified.
+This library uses [semantic versioning](http://semver.org/). Below, `<version>` is the version being released (e.g. `1.1.1`) and the git tag is `ably-echo-<version>`. Releases are published manually.
 
-**Why:** a stale git-ignored `dist/` and the upstream README were once published, because `prepublishOnly` is skipped under `ignore-scripts=true`. So the [package workflow](workflows/package.yml) builds a clean checkout of the tag and verifies it, and you only publish that file. CI has no npm credentials.
+**Why:** a stale git-ignored `dist/` and the upstream README were once published, because `prepublishOnly` is skipped under `ignore-scripts=true`. So `npm run release:pack` does a clean build and checks the package, and you only publish the file it creates.
 
 1. Create a new branch for the release, named like `release/<version>`.
 2. Set the version in `package.json` and `package-lock.json`: `npm version <version> --no-git-tag-version`.
@@ -145,14 +145,9 @@ This library uses [semantic versioning](http://semver.org/). Below, `<version>` 
 4. Commit the version bump and [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md), and make a PR against `master`.
 5. Once the PR is approved, merge it into `master`.
 6. Tag the merge commit by its SHA (not `HEAD`, which a later merge could move), and push the tag: `git fetch origin && git tag ably-echo-<version> <merge-commit-sha> && git push origin ably-echo-<version>`. Get the SHA with `gh pr view <pr-number> -R ably-forks/laravel-echo --json mergeCommit -q .mergeCommit.oid`.
-7. The tag push runs the **package** workflow. Once it is green, download the verified tarball and checksum into an empty directory:
-    - `gh run list -R ably-forks/laravel-echo --workflow package.yml --branch ably-echo-<version>` shows the run id.
-    - `gh run download <run-id> -R ably-forks/laravel-echo -n npm-package`
-    - The run fails if the tag does not match the `package.json` version or the tarball does not verify. Do not publish unless it is green. Use "Run workflow" on the package workflow to rebuild an existing tag.
-8. Publish that tarball, never a folder: `npm whoami` (log in first if it fails), then `npm publish ably-laravel-echo-<version>.tgz`. Check it with `npm dist-tag ls @ably/laravel-echo` and `npm view @ably/laravel-echo@<version> dist.integrity`, which must match the npm integrity in the run's summary.
+7. `release:pack` packs the current checkout, so commit or stash any local changes, then check out the release tag: `git checkout ably-echo-<version>`. `git describe --tags --exact-match` must print `ably-echo-<version>` (it errors otherwise). Then run `npm run release:pack -- <version>`. It refuses to run if `package.json` is not that version, and creates `ably-laravel-echo-<version>.tgz` only if its sanity checks pass, printing the tarball's integrity.
+8. Publish that tarball, never a folder: `npm whoami` (log in first if it fails), then `npm publish ably-laravel-echo-<version>.tgz`. Check `npm view @ably/laravel-echo@<version> dist.integrity` against the integrity that `release:pack` printed.
 9. Visit https://github.com/ably-forks/laravel-echo/tags and add release notes to the release (generally you can just copy the notes you added to the CHANGELOG), and update the [Ably Changelog](https://changelog.ably.com/) (via [headwayapp](https://headwayapp.co/)) with the same notes.
-
-If CI is unavailable, in a fresh clone at the tag (`git clone --branch ably-echo-<version> https://github.com/ably-forks/laravel-echo.git echo-release`) run `npm ci && npm run release:pack`. It builds, packs and verifies `ably-laravel-echo-<version>.tgz`, and restores the README. Then publish that file as in step 8.
 
 ## Note 
 - Current `README` is newly created and located under `.github/README.md`.
