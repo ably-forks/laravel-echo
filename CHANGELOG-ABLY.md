@@ -1,5 +1,11 @@
 # Changelog
 
+## [v1.1.1](https://github.com/ably-forks/laravel-echo/tree/ably-echo-1.1.1)
+
+[Full Changelog](https://github.com/ably-forks/laravel-echo/compare/ably-echo-1.1.0...ably-echo-1.1.1)
+
+Echo 1.1.1 republishes 1.1.0 with the correct build. There are no source changes.
+
 ## [v1.1.0](https://github.com/ably-forks/laravel-echo/tree/ably-echo-1.1.0)
 
 [Full Changelog](https://github.com/ably-forks/laravel-echo/compare/ably-echo-1.0.6...ably-echo-1.1.0)
