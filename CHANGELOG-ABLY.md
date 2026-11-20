@@ -8,7 +8,7 @@ Echo 1.1.0 is a minor release. The Echo API and its options are unchanged, so mo
 
 You now install a single package. Echo brings Ably's library with it, so you no longer install `ably` or set `window.Ably`. Users can now log in, switch user and log out repeatedly, in this tab or another, without a page reload, and Echo now works with Ably accounts that bill by monthly active users (MAU). The release also fixes problems you may have hit in 1.0.x, such as a private channel that restarted the first connection attempt.
 
-Below is an overview of the main changes. Please refer to [UPDATING.md](UPDATING.md#10x--110) for the full details, including what to change in your app.
+Below is an overview of the main changes. Please refer to [UPDATING.md](UPDATING.md#10x--11) for the full details, including what to change in your app.
 
 ### What you need to do
 
