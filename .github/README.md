@@ -131,42 +131,28 @@ Echo.leaveChannel(echoPresenceChannel.name);
 
 
 ## Release Process
-This library uses [semantic versioning](http://semver.org/). In the steps below, `<version>` is the version being released (e.g. `1.1.1`), the git tag is `ably-echo-<version>`, and `<previous-version>` is the last release. Releases are manual. Steps 1 to 7 run in your normal checkout of this repo; steps 8 to 12 run in a **separate fresh clone**.
+This library uses [semantic versioning](http://semver.org/). Below, `<version>` is the version being released (e.g. `1.1.1`) and the git tag is `ably-echo-<version>`. Releases are published manually, from a tarball that CI has built and verified.
 
-**Why steps 8 to 12 look like this:** An earlier release shipped with a stale `dist/` and the upstream README. `dist/` is git-ignored, so publishing from a working copy packs whatever old build is lying around, and `prepublishOnly` (the build and README swap) is skipped when npm runs with `ignore-scripts=true`. So: publish only from a fresh clone, build explicitly, and publish only the `.tgz` that `scripts/verify-package.mjs` has passed.
+**Why:** a stale git-ignored `dist/` and the upstream README were once published, because `prepublishOnly` is skipped under `ignore-scripts=true`. So the [package workflow](workflows/package.yml) builds a clean checkout of the tag and verifies it, and you only publish that file. CI has no npm credentials.
 
 1. Create a new branch for the release, named like `release/<version>`.
-2. Update the version in `package.json` and `package-lock.json`: `npm version <version> --no-git-tag-version`.
+2. Set the version in `package.json` and `package-lock.json`: `npm version <version> --no-git-tag-version`.
 3. Run [`github_changelog_generator`](https://github.com/github-changelog-generator/github-changelog-generator) to automate the update of the [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md). This may require some manual intervention, both in terms of how the command is run and how the change log file is modified. Your mileage may vary:
     - The command you will need to run will look something like this: `github_changelog_generator -u ably-forks -p laravel-echo --since-tag ably-echo-<previous-version> --output delta.md --token $GITHUB_TOKEN_WITH_REPO_ACCESS`. Generate token [here](https://github.com/settings/tokens/new?description=GitHub%20Changelog%20Generator%20token).
     - Using the command above, `--output delta.md` writes changes made after `--since-tag` to a new file.
     - The contents of that new file (`delta.md`) then need to be manually inserted at the top of the [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md), changing the "Unreleased" heading and linking with the current version numbers.
     - Also ensure that the "Full Changelog" link points to the new version tag instead of the `HEAD`.
-4. Commit the version bump and the generated [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md) file at root.
-5. Make a PR against `master`.
-6. Once the PR is approved, merge it into `master`.
-7. Tag the merge commit and push the tag: `git checkout master && git pull && git tag ably-echo-<version> && git push origin ably-echo-<version>`.
-8. In an empty directory outside your checkout, make a fresh clone at the tag: `git clone --branch ably-echo-<version> https://github.com/ably-forks/laravel-echo.git echo-release && cd echo-release`.
-9. Install and build explicitly (do not rely on `prepublishOnly`): `npm ci && npm run build && npm run use:ablyReadme`. The last command swaps in this Ably `README.md` for the upstream Laravel one.
-10. Pack and verify:
-    - `npm pack --ignore-scripts` creates `ably-laravel-echo-<version>.tgz`.
-    - `node scripts/verify-package.mjs ably-laravel-echo-<version>.tgz <version>` checks that the tarball has the built bundles for this version, `@ably/pubsub-device`, no global `Ably`, and the Ably README.
-    - **Gate: do not publish unless it prints `All checks passed.`** If it fails, go back to step 9 in a clean clone.
-11. Publish the verified tarball (never the folder):
-    - `npm whoami` must show your npm account (run `npm login` if not; have your 2FA code ready).
-    - Rehearse with `npm publish ably-laravel-echo-<version>.tgz --dry-run`, then publish with `npm publish ably-laravel-echo-<version>.tgz`.
-    - Publishing sets the `latest` dist-tag. Check it with `npm dist-tag ls @ably/laravel-echo`.
-12. Smoke-check the published package:
-    - `npm view @ably/laravel-echo@<version> dist.unpackedSize gitHead` shows the same `unpacked size` that `npm pack` printed in step 10, and the tagged commit.
-    - In an empty temp directory, run `npm install @ably/laravel-echo@<version>` and construct `new Echo({ broadcaster: 'ably', authEndpoint: 'http://127.0.0.1:9/auth' })`. It must not throw `ReferenceError: Ably is not defined`.
-13. Visit https://github.com/ably-forks/laravel-echo/tags and add release notes to the release (generally you can just copy the notes you added to the CHANGELOG).
-14. Update the [Ably Changelog](https://changelog.ably.com/) (via [headwayapp](https://headwayapp.co/)) with these changes (again, you can just copy the notes you added to the CHANGELOG).
+4. Commit the version bump and [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md), and make a PR against `master`.
+5. Once the PR is approved, merge it into `master`.
+6. Tag the merge commit by its SHA (not `HEAD`, which a later merge could move), and push the tag: `git fetch origin && git tag ably-echo-<version> <merge-commit-sha> && git push origin ably-echo-<version>`. Get the SHA with `gh pr view <pr-number> -R ably-forks/laravel-echo --json mergeCommit -q .mergeCommit.oid`.
+7. The tag push runs the **package** workflow. Once it is green, download the verified tarball and checksum into an empty directory:
+    - `gh run list -R ably-forks/laravel-echo --workflow package.yml --branch ably-echo-<version>` shows the run id.
+    - `gh run download <run-id> -R ably-forks/laravel-echo -n npm-package`
+    - The run fails if the tag does not match the `package.json` version or the tarball does not verify. Do not publish unless it is green. Use "Run workflow" on the package workflow to rebuild an existing tag.
+8. Publish that tarball, never a folder: `npm whoami` (log in first if it fails), then `npm publish ably-laravel-echo-<version>.tgz`. Check it with `npm dist-tag ls @ably/laravel-echo` and `npm view @ably/laravel-echo@<version> dist.integrity`, which must match the npm integrity in the run's summary.
+9. Visit https://github.com/ably-forks/laravel-echo/tags and add release notes to the release (generally you can just copy the notes you added to the CHANGELOG), and update the [Ably Changelog](https://changelog.ably.com/) (via [headwayapp](https://headwayapp.co/)) with the same notes.
 
-If a bad version is published:
-  - Point `latest` back at the last good version: `npm dist-tag add @ably/laravel-echo@<previous-version> latest`.
-  - Warn users: `npm deprecate @ably/laravel-echo@<bad-version> "<what is wrong and which version to use>"`.
-  - Release a fixed patch with the steps above (a version number cannot be re-published).
-  - Avoid `npm unpublish`: it breaks users who already depend on that version.
+If CI is unavailable, in a fresh clone at the tag (`git clone --branch ably-echo-<version> https://github.com/ably-forks/laravel-echo.git echo-release`) run `npm ci && npm run release:pack`. It builds, packs and verifies `ably-laravel-echo-<version>.tgz`, and restores the README. Then publish that file as in step 8.
 
 ## Note 
 - Current `README` is newly created and located under `.github/README.md`.

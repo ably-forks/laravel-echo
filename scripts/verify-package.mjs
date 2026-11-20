@@ -81,6 +81,23 @@ try {
         check(`${bundle} embeds version ${expectedVersion}`, versionPattern.test(source));
     }
 
+    // Per-format checks (the same patterns as tests/bundles/built-bundles.test.ts): the ESM and CJS builds keep
+    // @ably/pubsub-device external, and the IIFE build bundles its own copy of it.
+    const esm = read('dist/echo.js');
+    const cjs = read('dist/echo.common.js');
+    const iife = read('dist/echo.iife.js');
+    check(
+        'dist/echo.js imports @ably/pubsub-device as an ES module',
+        esm !== null && /^import \* as \w+ from '@ably\/pubsub-device';$/m.test(esm),
+    );
+    check('dist/echo.js does not bundle the Ably SDK', esm !== null && !/Ably JavaScript Library/.test(esm));
+    check('dist/echo.common.js requires @ably/pubsub-device', cjs !== null && /require\('@ably\/pubsub-device'\)/.test(cjs));
+    check(
+        'dist/echo.iife.js has no ES module imports or require() calls',
+        iife !== null && !/\brequire\(|^import /m.test(iife),
+    );
+    check('dist/echo.iife.js bundles the Ably SDK (v3)', iife !== null && /Ably JavaScript Library v3\./.test(iife));
+
     const declaration = read('dist/src/connector/ably-connector.d.ts');
     check('dist/src/connector/ably-connector.d.ts references @ably/pubsub-device', declaration?.includes('@ably/pubsub-device') ?? false);
 
