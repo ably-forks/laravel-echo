@@ -1,16 +1,18 @@
 # Upgrade / Migration Guide
 
-## 1.0.x → 1.1.0
+<a id="10x--110"></a>
 
-`@ably/laravel-echo` 1.1.0 is a minor release. The Echo API (`channel`, `private`, `join`, `listen`, `whisper`, `here`, `error`, `socketId`, …) and its options are unchanged, so most applications only change the install line and drop the `window.Ably` lines from their initialization.
+## 1.0.x → 1.1
 
-What changed is how Ably's library is installed: 1.1.0 depends on Ably's [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) v3 and installs it itself, so you no longer install or expose `ably`. It also adds client ID switching without a page reload (login, user switch, logout, and the same changes made in another tab) and support for Ably accounts with monthly-active-user (MAU) pricing.
+`@ably/laravel-echo` 1.1 is a minor release. The Echo API (`channel`, `private`, `join`, `listen`, `whisper`, `here`, `error`, `socketId`, …) and its options are unchanged, so most applications only change the install line and drop the `window.Ably` lines from their initialization.
 
-Publish order: Echo 1.1.0 must be published before, or together with, [laravel-broadcaster](https://github.com/ably/laravel-broadcaster) 1.1.0, whose documentation tells users to install `@ably/laravel-echo@^1.1`. For the server side (guest client IDs, token lifetime, `ABLY_MAU_ACCOUNT`), see that repository.
+What changed is how Ably's library is installed: 1.1 depends on Ably's [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) v3 and installs it itself, so you no longer install or expose `ably`. It also adds client ID switching without a page reload (login, user switch, logout, and the same changes made in another tab) and support for Ably accounts with monthly-active-user (MAU) pricing.
+
+Publish order: Echo 1.1 must be published before, or together with, [laravel-broadcaster](https://github.com/ably/laravel-broadcaster) 1.1, whose documentation tells users to install `@ably/laravel-echo@^1.1`. For the server side (guest client IDs, token lifetime, `ABLY_MAU_ACCOUNT`), see that repository.
 
 ### Mapping
 
-| 1.0.x | 1.1.0 |
+| 1.0.x | 1.1.x |
 | --- | --- |
 | `npm install @ably/laravel-echo ably@1.x` | `npm install @ably/laravel-echo@^1.1` |
 | `import * as Ably from 'ably'; window.Ably = Ably;` | remove (harmless if left; Echo ignores it and logs a one-time `console.warn`) |
@@ -33,7 +35,7 @@ window.Echo = new Echo({
     broadcaster: 'ably',
 });
 
-// 1.1.0
+// 1.1
 import Echo from '@ably/laravel-echo';
 
 window.Echo = new Echo({
@@ -59,7 +61,7 @@ Both are inherited from `@ably/pubsub-device`, not an Echo API change.
 
 ### Echo options and defaults
 
-An app that passes its 1.0.x options needs no new option: everything added in 1.1.0 has a working default. Echo's own options:
+An app that passes its 1.0.x options needs no new option: everything added in 1.1 has a working default. Echo's own options:
 
 | Option | Default | Notes |
 | --- | --- | --- |
@@ -72,15 +74,15 @@ An app that passes its 1.0.x options needs no new option: everything added in 1.
 | `requestTokenFn` | none | Replaces the request to `authEndpoint`. Each call is bounded to 30 s. Do not wrap it in try/catch: Echo handles its exceptions. |
 | `client` | none | Your own client, used as is (see above). |
 | `token` | none | An initial token, used before the first token request. It is not stripped from the client options, so every new client created by `Echo.connect()` gets it again (as in 1.0.x): after a login or logout, pass a fresh token or omit it. |
-| `endpoint` | not set (ably-js default) | New in 1.1.0 (`@ably/pubsub-device` v3), replaces `environment`, `realtimeHost` and `restHost`. |
-| `httpRequestTimeout` | `10000` ms | Also applies to the request to `authEndpoint` since 1.1.0. |
+| `endpoint` | not set (ably-js default) | New in 1.1 (`@ably/pubsub-device` v3), replaces `environment`, `realtimeHost` and `restHost`. |
+| `httpRequestTimeout` | `10000` ms | Also applies to the request to `authEndpoint` since 1.1. |
 | `withoutInterceptors` | `false` | Set `true` to skip the `X-Socket-Id` request interceptors. |
 
 Every other option is passed to Ably as a client option (for example `echoMessages`, `queueMessages`, `disconnectedRetryTimeout`, `suspendedRetryTimeout`, `tls`); Echo-only keys such as `authEndpoint`, `csrfToken` and `bearerToken` are not. Echo sets `echoMessages: false` itself, and an `echoMessages` you pass overrides it. Ably's auth options (`authUrl`, `authCallback`, …) should not be used, because `authEndpoint` already does token authentication. `host` and `key` are Pusher options and have no effect with Ably.
 
 ### Login, user switch and logout in the same page
 
-An Ably connection cannot change its client ID. When the identity of your user changes, Echo has to open a new connection with the new client ID. Echo 1.1.0 does this for you, as described below (see [Fix clientId mismatch](https://github.com/ably-forks/laravel-echo/pull/38) for the original fix for a guest logging in).
+An Ably connection cannot change its client ID. When the identity of your user changes, Echo has to open a new connection with the new client ID. Echo 1.1 does this for you, as described below (see [Fix clientId mismatch](https://github.com/ably-forks/laravel-echo/pull/38) for the original fix for a guest logging in).
 
 #### Login without a page reload
 
@@ -170,7 +172,7 @@ Error codes you may meet around a switch:
 | 40160 | The cached token does not allow this private or presence channel yet. | Nothing. Echo authorizes the channel again. |
 | 40161 | A guest connected without a client ID on an MAU-billed account. | Enable guest client IDs (see below). |
 | 40167 | A server-side Ably client's token lacks what a MAU-billed account requires of server clients. | Fix token issuing on your server; it is not a browser issue. |
-| 40168 | An incompatible or older Ably SDK build connected. | Use `@ably/laravel-echo` 1.1.0 or later and remove any global `ably` package. Make sure no other Ably SDK creates the connection. |
+| 40168 | An incompatible or older Ably SDK build connected. | Use `@ably/laravel-echo` 1.1 or later and remove any global `ably` package. Make sure no other Ably SDK creates the connection. |
 | 403 (40300) | Your broadcaster denied the channel for this identity. | Nothing, if the denial is expected. |
 | 419 | The CSRF token is outdated (the auth request failed). | Refresh the CSRF token, then call `Echo.connect()`. |
 
@@ -178,7 +180,7 @@ Error codes you may meet around a switch:
 
 Every device connection on an MAU-billed account must carry a client ID, so a guest connection without one is rejected with error 40161. To serve guests:
 
-1. Deploy Echo 1.1.0 to your users before turning the flag on. Use laravel-broadcaster 1.1.0 or later and set `ABLY_MAU_ACCOUNT=true` in `.env`. It only takes effect if `config/broadcasting.php` has these lines in the `ably` connection (the package ships no config file):
+1. Deploy Echo 1.1 to your users before turning the flag on. Use laravel-broadcaster 1.1 or later and set `ABLY_MAU_ACCOUNT=true` in `.env`. It only takes effect if `config/broadcasting.php` has these lines in the `ably` connection (the package ships no config file):
 
    ```php
    'mau_account' => env('ABLY_MAU_ACCOUNT', false),
