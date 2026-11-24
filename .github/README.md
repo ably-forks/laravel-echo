@@ -149,6 +149,8 @@ This library uses [semantic versioning](http://semver.org/). Below, `<version>` 
 8. Publish that tarball, never a folder: `npm whoami` (log in first if it fails), then `npm publish ably-laravel-echo-<version>.tgz`. Check `npm view @ably/laravel-echo@<version> dist.integrity` against the integrity that `release:pack` printed.
 9. Visit https://github.com/ably-forks/laravel-echo/tags and add release notes to the release (generally you can just copy the notes you added to the CHANGELOG), and update the [Ably Changelog](https://changelog.ably.com/) (via [headwayapp](https://headwayapp.co/)) with the same notes.
 
+Releasing a patch for an older major (1.x)? See [Maintenance releases for older majors (1.x)](https://github.com/ably-forks/laravel-echo/blob/HEAD/.github/CONTRIBUTING.md#maintenance-releases-for-older-majors-1x) in CONTRIBUTING.md.
+
 ## Note 
 - Current `README` is newly created and located under `.github/README.md`.
 - `CHANGELOG-ABLY.md` will be used for commiting changelog instead of `CHANGELOG.md`.
