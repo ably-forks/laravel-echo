@@ -140,6 +140,7 @@ This library uses [semantic versioning](http://semver.org/). Below, `<version>` 
 3. Run [`github_changelog_generator`](https://github.com/github-changelog-generator/github-changelog-generator) to automate the update of the [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md). This may require some manual intervention, both in terms of how the command is run and how the change log file is modified. Your mileage may vary:
     - The command you will need to run will look something like this: `github_changelog_generator -u ably-forks -p laravel-echo --since-tag ably-echo-<previous-version> --output delta.md --token $GITHUB_TOKEN_WITH_REPO_ACCESS`. Generate token [here](https://github.com/settings/tokens/new?description=GitHub%20Changelog%20Generator%20token).
     - Using the command above, `--output delta.md` writes changes made after `--since-tag` to a new file.
+    - Once 1.x patches are released after 2.0.0, add `--exclude-tags-regex '^ably-echo-1\.'`, or the 1.x tags appear in the 2.x entry. `--since-tag` keeps every tag that is newer by date.
     - The contents of that new file (`delta.md`) then need to be manually inserted at the top of the [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md), changing the "Unreleased" heading and linking with the current version numbers.
     - Also ensure that the "Full Changelog" link points to the new version tag instead of the `HEAD`.
 4. Commit the version bump and [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md), and make a PR against `master`.

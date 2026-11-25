@@ -8,40 +8,49 @@ Normal releases from `master` follow the [Release Process in the README](README.
 
 ### Maintenance releases for older majors (1.x)
 
-Use this once 2.0.0 is published and 1.x still gets fixes. `master` then holds 2.x and the npm `latest` dist-tag points to 2.x. 1.x patches (1.1.2, 1.1.3, ...) are released from the `1.x` branch and published under the npm dist-tag `latest-1`, so `latest` stays on 2.x.
+Use this once 2.0.0 is published from `master` and a fix must ship to 1.x users as a 1.x patch:
+- 1.x patches (1.1.2, 1.1.3, ...) are released from the `1.x` branch.
+- They are published under the npm dist-tag `latest-1`, so `latest` stays on 2.x.
+- The `1.x` branch is not created in advance. Cut it when the first 1.x fix is needed.
 
 Below, `<version>` is the 1.x version being released (e.g. `1.1.2`), `<previous-version>` is the last 1.x release (e.g. `1.1.1`), and the git tag is `ably-echo-<version>` as usual.
 
-#### One-time setup
+#### When 2.0.0 is published
 
-1. Cut the `1.x` branch before the first 2.0 commit lands on `master`. It must contain `scripts/release-pack.mjs` (`npm run release:pack`), which the steps below use.
+Point `latest-1` at the last 1.x release, so `npm install @ably/laravel-echo@latest-1` works from day one:
+```shell
+npm view @ably/laravel-echo versions                              # the highest 1.x is <previous-version>
+npm dist-tag add @ably/laravel-echo@<previous-version> latest-1
+npm view @ably/laravel-echo dist-tags                             # latest: 2.x, latest-1: <previous-version>
+```
+
+#### Cut the `1.x` branch (first 1.x fix only)
+
+1. When: cut `1.x` when the first fix that must ship as a 1.x patch is ready. Later fixes and releases reuse it.
+2. From where: the last 1.x release tag, unless `master` has 1.x-safe commits right after it. List what `master` has since the tag, oldest first:
     ```shell
-    git fetch origin
-    git log --oneline ably-echo-1.1.1..origin/master   # must list only 1.x-safe commits, such as release:pack
-    git switch -c 1.x origin/master
+    git fetch origin --tags
+    git log --oneline --first-parent --reverse ably-echo-<previous-version>..origin/master
+    ```
+    - If the list is empty or starts with 2.x work, `<base>` is `ably-echo-<previous-version>`.
+    - If it starts with 1.x-safe commits (for example `release:pack`), `<base>` is the last of them before the first 2.x commit.
+    ```shell
+    git switch -c 1.x <base>
     git push -u origin 1.x
     ```
-    If 2.0 commits are already on `master`, cut it from the tag instead and bring in `release:pack` with a PR into `1.x`:
+3. CI: `.github/workflows/tests.yml` runs on pushes to `'*.x'` branches in every tag since `ably-echo-1.0.2`, so a branch cut from a 1.1.x tag needs no workflow change. A branch keeps the workflow file it was cut from: if its `tests.yml` lacks `'*.x'` under `on.push.branches`, add it as the branch's first change.
+4. `release:pack`: the release steps below need it. Check that the branch has it:
     ```shell
-    git switch -c 1.x ably-echo-1.1.1
-    git push -u origin 1.x
-    git switch -c backport/release-pack-1.x origin/1.x
-    git cherry-pick -x <release-pack-commit-sha>...   # the commit(s) that added release:pack; add -m 1 for a merge commit
-    git push -u origin backport/release-pack-1.x
-    gh pr create -R ably-forks/laravel-echo --base 1.x --title "[1.x] Add release:pack" \
-      --body "Backport of <master-pr-url>"
+    git ls-tree --name-only origin/1.x scripts/release-pack.mjs   # must print scripts/release-pack.mjs
     ```
-2. CI needs no change: `.github/workflows/tests.yml` already runs on pushes to `'*.x'` branches and on every pull request.
-3. Right after 2.0.0 is published, point the maintenance dist-tag at the last 1.x release, so `npm install @ably/laravel-echo@latest-1` works from day one:
-    ```shell
-    npm dist-tag add @ably/laravel-echo@1.1.1 latest-1
-    npm view @ably/laravel-echo dist-tags   # latest: 2.x, latest-1: 1.1.1
-    ```
-4. Optional: ask a repository admin to protect `*.x` branches (pull requests only, required checks).
+    If it prints nothing, backport the PR that added it as the first PR into `1.x`, as in [Backport a fix](#backport-a-fix). Cherry-pick that PR's merge commit with `-m 1`.
+5. Optional: ask a repository admin to protect `*.x` branches (pull requests only, required checks).
+6. Backport the fix, then release it as in [Release a 1.x version](#release-a-1x-version).
 
 #### Backport a fix
 
 1. Fix it on `master` first with a normal PR. Only a bug that exists in 1.x alone is fixed directly on a branch from `origin/1.x`.
+    If `origin/1.x` does not exist yet, [cut it](#cut-the-1x-branch-first-1x-fix-only) first.
 2. Cherry-pick it into a PR against `1.x`. `-x` adds "(cherry picked from commit ...)" to the commit message.
     ```shell
     git fetch origin
@@ -61,7 +70,7 @@ Below, `<version>` is the 1.x version being released (e.g. `1.1.2`), `<previous-
     git switch -c release/<version> origin/1.x
     npm version <version> --no-git-tag-version   # package.json and package-lock.json
     ```
-    Add the entry at the top of [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md) on this branch. Write it by hand, or generate it as in the README with `--since-tag ably-echo-<previous-version>` and check the output:
+    Add the entry at the top of [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md) on this branch. Write it by hand, or generate it as in the README with `--since-tag ably-echo-<previous-version> --release-branch 1.x --exclude-tags-regex '^ably-echo-2\.'` and check the output. `--since-tag` alone also includes the newer 2.x tags, and `--release-branch` alone does not keep them out:
     ```markdown
     ## [v<version>](https://github.com/ably-forks/laravel-echo/tree/ably-echo-<version>)
 
@@ -72,17 +81,21 @@ Below, `<version>` is the 1.x version being released (e.g. `1.1.2`), `<previous-
     git push -u origin release/<version>
     gh pr create -R ably-forks/laravel-echo --base 1.x --title "Release <version>" --body "Release <version>"
     ```
-2. Once the PR is approved and merged into `1.x`, tag the merge commit by its SHA and push the tag:
+2. Once the PR is approved and merged into `1.x`, tag its merge commit. Update your local `1.x` and check its last commit:
     ```shell
-    SHA=$(gh pr view <pr-number> -R ably-forks/laravel-echo --json mergeCommit -q .mergeCommit.oid)
     git fetch origin
-    git merge-base --is-ancestor "$SHA" origin/1.x && echo "on 1.x"   # must print "on 1.x"
-    git tag ably-echo-<version> "$SHA"
+    git switch 1.x                        # first time, this creates 1.x tracking origin/1.x
+    git pull --ff-only origin 1.x
+    git log -1 --oneline                  # must be "Merge pull request ... from ably-forks/release/<version>"
+    ```
+    If the last line shows any other commit, stop. Otherwise, tag it and push the tag:
+    ```shell
+    git tag ably-echo-<version>
     git push origin ably-echo-<version>
     ```
 3. Pack the tag, as in the README:
     ```shell
-    git status --short                  # must print nothing; commit or stash first
+    git status --short --untracked-files=no   # must print nothing; commit or stash first
     git checkout ably-echo-<version>
     git describe --tags --exact-match   # must print ably-echo-<version>
     npm run release:pack -- <version>   # creates ably-laravel-echo-<version>.tgz and prints its integrity
@@ -96,7 +109,7 @@ Below, `<version>` is the 1.x version being released (e.g. `1.1.2`), `<previous-
 5. Create the GitHub release without taking "Latest" from 2.x. In the web UI, untick "Set as latest release".
     ```shell
     gh release create ably-echo-<version> -R ably-forks/laravel-echo --verify-tag --latest=false \
-      --title v<version> --notes-file <notes-file>   # <notes-file>: the CHANGELOG-ABLY.md entry for <version>
+      --title v<version> --notes-file <notes-file>   # <notes-file>: the CHANGELOG-ABLY.md entry for <version>, without its ## heading
     ```
     Then update the [Ably Changelog](https://changelog.ably.com/) as usual.
 6. Verify:
