@@ -96,6 +96,7 @@ npm view @ably/laravel-echo dist-tags                             # latest: 2.x,
 3. Pack the tag, as in the README:
     ```shell
     git status --short --untracked-files=no   # must print nothing; commit or stash first
+    git status --short --ignored -- typings   # must print nothing: npm packs every file under typings/
     git checkout ably-echo-<version>
     git describe --tags --exact-match   # must print ably-echo-<version>
     npm run release:pack -- <version>   # creates ably-laravel-echo-<version>.tgz and prints its integrity
