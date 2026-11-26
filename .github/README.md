@@ -2,7 +2,7 @@
 This repository is a fork of https://github.com/laravel/echo. It adheres to public interface methods from base repository. It will be synced regularly with the base repository to make sure all the code is up to date.
 Ably-specific implementation is added to support native [ably-js](https://github.com/ably/ably-js) via the [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) package.
 
-> **Upgrading from 1.0.x?** See [UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/HEAD/UPDATING.md#10x--110).
+> **Upgrading from 1.0.x?** See [UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/HEAD/UPDATING.md#10x--11).
 
 ## Requirements
 1. Node.js version >= 22 to install and build, required by `@ably/pubsub-device` v3 (browsers are unaffected)
@@ -53,10 +53,10 @@ Once you have uncommented and adjusted the Echo configuration according to your 
 ```shell
 npm run dev
 ```
-- Echo 1.1.0 handles login and user switches without a page reload, and recovers from a logout at the next token renewal. As part of logout, call `Echo.connect()` (then subscribe to your channels again) or `Echo.disconnect()`: otherwise the page keeps the old user's channel access until its token expires. See [UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/HEAD/UPDATING.md#login-user-switch-and-logout-in-the-same-page) for login, user switches, other open tabs, your own Ably client and MAU-billed accounts.
+- Echo 1.1 handles login and user switches without a page reload, and recovers from a logout at the next token renewal. As part of logout, call `Echo.connect()` (then subscribe to your channels again) or `Echo.disconnect()`: otherwise the page keeps the old user's channel access until its token expires. See [UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/HEAD/UPDATING.md#login-user-switch-and-logout-in-the-same-page) for login, user switches, other open tabs, your own Ably client and MAU-billed accounts.
 
 ## Guest users on MAU-billed Ably accounts
-> **Note:** On MAU-billed Ably accounts, guests need a guest client ID from the broadcaster: use laravel-broadcaster 1.1.0 or later, set `ABLY_MAU_ACCOUNT=true`, and add `'mau_account' => env('ABLY_MAU_ACCOUNT', false)` to `config/broadcasting.php`. Without this, guest connections fail with error 40161.
+> **Note:** On MAU-billed Ably accounts, guests need a guest client ID from the broadcaster: use laravel-broadcaster 1.1 or later, set `ABLY_MAU_ACCOUNT=true`, and add `'mau_account' => env('ABLY_MAU_ACCOUNT', false)` to `config/broadcasting.php`. Without this, guest connections fail with error 40161.
 > See [Guest users on MAU-billed Ably accounts in UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/HEAD/UPDATING.md#guest-users-on-mau-billed-ably-accounts) for the config lines and options.
 
 ## Working with laravel sanctum/ support channel auth using custom implementation
@@ -131,22 +131,23 @@ Echo.leaveChannel(echoPresenceChannel.name);
 
 
 ## Release Process
-This library uses [semantic versioning](http://semver.org/). For each release, the following needs to be done:
+This library uses [semantic versioning](http://semver.org/). Below, `<version>` is the version being released (e.g. `1.1.1`) and the git tag is `ably-echo-<version>`. Releases are published manually.
 
-1. Create a new branch for the release, named like `release/1.0.3` (where `1.0.3` is what you're releasing, being the new version).
-2. Update `version` in `package.json`.
+**Why:** a stale git-ignored `dist/` and the upstream README were once published, because `prepublishOnly` is skipped under `ignore-scripts=true`. So `npm run release:pack` does a clean build and checks the package, and you only publish the file it creates.
+
+1. Create a new branch for the release, named like `release/<version>`.
+2. Set the version in `package.json` and `package-lock.json`: `npm version <version> --no-git-tag-version`.
 3. Run [`github_changelog_generator`](https://github.com/github-changelog-generator/github-changelog-generator) to automate the update of the [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md). This may require some manual intervention, both in terms of how the command is run and how the change log file is modified. Your mileage may vary:
-  - The command you will need to run will look something like this: `github_changelog_generator -u ably-forks -p laravel-echo --since-tag ably-echo-1.0.3 --output delta.md --token $GITHUB_TOKEN_WITH_REPO_ACCESS`. Generate token [here](https://github.com/settings/tokens/new?description=GitHub%20Changelog%20Generator%20token).
-  - Using the command above, `--output delta.md` writes changes made after `--since-tag` to a new file.
-  - The contents of that new file (`delta.md`) then need to be manually inserted at the top of the [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md), changing the "Unreleased" heading and linking with the current version numbers.
-  - Also ensure that the "Full Changelog" link points to the new version tag instead of the `HEAD`.
-4. Commit generated [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md) file at root.
-5. Make a PR against `master`.
-6. Once the PR is approved, merge it into `master`.
-7. Add a tag and push it to origin - e.g.: `git tag ably-echo-1.0.3 && git push origin ably-echo-1.0.3`.
-8. Publish npm package on npmjs.com.
-9. Visit https://github.com/ably-forks/laravel-echo/tags and add release notes to the release (generally you can just copy the notes you added to the CHANGELOG).
-10. Update the [Ably Changelog](https://changelog.ably.com/) (via [headwayapp](https://headwayapp.co/)) with these changes (again, you can just copy the notes you added to the CHANGELOG).
+    - The command you will need to run will look something like this: `github_changelog_generator -u ably-forks -p laravel-echo --since-tag ably-echo-<previous-version> --output delta.md --token $GITHUB_TOKEN_WITH_REPO_ACCESS`. Generate token [here](https://github.com/settings/tokens/new?description=GitHub%20Changelog%20Generator%20token).
+    - Using the command above, `--output delta.md` writes changes made after `--since-tag` to a new file.
+    - The contents of that new file (`delta.md`) then need to be manually inserted at the top of the [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md), changing the "Unreleased" heading and linking with the current version numbers.
+    - Also ensure that the "Full Changelog" link points to the new version tag instead of the `HEAD`.
+4. Commit the version bump and [CHANGELOG-ABLY.md](../CHANGELOG-ABLY.md), and make a PR against `master`.
+5. Once the PR is approved, merge it into `master`.
+6. Update your local `master` and tag it, then push the tag: `git checkout master && git pull origin master && git tag ably-echo-<version> && git push origin ably-echo-<version>`.
+7. `release:pack` packs the current checkout, so commit or stash any local changes, then check out the release tag: `git checkout ably-echo-<version>`. `git describe --tags --exact-match` must print `ably-echo-<version>` (it errors otherwise). Then run `npm run release:pack -- <version>`. It refuses to run if `package.json` is not that version, and creates `ably-laravel-echo-<version>.tgz` only if its sanity checks pass, printing the tarball's integrity.
+8. Publish that tarball, never a folder: `npm whoami` (log in first if it fails), then `npm publish ably-laravel-echo-<version>.tgz`. Check `npm view @ably/laravel-echo@<version> dist.integrity` against the integrity that `release:pack` printed.
+9. Visit https://github.com/ably-forks/laravel-echo/tags and add release notes to the release (generally you can just copy the notes you added to the CHANGELOG), and update the [Ably Changelog](https://changelog.ably.com/) (via [headwayapp](https://headwayapp.co/)) with the same notes.
 
 ## Note 
 - Current `README` is newly created and located under `.github/README.md`.

@@ -32,6 +32,7 @@
         "use:baseReadme": "move-cli 'README.md' '.github/README.md' && move-cli 'base.README.md' 'README.md'",
         "prepublishOnly": "run-s build use:ablyReadme",
         "postpublish": "npm run use:baseReadme",
+        "release:pack": "node scripts/release-pack.mjs",
         "release": "npm run test && standard-version && git push --follow-tags && npm publish",
         "test": "jest",
         "test:bundles": "jest -c jest.bundles.config.js",
