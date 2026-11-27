@@ -1,5 +1,5 @@
-# Helpers for release.sh. Source this file; it only defines a constant and functions.
-# scripts/test-release-lib.sh tests them: bash scripts/test-release-lib.sh
+# Helpers for release.sh and the publish.yml release guard (scripts/release-guard.sh). Source this file; it only
+# defines a constant and functions. scripts/test-release-lib.sh tests them: bash scripts/test-release-lib.sh
 
 # One git tag, ably-echo-<version>, covers the four lockstep packages.
 RELEASE_TAG_PREFIX="ably-echo-"
@@ -53,4 +53,52 @@ release_notes() {
     [ -n "$(printf '%s' "$entry" | tr -d '[:space:]')" ] || return 1
     printf 'This is release candidate %s of %s, published to npm under the dist-tag `next`. The notes below are for %s.\n' "$version" "$base" "$base"
     printf '%s\n' "$entry" | grep -v '^\[Full Changelog\]'
+}
+
+# Prints X.Y.Z or X.Y.Z-rc.N from the tag ably-echo-<version>. Fails for any other tag (for example v2.0.0).
+version_from_tag() {
+    local tag=$1 version
+    [[ "$tag" == "$RELEASE_TAG_PREFIX"* ]] || return 1
+    version=${tag#"$RELEASE_TAG_PREFIX"}
+    is_release_version "$version" || return 1
+    echo "$version"
+}
+
+# Prints the npm dist-tag for a version and the GitHub release's prerelease flag (true or false): `next` for
+# X.Y.Z-rc.N on a prerelease, `latest` for X.Y.Z on a release. Fails when they disagree, so that a release candidate
+# never reaches `latest` and a release never goes to `next` only.
+npm_dist_tag() {
+    local version=$1 prerelease=$2
+    is_release_version "$version" || return 1
+    if [ "$prerelease" = true ] && is_prerelease_version "$version"; then
+        echo next
+    elif [ "$prerelease" = false ] && ! is_prerelease_version "$version"; then
+        echo latest
+    else
+        return 1
+    fi
+}
+
+# The release guard of publish.yml: checks a GitHub release's tag and prerelease flag against the four
+# packages/*/package.json under <root>, and prints version=<version> and dist_tag=<next|latest>. Fails, with the
+# reason on stderr, for anything that must not be published.
+release_guard() {
+    local tag=$1 prerelease=$2 root=${3:-.} version dist_tag dir manifest_version
+    if ! version=$(version_from_tag "$tag"); then
+        echo "The tag '$tag' is not ${RELEASE_TAG_PREFIX}X.Y.Z or ${RELEASE_TAG_PREFIX}X.Y.Z-rc.N." >&2
+        return 1
+    fi
+    if ! dist_tag=$(npm_dist_tag "$version" "$prerelease"); then
+        echo "The GitHub release's prerelease flag is '$prerelease', but $version is $(is_prerelease_version "$version" || echo "not ")a release candidate: a release candidate must be a prerelease (npm dist-tag next) and a release must not be (latest)." >&2
+        return 1
+    fi
+    for dir in laravel-echo react vue svelte; do
+        manifest_version=$(node -p 'require(require("path").resolve(process.argv[1])).version' "$root/packages/$dir/package.json") || return 1
+        if [ "$manifest_version" != "$version" ]; then
+            echo "packages/$dir/package.json is version $manifest_version, not $version (tag $tag)." >&2
+            return 1
+        fi
+    done
+    echo "version=$version"
+    echo "dist_tag=$dist_tag"
 }
