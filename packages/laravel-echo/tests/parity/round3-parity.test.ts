@@ -7,6 +7,8 @@ import { AblyChannel, AblyPresenceChannel, AblyPrivateChannel } from '../../src/
 import { AblyAuth } from '../../src/channel/ably/auth';
 import { beforeChannelAttach } from '../../src/channel/ably/attach';
 import { ECHO_OPTIONS, makeFakeAbly, makeJwt, settle, stubAuth, trackUnhandledRejections } from './fake-ably';
+import type { RequestTokenFn } from '../../src/channel/ably/token-request';
+import type { AblyOptions } from '../../src/connector/ably-connector';
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -27,11 +29,11 @@ const useAblyUnsubscribeSemantics = (fake: any) => {
             return;
         }
         if (listener && event == null) {
-            em.any = em.any.filter((l) => l !== listener);
-            Object.keys(em.events).forEach((k) => (em.events[k] = em.events[k].filter((l) => l !== listener)));
+            em.any = em.any.filter((l: unknown) => l !== listener);
+            Object.keys(em.events).forEach((k) => (em.events[k] = em.events[k].filter((l: unknown) => l !== listener)));
             return;
         }
-        if (listener) em.events[event] = (em.events[event] || []).filter((l) => l !== listener);
+        if (listener) em.events[event] = (em.events[event] || []).filter((l: unknown) => l !== listener);
         else delete em.events[event];
     });
 };
@@ -183,11 +185,11 @@ describe('documented parity with 1.0.6 and Pusher', () => {
         const ably = makeFakeAbly();
         const echoChannel = new AblyPresenceChannel(ably, 'presence:l', ECHO_OPTIONS, stubAuth);
         const fake = ably.channels.get('presence:l');
-        let releaseEnter: Function;
+        let releaseEnter!: Function;
         fake.presence.enter.mockImplementationOnce(() => new Promise((r) => (releaseEnter = r)));
         const order: string[] = [];
-        echoChannel.enter({ a: 1 }, (err) => order.push(`enter:${err}`));
-        echoChannel.leave({ a: 1 }, (err) => order.push(`leave:${err}`));
+        echoChannel.enter({ a: 1 }, (err: unknown) => order.push(`enter:${err}`));
+        echoChannel.leave({ a: 1 }, (err: unknown) => order.push(`leave:${err}`));
         await settle();
         releaseEnter();
         await settle();
@@ -228,14 +230,14 @@ class FakeRealtimeChannel {
     unsubscribe() { return undefined; }
     attach() {
         if (this.state === 'attached') return Promise.resolve(null);
-        return new Promise((resolve, reject) => this._attach(false, null, (e, r) => (e ? reject(e) : resolve(r))));
+        return new Promise((resolve, reject) => this._attach(false, null, (e?: unknown, r?: unknown) => (e ? reject(e) : resolve(r))));
     }
     detach() {
         this.state = 'detached';
         return Promise.resolve();
     }
     /** the library's internal attach, which Echo wraps */
-    _attach(_force, _reason, cb) {
+    _attach(_force?: boolean, _reason?: unknown, cb?: (err?: unknown) => void) {
         this.attachCalls++;
         this.state = 'attached';
         cb?.(null);
@@ -243,7 +245,7 @@ class FakeRealtimeChannel {
 }
 
 describe('T16 / P1-fix review: patched _attach', () => {
-    const makeClient = (requestTokenFn: Function) => {
+    const makeClient = (requestTokenFn: RequestTokenFn) => {
         const channels: Record<string, FakeRealtimeChannel> = {};
         const client: any = {
             channels: { get: (n: string) => (channels[n] = channels[n] || Object.assign(new FakeRealtimeChannel(n), { client })) },
@@ -254,7 +256,7 @@ describe('T16 / P1-fix review: patched _attach', () => {
             connect: vi.fn(),
         };
         const connector: any = { ably: client, channels: {} };
-        const auth = new AblyAuth(connector, { authEndpoint: 'http://localhost/broadcasting/auth', auth: { headers: {} }, requestTokenFn });
+        const auth = new AblyAuth(connector, { authEndpoint: 'http://localhost/broadcasting/auth', auth: { headers: {} }, requestTokenFn } as AblyOptions);
         auth.enableAuthorizeBeforeChannelAttach();
         return { auth, client, connector, channels };
     };

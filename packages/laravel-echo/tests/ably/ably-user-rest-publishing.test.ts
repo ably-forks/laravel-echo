@@ -10,7 +10,7 @@ vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
 describe('AblyUserRestPublishing', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
-    let echoInstances: Array<Echo>;
+    let echoInstances: Array<Echo<'ably'>>;
 
     beforeAll(async () => {
         testApp = await setup();
@@ -51,7 +51,7 @@ describe('AblyUserRestPublishing', () => {
         const publicChannel = guestUser.channel(channelName) as AblyChannel;
         await new Promise((resolve) => publicChannel.subscribed(resolve));
         expect(guestUser.connector.ably.auth.clientId).toBeFalsy();
-        expect(guestUser.connector.ablyAuth.existingToken().clientId).toBeNull();
+        expect(guestUser.connector.ablyAuth!.existingToken()!.clientId).toBeNull();
         return publicChannel;
     }
 
@@ -67,7 +67,7 @@ describe('AblyUserRestPublishing', () => {
         const privateChannel = loggedInUser.private(channelName) as AblyPrivateChannel;
         await new Promise((resolve) => privateChannel.subscribed(resolve));
         expect(loggedInUser.connector.ably.auth.clientId).toBe("sacOO7@github.com");
-        expect(loggedInUser.connector.ablyAuth.existingToken().clientId).toBe("sacOO7@github.com")
+        expect(loggedInUser.connector.ablyAuth!.existingToken()!.clientId).toBe("sacOO7@github.com")
         mockAuthServer.clientId = null;
         return privateChannel;
     }
@@ -75,7 +75,7 @@ describe('AblyUserRestPublishing', () => {
     test('Guest user return socketId as base64 encoded connectionkey and null clientId', async () => {
         await getGuestUserChannel("dummyChannel");
         const guestUser = echoInstances[0];
-        const socketIdObj = JSON.parse(fromBase64UrlEncoded(guestUser.socketId()));
+        const socketIdObj = JSON.parse(fromBase64UrlEncoded(guestUser.socketId()!));
 
         const expectedConnectionKey = guestUser.connector.ably.connection.key;
 
@@ -90,12 +90,12 @@ describe('AblyUserRestPublishing', () => {
         let channelName = "testChannel";
 
         const publicChannel1 = await getGuestUserChannel(channelName);
-        publicChannel1.listenToAll((eventName, data) => {
+        publicChannel1.listenToAll((eventName: string, data: unknown) => {
             messagesReceived.push(eventName);
         });
 
         const publicChannel2 = await getGuestUserChannel(channelName);
-        publicChannel2.listenToAll((eventName, data) => {
+        publicChannel2.listenToAll((eventName: string, data: unknown) => {
             messagesReceived.push(eventName);
         })
 
@@ -108,7 +108,7 @@ describe('AblyUserRestPublishing', () => {
 
         // Publish message to other client
         messagesReceived = []
-        const firstClientSocketId = echoInstances[0].socketId();
+        const firstClientSocketId = echoInstances[0].socketId()!;
         await mockAuthServer.broadcastToOthers(firstClientSocketId,
             { channelName: `public:${channelName}`, eventName: "toOthers", payload: "data" })
         await waitForExpect(() => {
@@ -120,7 +120,7 @@ describe('AblyUserRestPublishing', () => {
     test('Logged in user return socketId as base64 encoded connectionkey and clientId', async () => {
         await getLoggedInUserChannel("dummyChannel");
         const loggedInUser = echoInstances[0];
-        const socketIdObj = JSON.parse(fromBase64UrlEncoded(loggedInUser.socketId()));
+        const socketIdObj = JSON.parse(fromBase64UrlEncoded(loggedInUser.socketId()!));
 
         const expectedConnectionKey = loggedInUser.connector.ably.connection.key;
 
@@ -135,12 +135,12 @@ describe('AblyUserRestPublishing', () => {
         let channelName = "testChannel";
 
         const privateChannel1 = await getLoggedInUserChannel(channelName);
-        privateChannel1.listenToAll((eventName, data) => {
+        privateChannel1.listenToAll((eventName: string, data: unknown) => {
             messagesReceived.push(eventName);
         });
 
         const privateChannel2 = await getLoggedInUserChannel(channelName);
-        privateChannel2.listenToAll((eventName, data) => {
+        privateChannel2.listenToAll((eventName: string, data: unknown) => {
             messagesReceived.push(eventName);
         })
 
@@ -153,7 +153,7 @@ describe('AblyUserRestPublishing', () => {
 
         // Publish message to other client
         messagesReceived = []
-        const firstClientSocketId = echoInstances[0].socketId();
+        const firstClientSocketId = echoInstances[0].socketId()!;
         await mockAuthServer.broadcastToOthers(firstClientSocketId,
             { channelName: `private:${channelName}`, eventName: "toOthers", payload: "data" });
         await waitForExpect(() => {

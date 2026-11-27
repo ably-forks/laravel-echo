@@ -6,6 +6,7 @@ import { vi, describe, test, expect } from "vite-plus/test";
  * Own file: attach.ts patches the RealtimeChannel prototype once per module instance.
  */
 import { AblyAuth } from '../../src/channel/ably/auth';
+import type { AblyOptions } from '../../src/connector/ably-connector';
 import { FakeEmitter, makeJwt } from './fake-ably';
 
 class FakeRealtimeChannel {
@@ -16,9 +17,9 @@ class FakeRealtimeChannel {
         this.name = name;
     }
     attach() {
-        return new Promise((resolve, reject) => this._attach(false, null, (e, r) => (e ? reject(e) : resolve(r))));
+        return new Promise((resolve, reject) => this._attach(false, null, (e?: unknown, r?: unknown) => (e ? reject(e) : resolve(r))));
     }
-    _attach(_force, _reason, cb) {
+    _attach(_force?: boolean, _reason?: unknown, cb?: (err?: unknown) => void) {
         this.state = 'attached';
         setTimeout(() => cb?.(null), 1);
     }
@@ -47,7 +48,7 @@ const makeClient = (state: string) => {
         authEndpoint: 'http://localhost/broadcasting/auth',
         auth: { headers: {} },
         requestTokenFn: async () => ({ token: makeJwt({ 'private:p': ['*'] }) }),
-    });
+    } as unknown as AblyOptions); // partial options: the AblyAuth paths under test read only these
     auth.enableAuthorizeBeforeChannelAttach();
     return { client, connection, connector };
 };

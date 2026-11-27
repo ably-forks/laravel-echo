@@ -5,7 +5,7 @@ import type { Mock } from "vite-plus/test";
  * /broadcasting/auth server backed by MockAuthServer. Every other integration test uses requestTokenFn.
  */
 import * as http from 'http';
-import { AddressInfo } from 'net';
+import type { AddressInfo } from 'net';
 import Echo from '../../src/echo';
 import { AblyChannel, AblyPrivateChannel } from '../../src/channel';
 import waitForExpect from 'wait-for-expect';
@@ -68,8 +68,8 @@ describe('authEndpoint end to end', () => {
         const echo = makeEcho();
         await new Promise<void>((resolve, reject) => echo.private('r7').subscribed(() => resolve()).error(reject));
         const channelRequest = requests.find((r) => r.body.channel_name === 'private:r7');
-        expect(channelRequest.headers['x-csrf-token']).toBe('csrf-1');
-        expect(channelRequest.headers['authorization']).toBe('Bearer bt-1');
+        expect(channelRequest!.headers['x-csrf-token']).toBe('csrf-1');
+        expect(channelRequest!.headers['authorization']).toBe('Bearer bt-1');
         echo.disconnect();
     });
 
@@ -97,7 +97,7 @@ describe('authEndpoint end to end', () => {
             await waitForExpect(() => expect(echo.connector.ably.connection.state).toBe('connected'));
             const publicChannel = echo.channel('r7login') as AblyChannel;
             await new Promise((resolve) => publicChannel.subscribed(resolve));
-            expect(echo.connector.ablyAuth.existingToken().clientId).toBeNull();
+            expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBeNull();
 
             mockAuthServer.clientId = 'sacOO7@github.com'; // user logs in for the next auth request
             const privateChannel = echo.private('r7login') as AblyPrivateChannel;
@@ -110,7 +110,7 @@ describe('authEndpoint end to end', () => {
             await channelsReattached;
             expect(errorSpy).toHaveBeenCalledTimes(0); // E3
             expect(privateChannel.channel.state).toBe('attached');
-            expect(echo.connector.ablyAuth.existingToken().clientId).toBe('sacOO7@github.com');
+            expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBe('sacOO7@github.com');
         } finally {
             echo.disconnect();
             mockAuthServer.clientId = 'sacOO7@github.com';

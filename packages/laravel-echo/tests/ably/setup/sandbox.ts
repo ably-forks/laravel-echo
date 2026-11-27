@@ -41,7 +41,7 @@ const creatNewApp = async (options: SetupOptions = {}) => {
     }
 };
 
-const deleteApp = async (app) => {
+const deleteApp = async (app: { appId: string; keys: { keyStr: string }[] }) => {
     let authKey = app.keys[0].keyStr;
     const headers = { Authorization: 'Basic ' + toBase64UrlEncoded(authKey) };
     return await httpDeleteAsync(`${sandboxUrl}/${app.appId}`, headers);

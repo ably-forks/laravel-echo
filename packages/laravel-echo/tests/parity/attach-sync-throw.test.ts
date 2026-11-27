@@ -6,6 +6,7 @@ import { test, expect } from "vite-plus/test";
  * Own file: attach.ts patches the RealtimeChannel prototype once per module instance.
  */
 import { beforeChannelAttach } from '../../src/channel/ably/attach';
+import type { AblyRealtime } from '../../src/types/ably';
 
 class FakeRealtimeChannel {
     name: string;
@@ -16,7 +17,7 @@ class FakeRealtimeChannel {
         this.name = name;
     }
     attach() {
-        return new Promise((resolve, reject) => this._attach(false, null, (e, r) => (e ? reject(e) : resolve(r))));
+        return new Promise((resolve, reject) => this._attach(false, null, (e?: unknown, r?: unknown) => (e ? reject(e) : resolve(r))));
     }
     /** the library's internal attach, which Echo wraps */
     _attach(...args: any[]) {
@@ -27,13 +28,13 @@ class FakeRealtimeChannel {
 
 test('T18 a synchronous throw from the internal attach rejects attach() and resets `authorizing`', async () => {
     const ch: any = new FakeRealtimeChannel('public:x');
-    const client = { channels: { get: () => ch } };
+    const client = { channels: { get: () => ch } } as unknown as AblyRealtime; // a fake client: the patch reads only channels
     ch.client = client; // the patched _attach looks the authorizer up per client
     beforeChannelAttach(client, (_c, done) => done(null));
     let outcome = 'pending';
     ch.attach().then(
         () => (outcome = 'resolved'),
-        (e) => (outcome = 'rejected: ' + e.message)
+        (e: Error) => (outcome = 'rejected: ' + e.message)
     );
     await new Promise((r) => setTimeout(r, 20));
     expect(outcome).toBe('rejected: internal attach failed');
@@ -47,7 +48,7 @@ test('T18 the same throw after an asynchronous authorization settles the initiat
     process.on('unhandledRejection', onUnhandled);
     try {
         const ch: any = new FakeRealtimeChannel('private:async');
-        const client = { channels: { get: () => ch } };
+        const client = { channels: { get: () => ch } } as unknown as AblyRealtime; // a fake client: the patch reads only channels
         ch.client = client;
         beforeChannelAttach(client, (_c, done) => setTimeout(() => done(null), 10));
         const settledAs = (p: Promise<any>) =>

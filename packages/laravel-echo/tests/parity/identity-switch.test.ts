@@ -625,7 +625,7 @@ describe('the renewal re-attach window: the transient 40160 of ably-js re-attach
         const auth = makeAuth(client, { requestTokenFn: async () => ({ token: tokenFor('user2') }) });
         (auth.ablyConnector as any).ably = client;
         const { fake, errorListener } = listened(client, 'private:ch');
-        await new Promise((resolve) => auth.options.authCallback(null as any, resolve as any));
+        await new Promise((resolve) => auth.options.authCallback!(null as any, resolve as any));
         fake.transition('failed', ablyError('denied', DENIED));
         expect(errorListener).not.toHaveBeenCalled();
         await settle();

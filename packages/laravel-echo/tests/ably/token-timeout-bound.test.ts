@@ -1,11 +1,12 @@
 import { test, expect, beforeAll, afterAll } from "vite-plus/test";
 // Demonstrates the R21 x T6 conflict when applied naively: a fixed queue bound (scaled: 300 ms ~ T's 30 s) shorter
 // than httpRequestTimeout (scaled: 400 ms ~ 40 s) pre-empts the fetch timeout; the combined design (max(bound, http+grace)) does not.
-import { createServer } from 'http';
+import { createServer, type Server } from 'http';
+import type { AddressInfo } from 'net';
 import { SequentialAuthTokenRequestExecuter } from '../../src/channel/ably/token-request';
 import { httpRequestAsync } from '../../src/channel/ably/utils';
-let server; let uri;
-beforeAll(async () => { server = createServer(() => undefined); await new Promise<void>((r) => server.listen(0, '127.0.0.1', r)); uri = `http://127.0.0.1:${server.address().port}/auth`; });
+let server: Server; let uri: string;
+beforeAll(async () => { server = createServer(() => undefined); await new Promise<void>((r) => server.listen(0, '127.0.0.1', r)); uri = `http://127.0.0.1:${(server.address() as AddressInfo).port}/auth`; });
 afterAll(() => { server.closeAllConnections(); server.close(); });
 const fn = () => httpRequestAsync({ uri, method: 'POST', headers: {}, body: '{}' }, 400);
 test('naive fixed bound pre-empts the fetch timeout (generic error, orphaned fetch)', async () => {

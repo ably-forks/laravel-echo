@@ -28,7 +28,7 @@ export class FakeEmitter {
     }
 
     once(event: string, listener: Function) {
-        const wrapper = (...a) => {
+        const wrapper = (...a: any[]) => {
             this.off(event, wrapper);
             listener(...a);
         };
@@ -73,9 +73,9 @@ export const makeFakeChannel = (name: string) => {
         state: 'initialized',
         stateEmitter,
         messages,
-        on: (...a) => stateEmitter.on(...a),
-        once: (...a) => (stateEmitter as any).once(...a),
-        off: (...a) => stateEmitter.off(...a),
+        on: (...a: any[]) => stateEmitter.on(...a),
+        once: (...a: any[]) => (stateEmitter as any).once(...a),
+        off: (...a: any[]) => stateEmitter.off(...a),
         attach: vi.fn(() => Promise.resolve(null)),
         detach: vi.fn(() => Promise.resolve()),
         publish: vi.fn(() => Promise.resolve()),

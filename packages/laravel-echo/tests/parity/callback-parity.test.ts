@@ -116,7 +116,7 @@ describe.each(OPS)('$name callback parity', (op) => {
     test('async callback that rejects is invoked once (its rejection is not treated as an ably error)', async () => {
         const { echoChannel } = op.make();
         const calls: any[] = [];
-        op.call(echoChannel, async (err) => {
+        op.call(echoChannel, async (err: unknown) => {
             calls.push(err);
             throw new Error('async user bug');
         });

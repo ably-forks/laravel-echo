@@ -17,7 +17,7 @@ const makeBuild = () => {
             this.name = name;
             this.client = client;
         }
-        _attach(_force, _reason, cb) {
+        _attach(_force?: boolean, _reason?: unknown, cb?: (err?: unknown) => void) {
             this.internalAttachCalls++;
             cb?.(null);
         }

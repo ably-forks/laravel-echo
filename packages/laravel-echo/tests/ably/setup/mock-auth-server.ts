@@ -86,7 +86,10 @@ export class MockAuthServer {
     /**
      * Broadcast on behalf of a given realtime client.
      */
-    broadcastToOthers = async (socketId: string, {channelName, eventName, payload}) => {
+    broadcastToOthers = async (
+        socketId: string,
+        { channelName, eventName, payload }: { channelName: string; eventName: string; payload: unknown }
+    ) => {
         let protoMsg = {name: eventName, data: payload};
         if (!isNullOrUndefinedOrEmpty(socketId)) {
             const socketIdObj = JSON.parse(fromBase64UrlEncoded(socketId));
@@ -95,7 +98,7 @@ export class MockAuthServer {
         await this.ablyClient.channels.get(channelName).publish(protoMsg);
     };
 
-    tokenInvalidOrExpired = (serverTime, token) => {
+    tokenInvalidOrExpired = (serverTime: number, token: string) => {
         const tokenInvalid = false;
         const { payload } = parseJwt(token);
         return tokenInvalid || payload.exp * 1000 <= serverTime;
@@ -108,7 +111,7 @@ export class MockAuthServer {
             kid: this.keyName,
         };
         // Set capabilities for public channel as per https://ably.com/docs/core-features/authentication#capability-operations
-        let capabilities = { 'public:*': [...this.publicCapability] };
+        let capabilities: Record<string, string[]> = { 'public:*': [...this.publicCapability] };
         let iat = 0;
         let exp = 0;
         if (this.clientId == null && !isNullOrUndefinedOrEmpty(channelName) && this.isGuardedChannel(channelName)) {
@@ -163,9 +166,9 @@ export class MockAuthServer {
         return response;
     };
 
-    isPresenceChannel = (channelName) => channelName.startsWith('presence:');
+    isPresenceChannel = (channelName: string) => channelName.startsWith('presence:');
 
-    isGuardedChannel = (channelName) => channelName.startsWith('private:') || this.isPresenceChannel(channelName);
+    isGuardedChannel = (channelName: string) => channelName.startsWith('private:') || this.isPresenceChannel(channelName);
 
     setAuthExceptions = (shortLived: channels = [], banned: channels = []) => {
         this.shortLived = shortLived;

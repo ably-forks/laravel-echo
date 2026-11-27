@@ -3,7 +3,7 @@ import { vi, describe, test, expect } from "vite-plus/test";
  * SequentialAuthTokenRequestExecuter / TaskQueue: the promise bridge every channel auth and every connection
  * token renewal (authCallback) goes through.
  */
-import { SequentialAuthTokenRequestExecuter } from '../../src/channel/ably/token-request';
+import { SequentialAuthTokenRequestExecuter, type RequestTokenFn } from '../../src/channel/ably/token-request';
 import { settle } from './fake-ably';
 
 describe('SequentialAuthTokenRequestExecuter', () => {
@@ -43,7 +43,8 @@ describe('SequentialAuthTokenRequestExecuter', () => {
     });
 
     test('requestTokenFn returning a plain (non-promise) value works', async () => {
-        const ex = new SequentialAuthTokenRequestExecuter(null, () => ({ token: 'plain', info: 1 }));
+        // deliberately not a promise: a JS caller can pass one, despite the declared type
+        const ex = new SequentialAuthTokenRequestExecuter(null, (() => ({ token: 'plain', info: 1 })) as unknown as RequestTokenFn);
         await expect(ex.request('a')).resolves.toEqual({ token: 'plain', info: 1 });
     });
 
@@ -93,7 +94,7 @@ describe('SequentialAuthTokenRequestExecuter', () => {
 
     test('no unhandled rejection from the internal queue when requests fail', async () => {
         const rejections: any[] = [];
-        const h = (r) => rejections.push(r);
+        const h = (r: unknown) => rejections.push(r);
         process.on('unhandledRejection', h);
         try {
             const ex = new SequentialAuthTokenRequestExecuter(null, () => Promise.reject(new Error('x')));

@@ -10,7 +10,7 @@ vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
 describe('AblyUserLogin', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
-    let echo: Echo;
+    let echo: Echo<'ably'>;
 
     beforeAll(async () => {
         testApp = await setup();
@@ -56,7 +56,7 @@ describe('AblyUserLogin', () => {
 
         // Making sure client is still anonymous
         expect(mockAuthServer.clientId).toBeNull();
-        expect(echo.connector.ablyAuth.existingToken().clientId).toBeNull()
+        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBeNull()
 
         // Set server clientId to sacOO7@github.com, user logs in for next request
         mockAuthServer.clientId = 'sacOO7@github.com'
@@ -69,7 +69,7 @@ describe('AblyUserLogin', () => {
         });
         expect(privateChannel.channel.state).toBe('attached');
 
-        expect(echo.connector.ablyAuth.existingToken().clientId).toBe('sacOO7@github.com');
+        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBe('sacOO7@github.com');
     });
 
     test('user logs in with previous (public) channels', async () => {
@@ -96,7 +96,7 @@ describe('AblyUserLogin', () => {
 
         // Making sure client is still anonymous
         expect(mockAuthServer.clientId).toBeNull();
-        expect(echo.connector.ablyAuth.existingToken().clientId).toBeNull();
+        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBeNull();
 
         // Set server clientId to sacOO7@github.com, user logs in for next request
         mockAuthServer.clientId = 'sacOO7@github.com';
@@ -129,7 +129,7 @@ describe('AblyUserLogin', () => {
         });
         expect(privateChannel.channel.state).toBe('attached');
 
-        expect(echo.connector.ablyAuth.existingToken().clientId).toBe('sacOO7@github.com');
+        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBe('sacOO7@github.com');
     });
 
     test('user logs in and then logs out', async() => {
@@ -143,7 +143,7 @@ describe('AblyUserLogin', () => {
         echo.connector.ably.connection.on(stateChange => {
             connectionStates.push(stateChange.current)
         });
-        expect(echo.connector.ablyAuth.existingToken().clientId).toBeNull()
+        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBeNull()
 
         // login: null -> user
         mockAuthServer.clientId = 'sacOO7@github.com'
@@ -155,7 +155,7 @@ describe('AblyUserLogin', () => {
             expect(connectionStates).toStrictEqual(['failed', 'connecting', 'connected'])
         });
         expect(loginErrorSpy).toHaveBeenCalledTimes(0); // E3
-        expect(echo.connector.ablyAuth.existingToken().clientId).toBe('sacOO7@github.com');
+        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBe('sacOO7@github.com');
 
         // logout: the documented in-page path is echo.connect() (replaces the connector, closes the old client)
         const oldClient = echo.connector.ably;
@@ -168,7 +168,7 @@ describe('AblyUserLogin', () => {
             expect(['closing', 'closed']).toContain(oldClient.connection.state);
         });
         expect(newClient.auth.clientId).toBeFalsy();
-        expect(echo.connector.ablyAuth.existingToken().clientId).toBeNull();
+        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBeNull();
 
         // public channel re-subscribed by the caller receives again
         const publicChannel = echo.channel('test-logout') as AblyChannel;

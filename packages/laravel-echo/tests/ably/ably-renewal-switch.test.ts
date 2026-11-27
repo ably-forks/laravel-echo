@@ -19,7 +19,7 @@ vi.setConfig({ testTimeout: 60000, hookTimeout: 60000 });
 describe('AblyRenewalSwitch', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
-    let echo: Echo;
+    let echo: Echo<'ably'>;
     let observer: any;
     let rejections: ReturnType<typeof trackUnhandledRejections>;
 
@@ -512,9 +512,9 @@ describe('AblyRenewalSwitch', () => {
         const connectionId = client.connection.id;
         const clientId = client.auth.clientId;
         const conn = watchConnection();
-        const firstToken = echo.connector.ablyAuth.existingToken()?.token;
+        const firstToken = echo.connector.ablyAuth!.existingToken()?.token;
         // tokenExpiry is 6 s: wait until the token has been renewed at least once, plus a margin
-        await waitForExpect(() => expect(echo.connector.ablyAuth.existingToken()?.token).not.toBe(firstToken), 30000, 250);
+        await waitForExpect(() => expect(echo.connector.ablyAuth!.existingToken()?.token).not.toBe(firstToken), 30000, 250);
         await sleep(3000);
         console.log(
             `same identity: token renewed, states: ${conn.states.join(',')}, ` +

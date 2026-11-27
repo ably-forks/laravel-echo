@@ -4,6 +4,7 @@ import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import { AblyPresenceChannel } from '../../src/channel';
 import safeAssert from './setup/utils';
+import type { PresenceMessage } from '../../src/types/ably';
 
 vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
 
@@ -14,7 +15,7 @@ const uniqueChannel = (label: string) => `${label}-${Date.now()}-${++channelCoun
 describe('AblyPresenceChannel', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
-    let echo: Echo;
+    let echo: Echo<'ably'>;
 
     beforeAll(async () => {
         testApp = await setup();
@@ -53,7 +54,7 @@ describe('AblyPresenceChannel', () => {
 
     test('channel member list change', () => new Promise<void>((resolve, reject) => {
         const presenceChannel = echo.join(uniqueChannel('list')) as AblyPresenceChannel;
-        presenceChannel.here((members, err) => {
+        presenceChannel.here((members: Array<{ id: string; name: string }>, err: unknown) => {
             safeAssert(
                 () => {
                     expect(err).toBeFalsy();
@@ -70,7 +71,7 @@ describe('AblyPresenceChannel', () => {
 
     test('member joined', () => new Promise<void>((resolve, reject) => {
         const presenceChannel = echo.join(uniqueChannel('joined')) as AblyPresenceChannel;
-        presenceChannel.joining((memberData, memberMetaData) => {
+        presenceChannel.joining((memberData: unknown, memberMetaData: Omit<PresenceMessage, 'data'>) => {
             safeAssert(
                 () => {
                     expect(memberData).toStrictEqual({ id: 'sacOO7@github.com', name: 'sacOO7' });
@@ -84,7 +85,7 @@ describe('AblyPresenceChannel', () => {
 
     test('member left', () => new Promise<void>((resolve, reject) => {
         const presenceChannel = echo.join(uniqueChannel('left')) as AblyPresenceChannel;
-        presenceChannel.leaving((memberData, memberMetaData) => {
+        presenceChannel.leaving((memberData: unknown, memberMetaData: Omit<PresenceMessage, 'data'>) => {
             safeAssert(
                 () => {
                     expect(memberData).toStrictEqual({ name: 'sacOO7 leaving the channel' });

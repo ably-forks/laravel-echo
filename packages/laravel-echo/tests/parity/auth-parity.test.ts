@@ -6,6 +6,8 @@ import type { Mock } from "vite-plus/test";
  */
 import { AblyAuth } from '../../src/channel/ably/auth';
 import { makeJwt, settle } from './fake-ably';
+import type { RequestTokenFn } from '../../src/channel/ably/token-request';
+import type { AblyOptions, AblyTokenResponse } from '../../src/connector/ably-connector';
 
 /** Stands in for ably's RealtimeChannel class: attach.ts patches `_attach` on its prototype. */
 class FakeRealtimeChannel {
@@ -16,13 +18,13 @@ class FakeRealtimeChannel {
     constructor(name: string) {
         this.name = name;
     }
-    _attach(forceReattach, attachReason, errCallback) {
+    _attach(forceReattach?: boolean, attachReason?: unknown, errCallback?: (err?: unknown) => void) {
         FakeRealtimeChannel.internalAttachCalls.push([this.name, forceReattach, attachReason]);
         errCallback?.(null);
     }
 }
 
-const makeAuth = (requestTokenFn: Function, authorize: Mock = vi.fn((_, opts) => Promise.resolve(opts.token))) => {
+const makeAuth = (requestTokenFn: RequestTokenFn, authorize: Mock = vi.fn((_, opts) => Promise.resolve(opts.token))) => {
     const client: any = {
         channels: { get: (n: string) => Object.assign(new FakeRealtimeChannel(n), { client }) },
         getTimestamp: vi.fn(() => Promise.resolve(Date.now())),
@@ -36,7 +38,7 @@ const makeAuth = (requestTokenFn: Function, authorize: Mock = vi.fn((_, opts) =>
         authEndpoint: 'http://localhost/broadcasting/auth',
         auth: { headers: {} },
         requestTokenFn,
-    });
+    } as AblyOptions);
     return { auth, client, connector };
 };
 
@@ -187,7 +189,7 @@ describe('beforeChannelAttach (patched RealtimeChannel._attach)', () => {
 describe('nothing Echo scheduled reopens a connection the app closed (RTC8c: authorize() on a closed connection reconnects)', () => {
     const deferred = () => {
         let resolve!: (v: any) => void;
-        const promise = new Promise((r) => (resolve = r));
+        const promise = new Promise<AblyTokenResponse>((r) => (resolve = r));
         return { promise, resolve };
     };
 

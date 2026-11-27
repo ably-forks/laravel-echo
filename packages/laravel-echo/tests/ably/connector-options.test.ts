@@ -14,8 +14,9 @@ vi.mock('@ably/pubsub-device', async (importOriginal) => {
 import Echo from '../../src/echo';
 import { AblyConnector } from '../../src/connector/ably-connector';
 import { FakeEmitter, makeFakeAbly } from '../parity/fake-ably';
+import type { ClientOptions } from '../../src/types/ably';
 
-const baseOptions = { broadcaster: 'ably', autoConnect: false, requestTokenFn: async () => ({ token: 'x' }) };
+const baseOptions = { broadcaster: 'ably' as const, autoConnect: false, requestTokenFn: async () => ({ token: 'x' }) };
 
 afterEach(() => {
     delete (globalThis as any).Ably;
@@ -97,8 +98,8 @@ describe('P4: Echo-only options are kept out of the Ably client options', () => 
             agents: { 'laravel-echo': AblyConnector.LIB_VERSION },
         });
         // Echo's token executer still reads it
-        expect(echo.connector.ablyAuth.authRequestExecuter.cachedToken).toBe('seed-token');
-        expect(typeof passed.authCallback).toBe('function'); // Echo's own auth options still reach the client
+        expect(echo.connector.ablyAuth!.authRequestExecuter.cachedToken).toBe('seed-token');
+        expect(typeof (passed as ClientOptions).authCallback).toBe('function'); // Echo's own auth options still reach the client
         const options = echo.connector.options;
         expect(options).toMatchObject({
             broadcaster: 'ably',
@@ -255,7 +256,7 @@ describe('R3: re-attach channels after the connection failed (installed from con
         connection.emit('connecting', { current: 'connecting' });
         connection.emit('connected', { current: 'connected' });
         connection.emit('connected', { current: 'connected' }); // e.g. a later reconnect: no second re-attach
-        const attachCalls = Object.keys(states).map((n) => echo.connector.channels[`public:${n}`].channel.attach.mock.calls.length);
+        const attachCalls = Object.keys(states).map((n) => (echo.connector.channels[`public:${n}`].channel.attach as Mock).mock.calls.length);
         expect(attachCalls).toEqual([1, 1, 0, 0, 1]);
         expect(console.error).toHaveBeenCalledTimes(1); // the MAU hint
         expect((console.error as Mock).mock.calls[0][0]).toContain('40161');
@@ -274,7 +275,7 @@ describe('R3: re-attach channels after the connection failed (installed from con
         connection.emit('connecting', { current: 'connecting' });
         connection.emit('connected', { current: 'connected' });
         connection.emit('connected', { current: 'connected' }); // a later reconnect: no second re-attach
-        const attachCalls = Object.keys(states).map((n) => echo.connector.channels[`public:${n}`].channel.attach.mock.calls.length);
+        const attachCalls = Object.keys(states).map((n) => (echo.connector.channels[`public:${n}`].channel.attach as Mock).mock.calls.length);
         expect(attachCalls).toEqual([1, 1, 0, 0, 1]);
     });
 
@@ -378,7 +379,7 @@ describe('P7: connect() called again', () => {
         expect(client.connection.events['connected']).toHaveLength(1);
         // the remaining pair belongs to the current connector, so recovery still works
         echo.channel('p7');
-        const ch = echo.connector.channels['public:p7'].channel;
+        const ch = echo.connector.channels['public:p7'].channel as unknown as { state: string; attach: Mock }; // a fake channel (makeFakeAbly)
         ch.state = 'detached';
         ch.attach.mockClear();
         client.connection.emit('failed', { current: 'failed', reason: { code: 40102, message: 'mismatched' } });

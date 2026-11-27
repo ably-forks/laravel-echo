@@ -26,7 +26,7 @@ vi.setConfig({ testTimeout: 240000, hookTimeout: 240000 });
 describe('Token renewal (reverify)', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
-    let echo: Echo;
+    let echo: Echo<'ably'>;
     let observer: any;
     let tokenRequests: Array<{ channelName: string | null; existingToken: string | null; token: string }>;
 
@@ -49,7 +49,7 @@ describe('Token renewal (reverify)', () => {
             useTls: true,
             endpoint: 'nonprod:sandbox',
             useBinaryProtocol: false,
-            requestTokenFn: async (channelName, existingToken) => {
+            requestTokenFn: async (channelName: string | null, existingToken: string | null) => {
                 const response = await mockAuthServer.getSignedToken(channelName, existingToken);
                 tokenRequests.push({ channelName, existingToken, token: response.token });
                 return response;

@@ -24,7 +24,7 @@ describe('coverage gaps (R17)', () => {
     afterAll(async () => tearDown(testApp));
 
     const makeEcho = (extra: any = {}) =>
-        new Echo({ broadcaster: 'ably', endpoint: 'nonprod:sandbox', requestTokenFn: mockAuthServer.getSignedToken, ...extra });
+        new Echo<'ably'>({ broadcaster: 'ably', endpoint: 'nonprod:sandbox', requestTokenFn: mockAuthServer.getSignedToken, ...extra });
 
     test('R17.2 the pre-attach authorize patch is applied to the v3 RealtimeChannel prototype', () => {
         const echo = makeEcho({ autoConnect: false });
@@ -39,7 +39,7 @@ describe('coverage gaps (R17)', () => {
             const channel = echo.channel('meta') as AblyChannel;
             channel
                 .subscribed(() => mockAuthServer.broadcast('public:meta', 'App\\Events\\testEvent', 'hi'))
-                .listen('testEvent', (_data, m) => resolve(m));
+                .listen('testEvent', (_data: unknown, m: unknown) => resolve(m));
         });
         // Key set for this publish shape (REST publish, no clientId/extras); keys such as clientId/extras appear only when set.
         // Explicit list rather than toMatchSnapshot(): Vitest never writes new snapshots under CI.
@@ -54,7 +54,7 @@ describe('coverage gaps (R17)', () => {
         const other = makeEcho();
         const meta: any = await new Promise((resolve) => {
             const channel = echo.join('meta') as AblyPresenceChannel;
-            channel.joining((_data, m) => resolve(m));
+            channel.joining((_data: unknown, m: unknown) => resolve(m));
             channel.subscribed(() => other.join('meta'));
         });
         expect(Object.keys(meta).sort()).toEqual(['action', 'clientId', 'connectionId', 'encoding', 'id', 'timestamp']);

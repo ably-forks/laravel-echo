@@ -1,13 +1,13 @@
 import { vi, describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from "vite-plus/test";
 import type { Mock } from "vite-plus/test";
-import { createServer, Server } from 'http';
-import { AddressInfo } from 'net';
+import { createServer, Server, type IncomingMessage, type ServerResponse } from 'http';
+import type { AddressInfo } from 'net';
 import { httpRequestAsync } from '../../src/channel/ably/utils';
 
 describe('httpRequestAsync', () => {
     let server: Server;
     let baseUrl: string;
-    let handler: (req, res) => void;
+    let handler: (req: IncomingMessage, res: ServerResponse) => void;
 
     beforeAll(async () => {
         server = createServer((req, res) => handler(req, res));

@@ -5,7 +5,7 @@ import { describe, test, expect, beforeAll, afterAll } from "vite-plus/test";
  */
 import { readFileSync } from 'fs';
 import * as http from 'http';
-import { AddressInfo } from 'net';
+import type { AddressInfo } from 'net';
 import Echo from '../../src/echo';
 import { AblyConnector } from '../../src/connector/ably-connector';
 
@@ -14,7 +14,7 @@ const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.ur
 describe('Ably-Agent header', () => {
     let server: http.Server;
     let port: number;
-    const seen: Array<{ url: string; headers: http.IncomingHttpHeaders }> = [];
+    const seen: Array<{ url: string | undefined; headers: http.IncomingHttpHeaders }> = [];
 
     beforeAll(async () => {
         server = http.createServer((req, res) => {
@@ -37,7 +37,8 @@ describe('Ably-Agent header', () => {
             autoConnect: false,
             requestTokenFn: async () => ({ token: 'x' }),
         });
-        expect(echo.connector.ably.options.agents).toMatchObject({ 'laravel-echo': AblyConnector.LIB_VERSION });
+        // ClientOptions are not on the public PubSubClient type; the SDK keeps them on the instance
+        expect((echo.connector.ably as unknown as { options: { agents?: Record<string, string> } }).options.agents).toMatchObject({ 'laravel-echo': AblyConnector.LIB_VERSION });
         await echo.connector.ably.time();
         const agent = String(seen[seen.length - 1].headers['ably-agent']);
         expect(agent).toContain(`laravel-echo/${AblyConnector.LIB_VERSION}`);

@@ -7,7 +7,7 @@ vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
 describe('AblyConnection', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
-    let echo: Echo;
+    let echo: Echo<'ably'>;
 
     beforeAll(async () => {
         testApp = await setup();

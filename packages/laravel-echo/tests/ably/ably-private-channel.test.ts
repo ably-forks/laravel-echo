@@ -9,7 +9,7 @@ vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
 describe('AblyPrivateChannel', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
-    let echo: Echo;
+    let echo: Echo<'ably'>;
 
     beforeAll(async () => {
         testApp = await setup();
@@ -52,9 +52,10 @@ describe('AblyPrivateChannel', () => {
         const privateChannel = echo.private('test') as AblyPrivateChannel;
         privateChannel
             .subscribed(() => {
-                privateChannel.whisper('msg', 'Hello there jonny!');
+                // a string payload: Ably whispers any data, though the upstream signature types it as a Record
+                privateChannel.whisper('msg', 'Hello there jonny!' as unknown as Record<string, unknown>);
             })
-            .listenForWhisper('msg', (data) => {
+            .listenForWhisper('msg', (data: unknown) => {
                 safeAssert(() => expect(data).toBe('Hello there jonny!'), { resolve, reject }, true);
             });
     }));
@@ -66,7 +67,7 @@ describe('AblyPrivateChannel', () => {
         mockAuthServer.renewalMode = 'reuse';
         mockAuthServer.setAuthExceptions(['private:shortLivedChannel']);
         const privateChannel = echo.private('shortLivedChannel') as AblyChannel;
-        privateChannel.error((stateChangeError) => {
+        privateChannel.error((stateChangeError: unknown) => {
             privateChannel.unregisterError();
             safeAssert(() => expect(stateChangeError).toBeTruthy(), { resolve, reject }, true);
         });
@@ -75,7 +76,7 @@ describe('AblyPrivateChannel', () => {
     test('channel subscription error, access denied', () => new Promise<void>((resolve, reject) => {
         mockAuthServer.setAuthExceptions([], ['private:bannedChannel']);
         const privateChannel = echo.private('bannedChannel') as AblyChannel;
-        privateChannel.error((stateChangeError) => {
+        privateChannel.error((stateChangeError: unknown) => {
             privateChannel.unregisterError();
             safeAssert(() => expect(stateChangeError).toBeTruthy(), { resolve, reject }, true);
         });

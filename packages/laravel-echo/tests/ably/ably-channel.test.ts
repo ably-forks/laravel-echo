@@ -10,7 +10,7 @@ vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
 describe('AblyChannel', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
-    let echo: Echo;
+    let echo: Echo<'ably'>;
 
     beforeAll(async () => {
         testApp = await setup();
@@ -49,9 +49,9 @@ describe('AblyChannel', () => {
         const publicChannel = echo.channel('test') as AblyChannel;
         publicChannel
             .subscribed(() => {
-                mockAuthServer.broadcast('public:test', 'App\\Events\\testEvent', 'Hello there');
+                void mockAuthServer.broadcast('public:test', 'App\\Events\\testEvent', 'Hello there');
             })
-            .listen('testEvent', (data) => {
+            .listen('testEvent', (data: unknown) => {
                 safeAssert(() => expect(data).toBe('Hello there'), { resolve, reject }, true);
             });
     }));
@@ -61,9 +61,9 @@ describe('AblyChannel', () => {
         const publicChannel = echo.channel('test') as AblyChannel;
         publicChannel
             .subscribed(() => {
-                mockAuthServer.broadcast('public:test', 'testEvent', 'Hello there');
+                void mockAuthServer.broadcast('public:test', 'testEvent', 'Hello there');
             })
-            .listen('.testEvent', (data) => {
+            .listen('.testEvent', (data: unknown) => {
                 safeAssert(() => expect(data).toBe('Hello there'), { resolve, reject }, true);
             });
     }));
@@ -72,9 +72,9 @@ describe('AblyChannel', () => {
         const publicChannel = echo.channel('test') as AblyChannel;
         publicChannel
             .subscribed(() => {
-                mockAuthServer.broadcast('public:test', 'client-msg', 'Hello there');
+                void mockAuthServer.broadcast('public:test', 'client-msg', 'Hello there');
             })
-            .listenForWhisper('msg', (data) => {
+            .listenForWhisper('msg', (data: unknown) => {
                 safeAssert(() => expect(data).toBe('Hello there'), { resolve, reject }, true);
             });
     }));
@@ -83,13 +83,13 @@ describe('AblyChannel', () => {
         const publicChannel = echo.channel('test') as AblyChannel;
         publicChannel
             .subscribed(() => {
-                mockAuthServer.broadcast(
+                void mockAuthServer.broadcast(
                     'public:test',
                     'Illuminate\\Notifications\\Events\\BroadcastNotificationCreated',
                     'Hello there'
                 );
             })
-            .notification((data) => {
+            .notification((data: unknown) => {
                 safeAssert(() => expect(data).toBe('Hello there'), { resolve, reject }, true);
             });
     }));
@@ -98,9 +98,9 @@ describe('AblyChannel', () => {
         const publicChannel = echo.channel('test1') as AblyChannel;
         publicChannel
             .subscribed(() => {
-                mockAuthServer.broadcast('public:test1', 'testEvent', 'Hello there');
+                void mockAuthServer.broadcast('public:test1', 'testEvent', 'Hello there');
             })
-            .listenToAll((eventName, data) => {
+            .listenToAll((eventName: string, data: unknown) => {
                 safeAssert(
                     () => {
                         expect(eventName).toBe('.testEvent');

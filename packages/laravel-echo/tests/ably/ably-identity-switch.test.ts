@@ -17,7 +17,7 @@ vi.setConfig({ testTimeout: 45000, hookTimeout: 45000 });
 describe('AblyIdentitySwitch', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
-    let echo: Echo;
+    let echo: Echo<'ably'>;
     let observer: any;
     let rejections: ReturnType<typeof trackUnhandledRejections>;
 
@@ -39,7 +39,7 @@ describe('AblyIdentitySwitch', () => {
             echoMessages: true,
         });
 
-    const connected = (e: Echo = echo) =>
+    const connected = (e: Echo<'ably'> = echo) =>
         waitForExpect(() => expect(e.connector.ably.connection.state).toBe('connected'));
 
     const attached = (ch: AblyChannel | AblyPrivateChannel) =>
@@ -116,7 +116,7 @@ describe('AblyIdentitySwitch', () => {
         await attached(publicChannel);
         await attached(privateChannel);
         expect(echo.connector.ably.auth.clientId).toBe('user1');
-        expect(echo.connector.ablyAuth.existingToken().clientId).toBe('user1');
+        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBe('user1');
         expect(connectionStates).toStrictEqual(['failed', 'connecting', 'connected']);
 
         const event = `probe-${Math.random().toString(36).slice(2)}`;
@@ -242,7 +242,7 @@ describe('AblyIdentitySwitch', () => {
         await connected();
         expect(echo.connector.ably).not.toBe(oldClient);
         expect(echo.connector.ably.auth.clientId).toBeFalsy();
-        expect(echo.connector.ablyAuth.existingToken().clientId).toBeNull();
+        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBeNull();
         await waitForExpect(() => expect(['closing', 'closed']).toContain(oldClient.connection.state));
 
         const publicAgain = echo.channel('t5') as AblyChannel;

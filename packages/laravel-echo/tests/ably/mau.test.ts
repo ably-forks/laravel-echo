@@ -85,7 +85,7 @@ const dumpHintDiagnostics = (hints: any[][]) => {
 describe('MAU account (real MAU-enforced sandbox app)', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
-    let echo: Echo | undefined;
+    let echo: Echo<'ably'> | undefined;
     let errorSpy: MockInstance;
     let skipReason: string | undefined;
     let ready = false; // beforeAll completed: the per-test hooks only run then, so a setup failure is the only error
@@ -104,7 +104,7 @@ describe('MAU account (real MAU-enforced sandbox app)', () => {
             echoMessages: true,
         });
     const hintCalls = () => errorSpy.mock.calls.filter((call) => String(call[0]).includes('40161'));
-    const connected = (e: Echo) => waitForExpect(() => expect(e.connector.ably.connection.state).toBe('connected'));
+    const connected = (e: Echo<'ably'>) => waitForExpect(() => expect(e.connector.ably.connection.state).toBe('connected'));
 
     beforeAll(async () => {
         patchConnector();

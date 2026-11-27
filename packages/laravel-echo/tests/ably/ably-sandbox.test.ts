@@ -4,7 +4,7 @@ import { createHttpClient } from '@ably/pubsub-server';
 
 vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
 describe('AblySandbox', () => {
-    let testApp;
+    let testApp: Awaited<ReturnType<typeof setup>>;
 
     beforeAll(async () => {
         testApp = await setup();

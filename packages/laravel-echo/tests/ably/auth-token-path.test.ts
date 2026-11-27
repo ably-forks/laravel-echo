@@ -2,13 +2,14 @@ import { vi, describe, test, expect, afterEach, beforeAll, afterAll } from "vite
 /**
  * The combined HTTP/auth/token design (review §9.1) (R1, R6, R9, R12, R18, R20, R21, T6, T7, T10) works as one unit.
  */
-import { createServer, Server } from 'http';
-import { AddressInfo } from 'net';
+import { createServer, Server, type IncomingMessage, type ServerResponse } from 'http';
+import type { AddressInfo } from 'net';
 import * as AblyDevice from '@ably/pubsub-device';
 import { AblyAuth } from '../../src/channel/ably/auth';
 import * as attach from '../../src/channel/ably/attach';
 import { httpError, httpRequestAsync, toTokenDetails } from '../../src/channel/ably/utils';
 import { TOKEN_REQUEST_TIMEOUT_MS } from '../../src/channel/ably/token-request';
+import type { AblyOptions } from '../../src/connector/ably-connector';
 
 const jwt = (payload: object) =>
     [{ alg: 'HS256', typ: 'JWT' }, payload].map((p) => Buffer.from(JSON.stringify(p)).toString('base64url')).join('.') + '.sig';
@@ -23,7 +24,7 @@ const makeAuth = (connectorOptions: any, echoOptions: any = {}) =>
 describe('auth token path (review §9.1 combined design)', () => {
     let server: Server;
     let baseUrl: string;
-    let handler: (req, res) => void;
+    let handler: (req: IncomingMessage, res: ServerResponse) => void;
     let lastHeaders: any;
 
     beforeAll(async () => {
@@ -147,7 +148,7 @@ describe('auth token path (review §9.1 combined design)', () => {
 
 describe('review §8.3: the cached token is used only if its capability has the channel as a key', () => {
     const authorizeWithCachedToken = async (capability: string, channelName: string) => {
-        let authorize: Function;
+        let authorize!: Function;
         const spy = vi.spyOn(attach, 'beforeChannelAttach').mockImplementation((_client, fn) => {
             authorize = fn;
         });
@@ -161,7 +162,7 @@ describe('review §8.3: the cached token is used only if its capability has the 
             authEndpoint: 'http://127.0.0.1:1/broadcasting/auth',
             auth: { headers: {} },
             requestTokenFn,
-        });
+        } as unknown as AblyOptions); // partial options: the AblyAuth paths under test read only these
         try {
             auth.enableAuthorizeBeforeChannelAttach();
         } finally {
