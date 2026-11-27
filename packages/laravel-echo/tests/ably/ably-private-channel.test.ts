@@ -31,33 +31,35 @@ describe('AblyPrivateChannel', () => {
         });
     });
 
-    afterEach((done) => {
-        echo.disconnect();
-        echo.connector.ably.connection.once('closed', () => {
-            done();
+    afterEach(async () => {
+        await new Promise<void>((resolve) => {
+            echo.disconnect();
+            echo.connector.ably.connection.once('closed', () => {
+                resolve();
+            });
         });
     });
 
-    test('channel subscription', (done) => {
+    test('channel subscription', () => new Promise<void>((resolve) => {
         const privateChannel = echo.private('test') as AblyChannel;
         privateChannel.subscribed(() => {
             privateChannel.unregisterSubscribed();
-            done();
+            resolve();
         });
-    });
+    }));
 
-    test('Whisper and listen to it', (done) => {
+    test('Whisper and listen to it', () => new Promise<void>((resolve, reject) => {
         const privateChannel = echo.private('test') as AblyPrivateChannel;
         privateChannel
             .subscribed(() => {
                 privateChannel.whisper('msg', 'Hello there jonny!');
             })
             .listenForWhisper('msg', (data) => {
-                safeAssert(() => expect(data).toBe('Hello there jonny!'), done, true);
+                safeAssert(() => expect(data).toBe('Hello there jonny!'), { resolve, reject }, true);
             });
-    });
+    }));
 
-    test('channel subscription error, token expired', (done) => {
+    test('channel subscription error, token expired', () => new Promise<void>((resolve, reject) => {
         // The 3 s channel token must stay expired for the test to see an error. On a connection renewal ('reverify', the
         // default) the mock issues a fresh full-length token and drops the short-lived exp, so no error would ever occur;
         // 'reuse' (old broadcaster) returns the same iat/exp, so the 3 s token expires inside Ably's 30 s re-auth window.
@@ -66,16 +68,16 @@ describe('AblyPrivateChannel', () => {
         const privateChannel = echo.private('shortLivedChannel') as AblyChannel;
         privateChannel.error((stateChangeError) => {
             privateChannel.unregisterError();
-            safeAssert(() => expect(stateChangeError).toBeTruthy(), done, true);
+            safeAssert(() => expect(stateChangeError).toBeTruthy(), { resolve, reject }, true);
         });
-    });
+    }));
 
-    test('channel subscription error, access denied', (done) => {
+    test('channel subscription error, access denied', () => new Promise<void>((resolve, reject) => {
         mockAuthServer.setAuthExceptions([], ['private:bannedChannel']);
         const privateChannel = echo.private('bannedChannel') as AblyChannel;
         privateChannel.error((stateChangeError) => {
             privateChannel.unregisterError();
-            safeAssert(() => expect(stateChangeError).toBeTruthy(), done, true);
+            safeAssert(() => expect(stateChangeError).toBeTruthy(), { resolve, reject }, true);
         });
-    });
+    }));
 });

@@ -25,7 +25,7 @@ describe('AblyUserRestPublishing', () => {
         echoInstances = [];
     })
 
-    afterEach((done) => {
+    afterEach(async () => {
         let promises: Array<Promise<boolean>> = []
         for (const echo of echoInstances) {
             echo.disconnect();
@@ -36,9 +36,7 @@ describe('AblyUserRestPublishing', () => {
             })
             promises.push(promise);
         }
-        Promise.all(promises).then(_ => {
-            done();
-        })
+        await Promise.all(promises);
     });
 
     async function getGuestUserChannel(channelName: string) {

@@ -1,14 +1,18 @@
 import { httpRequestAsync} from '../../../src/channel/ably/utils';
 export { toBase64UrlEncoded } from '../../../src/channel/ably/utils';
 
-const safeAssert = (assertions: Function, done: Function, finalAssertion = false) => {
+/** The resolve/reject pair of the promise a callback-style test returns. */
+export type Settle = { resolve: () => void; reject: (reason?: unknown) => void };
+
+// Runs assertions inside an event callback: a failure rejects the test's promise; the final assertion resolves it.
+const safeAssert = (assertions: Function, settle: Settle, finalAssertion = false) => {
     try {
         assertions();
         if (finalAssertion) {
-            done();
+            settle.resolve();
         }
     } catch (err) {
-        done(err);
+        settle.reject(err);
     }
 };
 

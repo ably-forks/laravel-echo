@@ -30,54 +30,56 @@ describe('AblyChannel', () => {
         });
     });
 
-    afterEach((done) => {
-        echo.disconnect();
-        echo.connector.ably.connection.once('closed', () => {
-            done();
+    afterEach(async () => {
+        await new Promise<void>((resolve) => {
+            echo.disconnect();
+            echo.connector.ably.connection.once('closed', () => {
+                resolve();
+            });
         });
     });
 
-    test('channel subscription', (done) => {
+    test('channel subscription', () => new Promise<void>((resolve) => {
         echo.channel('test').subscribed(() => {
-            done();
+            resolve();
         });
-    });
+    }));
 
-    test('Listen to a default broadcaster event', (done) => {
+    test('Listen to a default broadcaster event', () => new Promise<void>((resolve, reject) => {
         const publicChannel = echo.channel('test') as AblyChannel;
         publicChannel
             .subscribed(() => {
                 mockAuthServer.broadcast('public:test', 'App\\Events\\testEvent', 'Hello there');
             })
             .listen('testEvent', (data) => {
-                safeAssert(() => expect(data).toBe('Hello there'), done, true);
+                safeAssert(() => expect(data).toBe('Hello there'), { resolve, reject }, true);
             });
-    });
+    }));
 
     // https://laravel.com/docs/9.x/broadcasting#broadcast-name
-    test('Listen to a broadcast as event', (done) => {
+    test('Listen to a broadcast as event', () => new Promise<void>((resolve, reject) => {
         const publicChannel = echo.channel('test') as AblyChannel;
         publicChannel
             .subscribed(() => {
                 mockAuthServer.broadcast('public:test', 'testEvent', 'Hello there');
             })
             .listen('.testEvent', (data) => {
-                safeAssert(() => expect(data).toBe('Hello there'), done, true);
+                safeAssert(() => expect(data).toBe('Hello there'), { resolve, reject }, true);
             });
-    });
+    }));
 
-    test('Listen to a whisper', (done) => {
+    test('Listen to a whisper', () => new Promise<void>((resolve, reject) => {
         const publicChannel = echo.channel('test') as AblyChannel;
         publicChannel
             .subscribed(() => {
                 mockAuthServer.broadcast('public:test', 'client-msg', 'Hello there');
             })
             .listenForWhisper('msg', (data) => {
-                safeAssert(() => expect(data).toBe('Hello there'), done, true);
+                safeAssert(() => expect(data).toBe('Hello there'), { resolve, reject }, true);
             });
-    });
+    }));
 
-    test('Listen to a notification', (done) => {
+    test('Listen to a notification', () => new Promise<void>((resolve, reject) => {
         const publicChannel = echo.channel('test') as AblyChannel;
         publicChannel
             .subscribed(() => {
@@ -88,11 +90,11 @@ describe('AblyChannel', () => {
                 );
             })
             .notification((data) => {
-                safeAssert(() => expect(data).toBe('Hello there'), done, true);
+                safeAssert(() => expect(data).toBe('Hello there'), { resolve, reject }, true);
             });
-    });
+    }));
 
-    test('Listen to all events', (done) => {
+    test('Listen to all events', () => new Promise<void>((resolve, reject) => {
         const publicChannel = echo.channel('test1') as AblyChannel;
         publicChannel
             .subscribed(() => {
@@ -104,11 +106,11 @@ describe('AblyChannel', () => {
                         expect(eventName).toBe('.testEvent');
                         expect(data).toBe('Hello there');
                     },
-                    done,
+                    { resolve, reject },
                     true
                 );
             });
-    });
+    }));
 
     test('stop listening to a event', async () => {
         const publicChannel = echo.channel('test') as AblyChannel;

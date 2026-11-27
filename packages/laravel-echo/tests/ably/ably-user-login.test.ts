@@ -32,10 +32,12 @@ describe('AblyUserLogin', () => {
         });
     });
 
-    afterEach((done) => {
-        echo.disconnect();
-        echo.connector.ably.connection.once('closed', () => {
-            done();
+    afterEach(async () => {
+        await new Promise<void>((resolve) => {
+            echo.disconnect();
+            echo.connector.ably.connection.once('closed', () => {
+                resolve();
+            });
         });
     });
 
