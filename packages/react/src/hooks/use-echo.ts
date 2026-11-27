@@ -498,7 +498,8 @@ const useConnectionChange = (
             callbackRef.current(echo().connectionStatus());
         }
 
-        return echo().connector.onConnectionChange((status) =>
+        // fork (provisional: P-03): Echo's registry survives Echo.connect() replacing the connector
+        return echo().onConnectionChange((status) =>
             callbackRef.current(status),
         );
     }, []); // eslint-disable-line react-hooks/exhaustive-deps

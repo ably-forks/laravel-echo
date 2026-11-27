@@ -446,7 +446,8 @@ const useConnectionChange = (
             callback(echoInstance.connectionStatus());
         }
 
-        unsubscribe = echoInstance.connector.onConnectionChange(callback);
+        // fork (provisional: P-03): Echo's registry survives Echo.connect() replacing the connector
+        unsubscribe = echo().onConnectionChange(callback);
     });
 
     onUnmounted(() => {
