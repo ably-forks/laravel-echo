@@ -1,30 +1,67 @@
-import Echo from '../src/echo';
+import { describe, expect, test } from "vite-plus/test";
+import { NullConnector } from "../src/connector";
+import Echo from "../src/echo";
 
-describe('Echo', () => {
-    test('it will not throw error for supported driver', () => {
-        expect(() => new Echo({ broadcaster: 'ably' })).not.toThrowError(
-            'Broadcaster string ably is not supported.'
-        );
+describe("Echo", () => {
+    test("it will not throw error for supported driver", () => {
+        expect(
+            () =>
+                new Echo({ broadcaster: "reverb", withoutInterceptors: true }),
+        ).not.toThrow("Broadcaster string reverb is not supported.");
 
-        expect(() => new Echo({ broadcaster: 'reverb' })).not.toThrowError(
-            'Broadcaster string reverb is not supported.'
-        );
+        expect(
+            () =>
+                new Echo({ broadcaster: "pusher", withoutInterceptors: true }),
+        ).not.toThrow("Broadcaster string pusher is not supported.");
 
-        expect(() => new Echo({ broadcaster: 'pusher' })).not.toThrowError(
-            'Broadcaster string pusher is not supported.'
-        );
+        expect(
+            () =>
+                new Echo({
+                    broadcaster: "socket.io",
+                    withoutInterceptors: true,
+                }),
+        ).not.toThrow("Broadcaster string socket.io is not supported.");
 
-        expect(() => new Echo({ broadcaster: 'socket.io' })).not.toThrowError(
-            'Broadcaster string socket.io is not supported.'
-        );
+        expect(
+            () =>
+                new Echo({
+                    broadcaster: "mercure",
+                    host: "https://hub.example.com/.well-known/mercure",
+                    withoutInterceptors: true,
+                }),
+        ).not.toThrow("Broadcaster string mercure is not supported.");
 
-        expect(() => new Echo({ broadcaster: 'null' })).not.toThrowError('Broadcaster string null is not supported.');
-
-        // eslint-disable-next-line @typescript-eslint/no-empty-function
-        expect(() => new Echo({ broadcaster: () => {} })).not.toThrowError('Broadcaster function is not supported.');
+        expect(
+            () => new Echo({ broadcaster: "null", withoutInterceptors: true }),
+        ).not.toThrow("Broadcaster string null is not supported.");
+        expect(
+            () =>
+                new Echo({
+                    broadcaster: NullConnector,
+                    withoutInterceptors: true,
+                }),
+        ).not.toThrow();
+        expect(
+            () =>
+                // @ts-expect-error a plain function is not a connector constructor
+                // eslint-disable-next-line @typescript-eslint/no-empty-function
+                new Echo({ broadcaster: () => {}, withoutInterceptors: true }),
+        ).not.toThrow("Broadcaster function is not supported.");
     });
 
-    test('it will throw error for unsupported driver', () => {
-        expect(() => new Echo({ broadcaster: 'foo' })).toThrowError('Broadcaster string foo is not supported.');
+    test("it will throw error for unsupported driver", () => {
+        expect(
+            // @ts-expect-error unsupported broadcaster string
+            () => new Echo({ broadcaster: "foo", withoutInterceptors: true }),
+        ).toThrow("Broadcaster string foo is not supported.");
+    });
+
+    test("it can get connection status", () => {
+        const echo = new Echo({
+            broadcaster: "null",
+            withoutInterceptors: true,
+        });
+
+        expect(echo.connectionStatus()).toBe("connected");
     });
 });

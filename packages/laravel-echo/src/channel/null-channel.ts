@@ -1,4 +1,4 @@
-import { Channel } from './channel';
+import { Channel } from "./channel";
 
 /**
  * This class represents a null channel.
@@ -7,7 +7,7 @@ export class NullChannel extends Channel {
     /**
      * Subscribe to a channel.
      */
-    subscribe(): any {
+    subscribe(): void {
         //
     }
 
@@ -21,42 +21,42 @@ export class NullChannel extends Channel {
     /**
      * Listen for an event on the channel instance.
      */
-    listen(event: string, callback: Function): NullChannel {
+    listen(_event: string, _callback: CallableFunction): this {
         return this;
     }
 
     /**
      * Listen for all events on the channel instance.
      */
-    listenToAll(callback: Function): NullChannel {
+    listenToAll(_callback: CallableFunction): this {
         return this;
     }
 
     /**
      * Stop listening for an event on the channel instance.
      */
-    stopListening(event: string, callback?: Function): NullChannel {
+    stopListening(_event: string, _callback?: CallableFunction): this {
         return this;
     }
 
     /**
      * Register a callback to be called anytime a subscription succeeds.
      */
-    subscribed(callback: Function): NullChannel {
+    subscribed(_callback: CallableFunction): this {
         return this;
     }
 
     /**
      * Register a callback to be called anytime an error occurs.
      */
-    error(callback: Function): NullChannel {
+    error(_callback: CallableFunction): this {
         return this;
     }
 
     /**
      * Bind a channel to an event.
      */
-    on(event: string, callback: Function): NullChannel {
+    on(_event: string, _callback: CallableFunction): this {
         return this;
     }
 }
