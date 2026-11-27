@@ -100,6 +100,17 @@ describe('built bundles', () => {
         ]);
     });
 
+    test('the package entry points resolve: the require condition gets the CJS build, import the ESM build', async () => {
+        // self-reference by package name, so package.json "main"/"exports" are what is tested
+        expect(requireCjs.resolve('@ably/laravel-echo')).toBe(path.join(root, 'dist/echo.common.cjs'));
+        const cjs = requireCjs('@ably/laravel-echo');
+        expect(Object.keys(cjs).sort()).toEqual(['Channel', 'Connector', 'EventFormatter', 'default']);
+        expect(typeof cjs.default).toBe('function');
+        const esm = await import('@ably/laravel-echo');
+        expect(Object.keys(esm).sort()).toEqual(['Channel', 'Connector', 'EventFormatter', 'default']);
+        expect(esm.default).toBe((await import('../../dist/echo.js')).default);
+    });
+
     test('ESM bundle exports Channel (R26)', () => {
         expect(read('dist/echo.js')).toMatch(/export \{[^}]*\bChannel\b[^}]*\}/);
     });
