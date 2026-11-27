@@ -62,6 +62,24 @@ describe('built bundles', () => {
         expect(vm.runInContext('typeof window.Echo.prototype.channel', ctx)).toBe('function');
     });
 
+    test("window.Echo also carries upstream's IIFE namespace members, so both forms work (UC-06)", () => {
+        const ctx = browserContext();
+        vm.runInContext(iife, ctx);
+        expect(vm.runInContext('window.Echo.default === window.Echo', ctx)).toBe(true);
+        expect(vm.runInContext('typeof Echo.Channel + typeof Echo.Connector + typeof Echo.EventFormatter', ctx)).toBe(
+            'functionfunctionfunction'
+        );
+        const options = `{ broadcaster: 'ably', withoutInterceptors: true, autoConnect: false,
+            requestTokenFn: async () => ({ token: 'x.e30.y' }) }`;
+        const fork = vm.runInContext(`new Echo(${options})`, ctx); // the fork's (1.x) form
+        const upstream = vm.runInContext(`new Echo.default(${options})`, ctx); // upstream's form
+        expect(fork.connector.ably.connection.state).toBe('initialized');
+        expect(upstream.connector.ably.connection.state).toBe('initialized');
+        expect(vm.runInContext('new Echo.EventFormatter("App.Events").format("OrderShipped")', ctx)).toBe(
+            'App\\Events\\OrderShipped'
+        );
+    });
+
     test('IIFE + v3 CDN bundle and the old README alias (window.Ably = AblyPubSub): the globals are ignored, one warning', () => {
         const warn = vi.fn();
         const ctx = browserContext(warn);
