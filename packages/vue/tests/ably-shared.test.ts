@@ -249,7 +249,7 @@ describe("shared adapter behaviour (fork)", () => {
             expect(echoInstances[0].leaveChannel).toHaveBeenCalledTimes(1);
         });
 
-        it("tracks a public channel named private-x apart from the private channel x", async () => {
+        it("with the native Ably connector, tracks a public channel named private-x apart from the private channel x", async () => {
             const module = await getModule();
 
             module.configureEcho({});
@@ -281,6 +281,31 @@ describe("shared adapter behaviour (fork)", () => {
                 "x",
                 "private",
             );
+        });
+
+        it("with a Pusher-style driver, shares one entry for a public private-x and a private x, as upstream (UB-19)", async () => {
+            const module = await getModule();
+
+            module.configureEcho({ broadcaster: "null" });
+
+            const publicHook = renderHook(() =>
+                module.useEchoPublic("private-x", "E", () => {}),
+            );
+            const privateHook = renderHook(() =>
+                module.useEcho("x", "E", () => {}),
+            );
+            const instance = echoInstances[0];
+
+            // upstream's registry id is "private-x" for both, so the private hook reuses the public subscription
+            expect(instance.channel).toHaveBeenCalledWith("private-x");
+            expect(instance.private).not.toHaveBeenCalled();
+
+            publicHook.unmount();
+            expect(instance.leaveChannel).not.toHaveBeenCalled();
+
+            privateHook.unmount();
+            expect(instance.leaveChannel).toHaveBeenCalledTimes(1);
+            expect(instance.leaveChannel).toHaveBeenCalledWith("x", "private");
         });
 
         it("leaves only when the last hook on a channel unmounts", async () => {

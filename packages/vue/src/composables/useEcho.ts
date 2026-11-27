@@ -3,7 +3,7 @@ import {
     type ConnectionStatus,
 } from "@ably/laravel-echo";
 import { onMounted, onUnmounted, ref, watch, type Ref } from "vue";
-import { echo } from "../config";
+import { channelRegistryId, echo } from "../config";
 import type {
     BroadcastNotification,
     Channel,
@@ -167,9 +167,8 @@ export function useEcho<
 
     const channel: Channel = {
         name: channelName,
-        // fork (provisional: P-04): one key format for every visibility, so a public channel named
-        // "private-x" and the private channel "x" no longer share a registry entry
-        id: `${visibility}:${channelName}`,
+        // fork (provisional: P-04; UB-19): upstream's id for non-Ably drivers, per visibility for Ably
+        id: channelRegistryId(channelName, visibility),
         visibility,
     };
 
@@ -374,9 +373,8 @@ export function useChannel<
 >(channelName: string, visibility: TVisibility = "private" as TVisibility) {
     const channel: Channel = {
         name: channelName,
-        // fork (provisional: P-04): one key format for every visibility, so a public channel named
-        // "private-x" and the private channel "x" no longer share a registry entry
-        id: `${visibility}:${channelName}`,
+        // fork (provisional: P-04; UB-19): upstream's id for non-Ably drivers, per visibility for Ably
+        id: channelRegistryId(channelName, visibility),
         visibility,
     };
 

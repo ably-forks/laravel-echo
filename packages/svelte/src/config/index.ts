@@ -3,7 +3,7 @@ import Echo, {
     type Broadcaster,
     type EchoOptions,
 } from "@ably/laravel-echo";
-import type { ConfigDefaults } from "../types";
+import type { Channel, ConfigDefaults } from "../types";
 
 /**
  * The Echo constructor argument, which allows a custom connector class as the broadcaster.
@@ -131,3 +131,22 @@ export const configureEcho = <T extends keyof Broadcaster>(
 export const echo = <
     T extends keyof Broadcaster = BroadcastDriver,
 >(): Echo<T> => getEchoInstance<T>();
+
+/**
+ * fork (P-04, UB-19): the hooks' channel-registry key. The non-Ably drivers get upstream's id ("private-x",
+ * "presence-x" or the bare name), so hooks share registry entries exactly as upstream, also a public channel
+ * named "private-x" with the private channel "x". The native Ably connector names channels per visibility
+ * ("public:private-x", "private:x"), so its keys are distinct per visibility too.
+ */
+export const channelRegistryId = (
+    name: string,
+    visibility: Channel["visibility"],
+): string => {
+    if (echoConfig?.broadcaster === "ably") {
+        return `${visibility}:${name}`;
+    }
+
+    return ["private", "presence"].includes(visibility)
+        ? `${visibility}-${name}`
+        : name;
+};

@@ -3,7 +3,7 @@ import {
     type BroadcastDriver,
     type ConnectionStatus,
 } from "@ably/laravel-echo";
-import { echo } from "../config";
+import { channelRegistryId, echo } from "../config";
 import type {
     BroadcastNotification,
     CallbackInput,
@@ -145,9 +145,8 @@ const resolveChannel = <TVisibility extends Channel["visibility"]>(
 
     return {
         name: resolvedChannelName,
-        // fork (provisional: P-04): one key format for every visibility, so a public channel named
-        // "private-x" and the private channel "x" no longer share a registry entry
-        id: `${visibility}:${resolvedChannelName}`,
+        // fork (provisional: P-04; UB-19): upstream's id for non-Ably drivers, per visibility for Ably
+        id: channelRegistryId(resolvedChannelName, visibility),
         visibility,
     };
 };
