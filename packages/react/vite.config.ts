@@ -1,5 +1,6 @@
-import { resolve } from "path";
-import { defineConfig, UserConfig } from "vite-plus";
+import { copyFileSync } from "fs";
+import { join, resolve } from "path";
+import { defineConfig, PluginOption, UserConfig } from "vite-plus";
 
 /*
  * Laravel exposes its broadcasting defaults as VITE_* variables, and the consuming app's Vite
@@ -29,6 +30,23 @@ const isAblyExternal = (id: string): boolean =>
     ["@ably/laravel-echo", "@ably/pubsub-device"].some(
         (pkg) => id === pkg || id.startsWith(`${pkg}/`),
     );
+
+/*
+ * fork (F-333): Node needs the CommonJS build as .cjs (exports.require), but the react-native condition and
+ * `main` keep upstream's dist/index.common.js for Metro and other tools that ignore "exports" and "type". The
+ * file is a byte-identical copy of the .cjs one, written after the CJS output, not a second build.
+ */
+const reactNativeCjsCopy = (): PluginOption => ({
+    name: "react-native-cjs-copy",
+    writeBundle(options, bundle) {
+        if (options.dir && "index.common.cjs" in bundle) {
+            copyFileSync(
+                join(options.dir, "index.common.cjs"),
+                join(options.dir, "index.common.js"),
+            );
+        }
+    },
+});
 
 const config: UserConfig = (() => {
     const common: Partial<UserConfig["build"]> = {
@@ -65,6 +83,7 @@ const config: UserConfig = (() => {
     }
 
     return {
+        plugins: [reactNativeCjsCopy()],
         define: guardedEnvVariables([
             "VITE_MERCURE_HUB_URL",
             "VITE_PUSHER_APP_CLUSTER",

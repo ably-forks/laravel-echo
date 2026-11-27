@@ -4,7 +4,7 @@
  * of the ESM, CJS (.cjs, F-333) and IIFE builds (the IIFE exports the same hooks, P-06, and uses the core IIFE's
  * global Echo), that no build bundles the core or the Ably SDK (D-03), and that the env reads are guarded (F-080).
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -110,15 +110,41 @@ describe("built package", () => {
         expect(Object.keys(esm).sort()).toEqual(runtimeExports);
     });
 
-    it("require() loads the .cjs build through the package's exports and main (F-333)", () => {
+    it("require() loads the .cjs build through the package's exports (F-333)", () => {
         const resolved = requireFromPackage.resolve(pkg.name);
 
         expect(resolved).toBe(dist("index.common.cjs"));
-        expect(join(packageDir, pkg.main)).toBe(dist("index.common.cjs"));
 
         const cjs = requireFromPackage(pkg.name) as Record<string, unknown>;
 
         expect(Object.keys(cjs).sort()).toEqual(runtimeExports);
+    });
+
+    it("keeps upstream's main and react-native entries on index.common.js, a copy of the .cjs build", () => {
+        const root = pkg.exports["."] as Record<string, string>;
+        const entries = {
+            main: pkg.main,
+            "react-native": root["react-native"],
+            require: root.require,
+            import: root.import,
+            types: root.types,
+        };
+
+        expect(entries).toEqual({
+            main: "dist/index.common.js",
+            "react-native": "./dist/index.common.js",
+            require: "./dist/index.common.cjs",
+            import: "./dist/index.js",
+            types: "./dist/index.d.ts",
+        });
+
+        for (const entry of Object.values(entries)) {
+            expect(existsSync(join(packageDir, entry))).toBe(true);
+        }
+
+        expect(readFileSync(dist("index.common.js"))).toEqual(
+            readFileSync(dist("index.common.cjs")),
+        );
     });
 
     it("the CJS build evaluates the env defaults without import.meta (F-080)", () => {
@@ -164,6 +190,7 @@ describe("built package", () => {
         expect(builds.sort()).toEqual([
             `echo-${FRAMEWORK}.iife.js`,
             "index.common.cjs",
+            "index.common.js",
             "index.js",
         ]);
 
