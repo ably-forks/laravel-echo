@@ -86,7 +86,8 @@ const config: UserConfig = (() => {
                 entry: resolve(import.meta.dirname, "src/index.ts"),
                 formats: ["es", "cjs"],
                 fileName: (format, entryName) => {
-                    return `${entryName}.${format === "es" ? "js" : "common.js"}`;
+                    // fork (F-333): .cjs, because "type": "module" makes Node load a .js file as ESM, which breaks require()
+                    return `${entryName}.${format === "es" ? "js" : "common.cjs"}`;
                 },
             },
             emptyOutDir: true,

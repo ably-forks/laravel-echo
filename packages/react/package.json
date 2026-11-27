@@ -19,7 +19,7 @@
         "name": "Taylor Otwell"
     },
     "type": "module",
-    "main": "dist/index.common.js",
+    "main": "dist/index.common.cjs",
     "module": "dist/index.js",
     "types": "dist/index.d.ts",
     "scripts": {
@@ -68,9 +68,9 @@
     "exports": {
         ".": {
             "types": "./dist/index.d.ts",
-            "react-native": "./dist/index.common.js",
+            "react-native": "./dist/index.common.cjs",
             "import": "./dist/index.js",
-            "require": "./dist/index.common.js"
+            "require": "./dist/index.common.cjs"
         }
     },
     "files": [
