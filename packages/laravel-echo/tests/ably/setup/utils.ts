@@ -1,5 +1,71 @@
 import { httpRequestAsync } from "../../../src/channel/ably/utils";
+import type Echo from "../../../src/echo";
+import type {
+    AblyRealtimeChannel,
+    ConnectionStateChange,
+    ErrorInfo,
+} from "../../../src/types/ably";
 export { toBase64UrlEncoded } from "../../../src/channel/ably/utils";
+
+/**
+ * Disconnects the client and resolves once its connection is closed (or failed, which also ends it). Listens before
+ * disconnecting, so a fast close is not missed, and resolves at once if the connection has already ended.
+ */
+export const closeConnection = (echo: Echo<"ably">) =>
+    new Promise<void>((resolve) => {
+        const connection = echo.connector.ably.connection;
+        if (connection.state === "closed" || connection.state === "failed") {
+            return resolve();
+        }
+        const onStateChange = (change: ConnectionStateChange) => {
+            if (change.current === "closed" || change.current === "failed") {
+                connection.off(onStateChange);
+                resolve();
+            }
+        };
+        connection.on(onStateChange);
+        echo.disconnect();
+    });
+
+/** How long before the test's own timeout a diagnostic wait gives up, so its error is the one vitest reports. */
+export const DIAGNOSTIC_MARGIN_MS = 500;
+
+const describeState = (state: string, errorReason?: ErrorInfo | null) =>
+    `${state} (last error: ${errorReason ? `${errorReason.code} ${errorReason.message}` : "none"})`;
+
+/**
+ * Waits for `event` for as long as the test allows. Just before the test's timeout it rejects with the Ably state
+ * (connection state, channel state where there is a channel, and their last error reasons) instead of leaving
+ * vitest to report a bare "Test timed out". Pass the test context's `task`: its `timeout` is the test's timeout.
+ */
+export const waitWithDiagnostics = <T>(
+    event: Promise<T>,
+    waitingFor: string,
+    task: { timeout: number },
+    echo: Echo<"ably">,
+    channel?: { channel: AblyRealtimeChannel },
+): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+            const connection = echo.connector.ably.connection;
+            const parts = [
+                `connection ${describeState(connection.state, connection.errorReason)}`,
+            ];
+            if (channel) {
+                parts.push(
+                    `channel ${channel.channel.name} ${describeState(channel.channel.state, channel.channel.errorReason)}`,
+                );
+            }
+            reject(
+                new Error(
+                    `Timed out waiting for ${waitingFor}: ${parts.join("; ")}`,
+                ),
+            );
+        }, task.timeout - DIAGNOSTIC_MARGIN_MS);
+    });
+    return Promise.race([event, expired]).finally(() => clearTimeout(timer));
+};
 
 /** The resolve/reject pair of the promise a callback-style test returns. */
 export type Settle = {
