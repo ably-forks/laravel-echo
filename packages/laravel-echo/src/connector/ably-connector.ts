@@ -1,7 +1,8 @@
-import { Connector } from './connector';
+import { Connector, type EchoOptionsWithDefaults } from './connector';
 
 import { AblyChannel, AblyPrivateChannel, AblyPresenceChannel, AblyAuth } from './../channel';
-import type { AblyRealtime } from '../types/ably';
+import type { ClientOptions, ConnectionStateChange, PubSubClient } from '../types/ably';
+import type { ConnectionStatus, EchoOptions } from '../echo';
 import { toBase64UrlEncoded, resolveAblyLib, warnIfAblyGlobalsIgnored } from '../channel/ably/utils';
 
 /**
@@ -18,9 +19,34 @@ const MAU_HINTS: Record<number, string> = {
 };
 
 /**
+ * What a token request must resolve with, from `authEndpoint` or `requestTokenFn`: a signed Ably JWT, and for a
+ * presence channel the member data (`info`). SequentialAuthTokenRequestExecuter rejects a response without a
+ * non-empty string `token`.
+ */
+export type AblyTokenResponse = { token: string; info?: unknown };
+
+/** Echo-only options of the native Ably connector; every other key is passed to Ably as a client option. */
+export type AblyOptions = EchoOptionsWithDefaults<"ably"> &
+    Partial<ClientOptions> & {
+        /** Use this Ably client instead of creating one (Echo does not switch its identity). */
+        client?: PubSubClient;
+        /**
+         * Fetch a signed token yourself instead of calling `authEndpoint`. `channelName` is `null` for the
+         * connection token, and `existingToken` is `null` until Echo has a token. Each call is bounded to 30 s.
+         * Method syntax on purpose: a function typed `(channelName: string, existingToken: string)`, as in the
+         * README, is still accepted.
+         */
+        requestTokenFn?(channelName: string | null, existingToken: string | null): Promise<AblyTokenResponse>;
+        /** An initial token (JWT), used before the first token request. */
+        token?: string;
+        /** Fetch timeout for `authEndpoint` requests, in ms (default 10000). */
+        httpRequestTimeout?: number;
+    };
+
+/**
  * This class creates a connector to Ably.
  */
-export class AblyConnector extends Connector {
+export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateChannel, AblyPresenceChannel> {
 
     /**
      * The laravel-echo library version.
@@ -48,9 +74,18 @@ export class AblyConnector extends Connector {
     ];
     
     /**
-     * The Ably instance.
+     * Connector options. Set by Connector.setOptions() from the base constructor.
+     *
+     * The fields below that connect() assigns are `declare`d (E-06, F-048): connect() runs from the base constructor,
+     * before this class's field initializers, so with ES2022 class fields (define semantics) a plain declaration
+     * would reset them to `undefined` after super(). Never give them an initializer.
      */
-    ably: AblyRealtime;
+    declare options: AblyOptions;
+
+    /**
+     * The Ably instance. Set by connect(), which runs from the base constructor.
+     */
+    declare ably: PubSubClient;
 
     /**
      * All of the subscribed channel names.
@@ -58,9 +93,10 @@ export class AblyConnector extends Connector {
     channels: Record<string, AblyChannel> = {};
 
     /**
-     * Auth instance containing all explicit channel authz ops.
+     * Auth instance containing all explicit channel authz ops. Set by connect(); undefined for a user-supplied
+     * options.client (P3).
      */
-    ablyAuth: AblyAuth;
+    declare ablyAuth: AblyAuth | undefined;
 
     /**
      * The MAU hint codes already logged by this connector (each code once).
@@ -77,7 +113,29 @@ export class AblyConnector extends Connector {
      * The connection listeners of the re-attach latch (R3), so releaseClient() can remove them (P7). No initializer:
      * connect() sets it from the base constructor, before field initializers run (like ablyAuth).
      */
-    recoveryListeners: { failed: (stateChange?: any) => void; connected: () => void; interrupted: () => void };
+    declare recoveryListeners: {
+        failed: (stateChange?: ConnectionStateChange) => void;
+        connected: () => void;
+        interrupted: () => void;
+    } | null;
+
+    /**
+     * Merge the custom options with the defaults (E-07, F-046).
+     *
+     * Upstream merges a static `_defaultOptions` shallowly, so `auth.headers` and `userAuthentication.headers`
+     * would be one object shared by every connector (and the caller's object would be mutated). Pass fresh copies
+     * so the CSRF and bearer-token writes below never leak to another connector or survive a logout. A header the
+     * caller set explicitly is kept. Fork-only: the upstream Connector is not changed.
+     */
+    protected setOptions(options: EchoOptions<"ably">): void {
+        const auth = options.auth ?? Connector._defaultOptions.auth;
+        const userAuthentication = options.userAuthentication ?? Connector._defaultOptions.userAuthentication;
+        super.setOptions({
+            ...options,
+            auth: { ...auth, headers: { ...auth.headers } },
+            userAuthentication: { ...userAuthentication, headers: { ...userAuthentication.headers } },
+        });
+    }
 
     /**
      * Create a fresh Ably connection.
@@ -132,8 +190,8 @@ export class AblyConnector extends Connector {
      * The options passed to createClient: Echo's options without the Echo-only keys (P4). `this.options` is not
      * modified, so Echo keeps reading its own settings from it.
      */
-    clientOptions(): any {
-        const clientOptions = { ...this.options };
+    clientOptions(): ClientOptions {
+        const clientOptions: Record<string, unknown> = { ...this.options };
         AblyConnector.ECHO_ONLY_KEYS.forEach((key) => delete clientOptions[key]);
         return clientOptions;
     }
@@ -182,16 +240,17 @@ export class AblyConnector extends Connector {
     reattachChannelsAfterConnectionFailure(): void {
         // a supplied options.client may already be failed: no later state change would tell us
         let connectionFailed = this.ably.connection.state === 'failed';
-        const failed = (stateChange) => {
+        const failed = (stateChange?: ConnectionStateChange) => {
             connectionFailed = true;
             this.channelsReattachedByAuth = false; // that re-attach did not survive this failure
 
             // E5: a hint only for the MAU codes (40161, 40168, 40167), once per code
-            const code = stateChange?.reason?.code;
+            const reason = stateChange?.reason;
+            const code = reason?.code;
             const hint = code !== undefined ? MAU_HINTS[code] : undefined;
-            if (hint && !this.mauHintsLogged.has(code)) {
+            if (reason && code !== undefined && hint && !this.mauHintsLogged.has(code)) {
                 this.mauHintsLogged.add(code);
-                console.error(`@ably/laravel-echo: the Ably connection failed (${code}: ${stateChange.reason.message}). ${hint}`);
+                console.error(`@ably/laravel-echo: the Ably connection failed (${code}: ${reason.message}). ${hint}`);
             }
         };
         const connected = () => {
@@ -225,7 +284,7 @@ export class AblyConnector extends Connector {
     /**
      * Listen for an event on a channel instance.
      */
-    listen(name: string, event: string, callback: Function): AblyChannel {
+    listen(name: string, event: string, callback: CallableFunction): AblyChannel {
         return this.channel(name).listen(event, callback);
     }
 
@@ -309,6 +368,31 @@ export class AblyConnector extends Connector {
             clientId : this.ably.auth.clientId ?? null,
         }
         return toBase64UrlEncoded(JSON.stringify(socketIdObject));
+    }
+
+    /**
+     * Get the current connection status.
+     * [provisional: replaced by Phase 06 / P-01] Temporary stub, implemented in Phase 06.
+     */
+    connectionStatus(): ConnectionStatus {
+        const s = this.ably?.connection.state;
+        return s === 'connected'
+            ? 'connected'
+            : s === 'failed'
+              ? 'failed'
+              : s === 'connecting' || s === 'initialized'
+                ? 'connecting'
+                : 'disconnected';
+    }
+
+    /**
+     * Subscribe to connection status changes; returns the unsubscribe function.
+     * [provisional: replaced by Phase 06 / P-01] Temporary stub, implemented in Phase 06.
+     */
+    onConnectionChange(callback: (status: ConnectionStatus) => void): () => void {
+        const listener = () => callback(this.connectionStatus());
+        this.ably.connection.on(listener);
+        return () => this.ably.connection.off(listener);
     }
 
     /**

@@ -8,9 +8,9 @@ import * as BundledAbly from '@ably/pubsub-device';
  * and never fed back into Echo's own promise chains. ably 1.x behaved the same way: its EventEmitter logged
  * "Unexpected listener exception" and carried on.
  */
-export const safeInvoke = (fn: Function | undefined | null, ...args: any[]): void => {
+export const safeInvoke = (fn: CallableFunction | undefined | null, ...args: unknown[]): void => {
     if (!fn) return;
-    const report = (e: any) => console.error('laravel-echo: exception in user callback', e);
+    const report = (e: unknown) => console.error('laravel-echo: exception in user callback', e);
     try {
         const result = fn(...args);
         if (result && typeof result.then === 'function') {
@@ -24,17 +24,24 @@ export const safeInvoke = (fn: Function | undefined | null, ...args: any[]): voi
 /**
  * Whether two ably errors describe the same failure: the same object, or the same code and message.
  */
-export const isSameError = (a: any, b: any): boolean =>
-    !!a && !!b && (a === b || (a.code !== undefined && a.code === b.code && a.message === b.message));
+export const isSameError = (a: unknown, b: unknown): boolean => {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    const x = a as { code?: unknown; message?: unknown };
+    const y = b as { code?: unknown; message?: unknown };
+    return x.code !== undefined && x.code === y.code && x.message === y.message;
+};
 
-export const isNullOrUndefined = (obj) => obj == null || obj === undefined;
-export const isEmptyString = (stringToCheck, ignoreSpaces = true) =>
+export const isNullOrUndefined = (obj: unknown): obj is null | undefined => obj == null || obj === undefined;
+export const isEmptyString = (stringToCheck: string, ignoreSpaces = true) =>
     (ignoreSpaces ? stringToCheck.trim() : stringToCheck) === '';
-export const isNullOrUndefinedOrEmpty = (obj) => obj == null || obj === undefined || isEmptyString(obj);
+export const isNullOrUndefinedOrEmpty = (obj: string | null | undefined) =>
+    obj == null || obj === undefined || isEmptyString(obj);
 
 /**
  * @throws Exception if parsing error
  */
+// any: the decoded JWT JSON, read by claim name
 export const parseJwt = (jwtToken: string): { header: any; payload: any } => {
     // Get Token Header
     const base64HeaderUrl = jwtToken.split('.')[0];
@@ -48,7 +55,7 @@ export const parseJwt = (jwtToken: string): { header: any; payload: any } => {
 };
 
 // RSA4f - omitted `capability` property
-export const toTokenDetails = (jwtToken: string): TokenDetails | any => {
+export const toTokenDetails = (jwtToken: string): TokenDetails => {
     let payload;
     try {
         payload = parseJwt(jwtToken).payload;
@@ -61,8 +68,15 @@ export const toTokenDetails = (jwtToken: string): TokenDetails | any => {
         expires: payload.exp * 1000, // Convert Seconds to ms
         issued: payload.iat * 1000,
         token: jwtToken,
-    };
+    } as TokenDetails; // RSA4f: `capability` is omitted on purpose
 };
+
+/**
+ * Node's Buffer, read from globalThis so that no Node type reaches the published declarations. Only used outside a
+ * browser (`window` is undefined there).
+ */
+type NodeBuffer = { from(input: string, encoding?: string): { toString(encoding?: string): string } };
+const nodeBuffer = (): NodeBuffer => (globalThis as { Buffer?: NodeBuffer }).Buffer as NodeBuffer;
 
 const isBrowser = typeof window === 'object';
 
@@ -81,7 +95,7 @@ export const fromBase64UrlEncoded = (base64: string): string => {
         // P8: atob yields bytes (Latin-1 chars); decode them as UTF-8
         return new TextDecoder().decode(Uint8Array.from(atob(base64WithPadding), (c) => c.charCodeAt(0)));
     }
-    return Buffer.from(base64WithPadding, 'base64').toString();
+    return nodeBuffer().from(base64WithPadding, 'base64').toString();
 };
 
 /**
@@ -102,7 +116,7 @@ export const toBase64UrlEncoded = (text: string): string => {
         }
         encoded = btoa(binary);
     } else {
-        encoded = Buffer.from(text).toString('base64');
+        encoded = nodeBuffer().from(text).toString('base64');
     }
     return encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
@@ -124,12 +138,15 @@ export const fullUrl = (url: string) => {
  * The window closes on the next `connected`, a `failed` other than 40102, releaseClient() or after 30 s.
  */
 const IDENTITY_SWITCH_TIMEOUT_MS = 30_000;
-const switchWindows = new WeakMap<object, { suppressed: Set<string>; timer: any }>();
+const switchWindows = new WeakMap<object, { suppressed: Set<string>; timer: ReturnType<typeof setTimeout> }>();
+
+/** Lets Node exit while a window is open; browsers return a number, which has no unref(). */
+const unref = (timer: ReturnType<typeof setTimeout>) => (timer as { unref?: () => void } | undefined)?.unref?.();
 
 export const beginIdentitySwitch = (client: object) => {
     endIdentitySwitch(client);
     const timer = setTimeout(() => endIdentitySwitch(client), IDENTITY_SWITCH_TIMEOUT_MS);
-    timer?.unref?.();
+    unref(timer);
     switchWindows.set(client, { suppressed: new Set(), timer });
 };
 
@@ -148,12 +165,12 @@ export const endIdentitySwitch = (client: object) => {
  * the channel next attaches, or for at most 30 s, its first 40160 is not reported to error() listeners. The
  * re-authorize result (attached, or the broadcaster's 403) is reported as usual.
  */
-const renewalReattachWindows = new WeakMap<object, { done: Set<string>; timer: any }>();
+const renewalReattachWindows = new WeakMap<object, { done: Set<string>; timer: ReturnType<typeof setTimeout> }>();
 
 export const beginRenewalReattach = (client: object) => {
     endRenewalReattach(client);
     const timer = setTimeout(() => endRenewalReattach(client), IDENTITY_SWITCH_TIMEOUT_MS);
-    timer?.unref?.();
+    unref(timer);
     renewalReattachWindows.set(client, { done: new Set(), timer });
 };
 
@@ -177,8 +194,10 @@ const isGuardedChannel = (channelName: string) =>
  * true = swallow: the first 40102 per channel inside an Echo-initiated switch window, or the first 40160 per private
  * or presence channel of the re-attach after a renewal switch.
  */
-export const consumeSwitchError = (client: object, channelName: string, err: any): boolean => {
-    const code = err?.code ?? err?.reason?.code;
+export const consumeSwitchError = (client: object, channelName: string, err: unknown): boolean => {
+    // an ErrorInfo, or a channel state change carrying one
+    const coded = err as { code?: unknown; reason?: { code?: unknown } } | null | undefined;
+    const code = coded?.code ?? coded?.reason?.code;
     if (code === 40160 && isGuardedChannel(channelName)) {
         const r = client ? renewalReattachWindows.get(client) : undefined;
         if (!r || r.done.has(channelName)) return false;
@@ -200,7 +219,7 @@ export const HTTP_REQUEST_TIMEOUT_MS = 10000;
  * The Ably library Echo uses: always its own `@ably/pubsub-device`. A global `Ably` or `AblyPubSub` (the 1.0.x README
  * snippet `window.Ably = Ably`, or the CDN bundle) is never read, so a legacy ably v1/v2 global cannot break Echo.
  */
-export const resolveAblyLib = (): any => BundledAbly;
+export const resolveAblyLib = (): typeof BundledAbly => BundledAbly;
 
 let ignoredGlobalsWarned = false;
 
@@ -223,9 +242,10 @@ export const warnIfAblyGlobalsIgnored = (): void => {
  * Builds an error for Echo's auth path (R6). Uses the resolved library's `ErrorInfo` when available, so `instanceof
  * Ably.ErrorInfo` and `toString()` are consistent in every runtime; falls back to a plain `Error`.
  */
-export const httpError = (message: string, statusCode: number, code: number, cause?: any): Error => {
+export const httpError = (message: string, statusCode: number, code: number, cause?: unknown): Error => {
     const ErrorInfo = resolveAblyLib()?.ErrorInfo;
-    const error: any = typeof ErrorInfo === 'function' ? new ErrorInfo(message, code, statusCode) : new Error(message);
+    const error: Error & { statusCode?: number; code?: number; cause?: unknown } =
+        typeof ErrorInfo === 'function' ? new ErrorInfo(message, code, statusCode) : new Error(message);
     error.statusCode = statusCode;
     error.code = code;
     if (cause !== undefined) {
@@ -258,7 +278,7 @@ export const httpRequestAsync = async (
         body?: string;
     },
     timeoutMs = HTTP_REQUEST_TIMEOUT_MS
-): Promise<any> => {
+): Promise<any> => { // any: the parsed JSON body
     const headers = { ...options.headers };
     deleteHeader(headers, 'Content-Length'); // computed by fetch; any casing (Node fetch rejects/stalls on a wrong value)
     const controller = new AbortController();
@@ -278,13 +298,14 @@ export const httpRequestAsync = async (
         if (controller.signal.aborted) {
             throw httpError(`Request to ${options.uri} timed out after ${timeoutMs}ms`, 500, 50003, err);
         }
-        throw httpError(`Request to ${options.uri} failed: ${err?.message ?? err}`, 500, 50000, err);
+        const reason = (err as { message?: unknown } | null | undefined)?.message ?? err;
+        throw httpError(`Request to ${options.uri} failed: ${reason}`, 500, 50000, err);
     } finally {
         clearTimeout(timer);
     }
 
-    let body: any = null;
-    let parseError: any;
+    let body: any = null; // any: the parsed JSON body
+    let parseError: unknown;
     if (text !== '') {
         try {
             body = JSON.parse(text);

@@ -28,6 +28,7 @@ import {
     NullConnector,
     PusherConnector,
     SocketIoConnector,
+    type AblyOptions,
     type MercureOptions,
     type PusherOptions,
 } from "./connector";
@@ -42,6 +43,11 @@ export type ConnectionStatus =
     | "connecting"
     | "reconnecting"
     | "failed";
+
+/**
+ * A channel's visibility, as the framework adapters' hooks know it (fork-only, P-04).
+ */
+export type ChannelVisibility = "public" | "private" | "presence";
 
 /**
  * This class is the primary API for interacting with broadcasting.
@@ -88,7 +94,7 @@ export default class Echo<T extends keyof Broadcaster> {
         }
 
         if (this.options.broadcaster === "ably") {
-            this.connector = new AblyConnector(this.options as any) as any; // typed properly in Phase 03 (step 3.1 removes the casts)
+            this.connector = new AblyConnector(this.options);
         } else if (this.options.broadcaster === "reverb") {
             this.connector = new PusherConnector<"reverb">({
                 ...this.options,
@@ -137,9 +143,28 @@ export default class Echo<T extends keyof Broadcaster> {
 
     /**
      * Leave the given channel.
+     *
+     * Without `visibility`, `channel` is the connector's full channel name, as before. With it, `channel` is the
+     * name the app used (`"orders"` for `echo.private("orders")`) and Echo builds the full name the connector
+     * expects, so connector-neutral callers such as the framework hooks need not know the connector's prefixes
+     * (fork-only; provisional: P-04, option a).
      */
-    leaveChannel(channel: string): void {
-        this.connector.leaveChannel(channel);
+    leaveChannel(channel: string, visibility?: ChannelVisibility): void {
+        this.connector.leaveChannel(
+            visibility ? this.connectorChannelName(channel, visibility) : channel,
+        );
+    }
+
+    /**
+     * The connector-specific full channel name, as used by connector.leaveChannel() (fork-only; provisional: P-04).
+     */
+    connectorChannelName(name: string, visibility: ChannelVisibility): string {
+        if (this.connector instanceof AblyConnector) {
+            return `${visibility}:${name}`;
+        }
+
+        // Pusher, Reverb, Socket.IO, Mercure, Null and custom connectors use upstream's Pusher-style names
+        return visibility === "public" ? name : `${visibility}-${name}`;
     }
 
     /**
@@ -173,6 +198,12 @@ export default class Echo<T extends keyof Broadcaster> {
      * Get a private encrypted channel instance by name.
      */
     encryptedPrivate(channel: string): Broadcaster[T]["encrypted"] {
+        // fork (P-10, provisional: P-10): Ably stays out of the allow-list below, but keeps its own message
+        // ("Encrypted private channels are not supported with the Ably broadcaster") instead of the generic one
+        if (this.connector instanceof AblyConnector) {
+            return this.connector.encryptedPrivateChannel();
+        }
+
         if (this.connectorSupportsEncryptedPrivateChannels(this.connector)) {
             return this.connector.encryptedPrivateChannel(channel);
         }
@@ -306,6 +337,8 @@ export { Channel, Connector, type PresenceChannel };
 
 export { EventFormatter } from "./util";
 
+export type { AblyOptions } from "./connector";
+
 type CustomOmit<T, K extends PropertyKey> = {
     [P in keyof T as Exclude<P, K>]: T[P];
 };
@@ -337,7 +370,7 @@ export type Broadcaster = {
         private: AblyPrivateChannel;
         encrypted: never;
         presence: AblyPresenceChannel;
-        options: GenericOptions<"ably">; // AblyOptions in Phase 03
+        options: GenericOptions<"ably"> & Partial<AblyOptions>;
     };
     "socket.io": {
         connector: SocketIoConnector;
