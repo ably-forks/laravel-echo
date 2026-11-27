@@ -303,9 +303,7 @@ describe('P3: options.client (no AblyAuth)', () => {
 });
 
 describe('P6: encryptedPrivate()', () => {
-    // Expected to fail until the core keeps the Ably message (P-10; Phase 03 §3.6): upstream's allow-list guard
-    // currently throws its generic message first. Vitest then reports this test.fails as failing: change it back to test().
-    test.fails('throws a clear error for the Ably broadcaster', () => {
+    test('throws a clear error for the Ably broadcaster', () => {
         const echo = new Echo({ ...baseOptions });
         expect(() => echo.encryptedPrivate('p6')).toThrow(
             new Error('Encrypted private channels are not supported with the Ably broadcaster')

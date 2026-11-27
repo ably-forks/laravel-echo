@@ -26,9 +26,6 @@ import type { PubSubClient } from "../../src/types/ably";
 import type IifeEcho from "../../src/index.iife";
 import { FakeEmitter, makeFakeAblyClient } from "../parity/fake-ably";
 
-// fake-ably.ts calls the Jest global until Phase 04 ports it to Vitest; map it to `vi` meanwhile (a no-op after).
-(globalThis as { jest?: unknown }).jest ??= vi;
-
 const makeEcho = () =>
     new Echo({ broadcaster: "ably", client: makeFakeAblyClient(), withoutInterceptors: true });
 

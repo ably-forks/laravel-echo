@@ -7,9 +7,6 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import Echo from "../../src/echo";
 import { makeFakeAblyClient } from "../parity/fake-ably";
 
-// fake-ably.ts calls the Jest global until Phase 04 ports it to Vitest; map it to `vi` meanwhile (a no-op after).
-(globalThis as { jest?: unknown }).jest ??= vi;
-
 const EVENT = "Illuminate\\Notifications\\Events\\BroadcastNotificationCreated";
 
 const setup = () => {

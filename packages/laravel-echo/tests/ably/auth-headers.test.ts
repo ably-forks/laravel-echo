@@ -13,9 +13,6 @@ import Echo from "../../src/echo";
 import { AblyConnector, Connector } from "../../src/connector";
 import { makeFakeAblyClient, makeJwt } from "../parity/fake-ably";
 
-// fake-ably.ts calls the Jest global until Phase 04 ports it to Vitest; map it to `vi` meanwhile (a no-op after).
-(globalThis as { jest?: unknown }).jest ??= vi;
-
 // any: the options are built per test, with the keys the case needs (as the 1.x test did)
 const make = (extra: Record<string, any> = {}): any => ({
     broadcaster: "ably",
