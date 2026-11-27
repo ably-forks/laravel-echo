@@ -29,9 +29,11 @@ const clearChannelCache = (): void => {
     });
 };
 
-const resolveChannelSubscription = <T extends BroadcastDriver>(
-    channel: Channel,
-): Connection<T> => {
+/**
+ * fork (F-082): start the registry over when echo() returns another instance than the one its subscriptions
+ * belong to; configureEcho() has already left every channel of the instance it replaced.
+ */
+const syncChannelCache = <T extends BroadcastDriver>(): Echo<T> => {
     const instance = echo<T>();
 
     if (
@@ -42,6 +44,14 @@ const resolveChannelSubscription = <T extends BroadcastDriver>(
     }
 
     activeEchoInstance = instance;
+
+    return instance;
+};
+
+const resolveChannelSubscription = <T extends BroadcastDriver>(
+    channel: Channel,
+): Connection<T> => {
+    const instance = syncChannelCache<T>();
 
     if (channels[channel.id]) {
         channels[channel.id].count += 1;
@@ -75,6 +85,13 @@ const subscribeToChannel = <T extends BroadcastDriver>(
 };
 
 const leaveChannel = (channel: Channel, leaveAll: boolean = false): void => {
+    if (!channels[channel.id]) {
+        return;
+    }
+
+    // fork (F-082): after a reconfiguration the entry is gone; configureEcho() left its channel on the old instance
+    syncChannelCache();
+
     if (!channels[channel.id]) {
         return;
     }

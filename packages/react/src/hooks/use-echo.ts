@@ -1,3 +1,4 @@
+import type Echo from "@ably/laravel-echo";
 import {
     type BroadcastDriver,
     type ConnectionStatus,
@@ -27,6 +28,34 @@ import { toArray } from "../util";
 
 const channels: Record<string, ChannelData<BroadcastDriver>> = {};
 
+// fork (F-082): the Echo instance the registry's subscriptions belong to, as in the Svelte package
+let activeEchoInstance: Echo<BroadcastDriver> | null = null;
+
+const clearChannelCache = (): void => {
+    Object.keys(channels).forEach((channelId) => {
+        delete channels[channelId];
+    });
+};
+
+/**
+ * fork (F-082): start the registry over when echo() returns another instance than the one its subscriptions
+ * belong to; configureEcho() has already left every channel of the instance it replaced.
+ */
+const syncChannelCache = <T extends BroadcastDriver>(): Echo<T> => {
+    const instance = echo<T>();
+
+    if (
+        activeEchoInstance !== null &&
+        activeEchoInstance !== (instance as Echo<BroadcastDriver>)
+    ) {
+        clearChannelCache();
+    }
+
+    activeEchoInstance = instance;
+
+    return instance;
+};
+
 const subscribeToChannel = <T extends BroadcastDriver>(
     channel: Channel,
 ): Connection<T> => {
@@ -44,6 +73,13 @@ const subscribeToChannel = <T extends BroadcastDriver>(
 };
 
 const leaveChannel = (channel: Channel, leaveAll: boolean): void => {
+    if (!channels[channel.id]) {
+        return;
+    }
+
+    // fork (F-082): after a reconfiguration the entry is gone; configureEcho() left its channel on the old instance
+    syncChannelCache();
+
     if (!channels[channel.id]) {
         return;
     }
@@ -67,6 +103,8 @@ const leaveChannel = (channel: Channel, leaveAll: boolean): void => {
 const resolveChannelSubscription = <T extends BroadcastDriver>(
     channel: Channel,
 ): Connection<T> => {
+    syncChannelCache();
+
     if (channels[channel.id]) {
         channels[channel.id].count += 1;
 
