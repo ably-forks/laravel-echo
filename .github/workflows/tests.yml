@@ -81,8 +81,8 @@ jobs:
       - name: Type-check upstream @laravel/echo-react, -vue and -svelte usage against the built declarations
         run: pnpm --filter "@ably/laravel-echo-*" run test:compat
 
-      - name: Execute the shared adapter tests (native Ably default, leave by visibility, connection status, reconfigure, pusher-js)
-        run: pnpm --filter "@ably/laravel-echo-*" run test --run ably-shared pusher
+      - name: Execute the shared adapter tests (native Ably default, leave by visibility incl. Mercure, connection status, reconfigure, pusher-js)
+        run: pnpm --filter "@ably/laravel-echo-*" run test --run ably-shared pusher mercure
 
       - name: Smoke-test the built adapter bundles (ESM, .cjs and IIFE exports, externals)
         run: pnpm --filter "@ably/laravel-echo-*" run test:bundles
