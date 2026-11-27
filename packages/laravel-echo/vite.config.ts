@@ -1,5 +1,9 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "path";
 import { defineConfig, UserConfig } from "vite-plus";
+
+const pkg = JSON.parse(readFileSync(resolve(import.meta.dirname, "package.json"), "utf8"));
+const define = { __ECHO_VERSION__: JSON.stringify(pkg.version) };
 
 const config: UserConfig = (() => {
     const common: Partial<UserConfig["build"]> = {
@@ -20,6 +24,7 @@ const config: UserConfig = (() => {
 
     if (process.env.FORMAT === "iife") {
         return {
+            define,
             build: {
                 lib: {
                     entry: resolve(import.meta.dirname, "src/echo.ts"),
@@ -34,6 +39,7 @@ const config: UserConfig = (() => {
     }
 
     return {
+        define,
         build: {
             lib: {
                 entry: resolve(import.meta.dirname, "src/echo.ts"),

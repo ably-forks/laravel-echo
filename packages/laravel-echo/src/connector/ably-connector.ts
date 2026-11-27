@@ -1,9 +1,8 @@
 import { Connector } from './connector';
 
 import { AblyChannel, AblyPrivateChannel, AblyPresenceChannel, AblyAuth } from './../channel';
-import type { AblyRealtime } from '../../typings/ably';
+import type { AblyRealtime } from '../types/ably';
 import { toBase64UrlEncoded, resolveAblyLib, warnIfAblyGlobalsIgnored } from '../channel/ably/utils';
-import { version } from '../../package.json';
 
 /**
  * E5: console hints for the error codes Ably uses on MAU-billed accounts, logged once per code.
@@ -26,7 +25,7 @@ export class AblyConnector extends Connector {
     /**
      * The laravel-echo library version.
      */
-    static LIB_VERSION = version;
+    static LIB_VERSION: string = __ECHO_VERSION__;
 
     /**
      * Echo-only option keys, never passed to createClient (review P4): bearer and CSRF tokens, the auth endpoint and

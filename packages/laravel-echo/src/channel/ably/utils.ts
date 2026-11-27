@@ -1,4 +1,4 @@
-import type { TokenDetails } from '../../../typings/ably';
+import type { TokenDetails } from '../../types/ably';
 // Single install: Echo always uses its own copy of @ably/pubsub-device (a dependency). The ESM/CJS builds keep this
 // import external, so the app's bundler resolves it; the IIFE build bundles it.
 import * as BundledAbly from '@ably/pubsub-device';

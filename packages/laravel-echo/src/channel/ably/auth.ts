@@ -14,7 +14,7 @@ import { SequentialAuthTokenRequestExecuter, TOKEN_REQUEST_TIMEOUT_MS } from './
 import type { AblyChannel } from '../ably-channel';
 import { AblyConnector } from '../../connector/ably-connector';
 import { AblyPresenceChannel } from '../ably-presence-channel';
-import type { AblyRealtime, AuthOptions, ChannelStateChange, ClientOptions, TokenDetails } from '../../../typings/ably';
+import type { AblyRealtime, AuthOptions, ChannelStateChange, ClientOptions, TokenDetails } from '../../types/ably';
 
 export class AblyAuth {
     authEndpoint: string;

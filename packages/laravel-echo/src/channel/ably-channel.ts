@@ -1,4 +1,4 @@
-import type { AblyRealtime, AblyRealtimeChannel } from '../../typings/ably';
+import type { AblyRealtime, AblyRealtimeChannel } from '../types/ably';
 import { EventFormatter } from '../util';
 import { Channel } from './channel';
 import { safeInvoke, isSameError, consumeSwitchError, settleRenewalReattach } from './ably/utils';
