@@ -1,5 +1,8 @@
 import type Echo from "@ably/laravel-echo";
-import { type BroadcastDriver, type ConnectionStatus } from "@ably/laravel-echo";
+import {
+    type BroadcastDriver,
+    type ConnectionStatus,
+} from "@ably/laravel-echo";
 import { echo } from "../config";
 import type {
     BroadcastNotification,

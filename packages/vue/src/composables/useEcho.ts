@@ -1,4 +1,7 @@
-import { type BroadcastDriver, type ConnectionStatus } from "@ably/laravel-echo";
+import {
+    type BroadcastDriver,
+    type ConnectionStatus,
+} from "@ably/laravel-echo";
 import { onMounted, onUnmounted, ref, watch, type Ref } from "vue";
 import { echo } from "../config";
 import type {
