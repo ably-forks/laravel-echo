@@ -20,6 +20,12 @@ import { toArray } from "../util";
 
 const channels: Record<string, ChannelData<BroadcastDriver>> = {};
 
+/**
+ * fork (P-09, option B; F-206): during server-side rendering (no `window`) the composables create no Echo instance
+ * and subscribe to nothing; channel() returns null there. In the browser they behave exactly as upstream's.
+ */
+const isServer = (): boolean => typeof window === "undefined";
+
 const resolveChannelSubscription = <T extends BroadcastDriver>(
     channel: Channel,
 ): Connection<T> => {
@@ -172,8 +178,10 @@ export function useEcho<
         visibility,
     };
 
-    const subscription: Connection<TDriver> =
-        resolveChannelSubscription<TDriver>(channel);
+    // fork (P-09, option B): no subscription during SSR
+    const subscription: Connection<TDriver> | null = isServer()
+        ? null
+        : resolveChannelSubscription<TDriver>(channel);
     const events = Array.isArray(event) ? event : [event];
 
     const setupSubscription = () => {
@@ -181,7 +189,7 @@ export function useEcho<
     };
 
     const listen = () => {
-        if (listening.value) {
+        if (listening.value || !subscription) {
             return;
         }
 
@@ -193,7 +201,7 @@ export function useEcho<
     };
 
     const stopListening = () => {
-        if (!listening.value) {
+        if (!listening.value || !subscription) {
             return;
         }
 
@@ -206,7 +214,10 @@ export function useEcho<
 
     const tearDown = (leaveAll: boolean = false) => {
         stopListening();
-        leaveChannel(channel, leaveAll, subscription);
+
+        if (subscription) {
+            leaveChannel(channel, leaveAll, subscription);
+        }
     };
 
     onMounted(() => {
@@ -292,7 +303,8 @@ export const useEchoNotification = <
     };
 
     const listen = () => {
-        if (listening.value) {
+        // fork (P-09, option B): result.channel() is null during SSR
+        if (listening.value || isServer()) {
             return;
         }
 
@@ -378,11 +390,15 @@ export function useChannel<
         visibility,
     };
 
-    const subscription: Connection<TDriver> =
-        resolveChannelSubscription<TDriver>(channel);
+    // fork (P-09, option B): no subscription during SSR
+    const subscription: Connection<TDriver> | null = isServer()
+        ? null
+        : resolveChannelSubscription<TDriver>(channel);
 
     const tearDown = (leaveAll: boolean = false) => {
-        leaveChannel(channel, leaveAll, subscription);
+        if (subscription) {
+            leaveChannel(channel, leaveAll, subscription);
+        }
     };
 
     onUnmounted(() => {
@@ -465,6 +481,11 @@ const useConnectionChange = (
 };
 
 export const useConnectionStatus = (): Ref<ConnectionStatus> => {
+    // fork (P-09, option B): during SSR, report "disconnected" without creating the Echo instance
+    if (isServer()) {
+        return ref<ConnectionStatus>("disconnected");
+    }
+
     const echoInstance = echo();
     const status = ref<ConnectionStatus>(echoInstance.connectionStatus());
 
@@ -476,6 +497,11 @@ export const useConnectionStatus = (): Ref<ConnectionStatus> => {
 };
 
 export const useSocketId = (): Ref<string | undefined> => {
+    // fork (P-09, option B): there is no connection during SSR
+    if (isServer()) {
+        return ref<string | undefined>(undefined);
+    }
+
     const echoInstance = echo();
     const socketId = ref<string | undefined>(echoInstance.socketId());
 
