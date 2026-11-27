@@ -53,15 +53,12 @@ vi.mock("@ably/laravel-echo", () => {
             leaveAllChannels: vi.fn(),
             connectionStatus: vi.fn(() => "connected"),
             socketId: vi.fn(() => undefined),
-            connector: {
-                onConnectionChange: vi.fn(
-                    (callback: (status: string) => void) => {
-                        onConnectionChange = callback;
+            // fork (P-03): the runes subscribe through Echo.onConnectionChange, not the connector's
+            onConnectionChange: vi.fn((callback: (status: string) => void) => {
+                onConnectionChange = callback;
 
-                        return unsubscribe;
-                    },
-                ),
-            },
+                return unsubscribe;
+            }),
             __privateChannel: privateChannel,
             __publicChannel: publicChannel,
             __presenceChannel: presenceChannel,
@@ -178,7 +175,10 @@ describe("useEcho (Svelte runes)", () => {
         expect(instance.__privateChannel.stopListening).toHaveBeenCalledTimes(
             2,
         );
-        expect(instance.leaveChannel).toHaveBeenCalledWith("private-orders.2");
+        expect(instance.leaveChannel).toHaveBeenCalledWith(
+            "orders.2",
+            "private",
+        );
     });
 
     it("subscribes once for identical private channels and leaves after last teardown", async () => {
@@ -205,7 +205,10 @@ describe("useEcho (Svelte runes)", () => {
         cleanupB();
         await tick();
 
-        expect(instance.leaveChannel).toHaveBeenCalledWith("private-orders.3");
+        expect(instance.leaveChannel).toHaveBeenCalledWith(
+            "orders.3",
+            "private",
+        );
     });
 
     it("can leave a private channel", async () => {
@@ -214,7 +217,10 @@ describe("useEcho (Svelte runes)", () => {
         );
 
         value.leaveChannel();
-        expect(instance.leaveChannel).toHaveBeenCalledWith("private-orders.4");
+        expect(instance.leaveChannel).toHaveBeenCalledWith(
+            "orders.4",
+            "private",
+        );
 
         cleanup();
     });
@@ -338,7 +344,10 @@ describe("useEcho (Svelte runes)", () => {
         setOrderId(2);
         await tick();
 
-        expect(instance.leaveChannel).toHaveBeenCalledWith("private-orders.1");
+        expect(instance.leaveChannel).toHaveBeenCalledWith(
+            "orders.1",
+            "private",
+        );
         expect(instance.private).toHaveBeenCalledWith("orders.2");
 
         cleanup();
@@ -484,7 +493,7 @@ describe("useEchoPublic", () => {
         cleanup();
         await tick();
 
-        expect(instance.leaveChannel).toHaveBeenCalledWith("posts");
+        expect(instance.leaveChannel).toHaveBeenCalledWith("posts", "public");
     });
 
     it("allows events and callbacks to be omitted", async () => {
@@ -523,7 +532,10 @@ describe("useEchoPresence", () => {
         cleanup();
         await tick();
 
-        expect(instance.leaveChannel).toHaveBeenCalledWith("presence-chat.1");
+        expect(instance.leaveChannel).toHaveBeenCalledWith(
+            "chat.1",
+            "presence",
+        );
     });
 
     it("allows events and callbacks to be omitted", async () => {
