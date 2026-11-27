@@ -396,6 +396,33 @@ describe("shared adapter behaviour (fork)", () => {
             expect(instance.__listeners.size).toBe(0);
         });
 
+        it("subscribes through the instance captured at setup, as upstream (UB-28)", async () => {
+            const module = await getModule();
+
+            module.configureEcho({});
+
+            const wrapper = mount(
+                defineComponent({
+                    setup() {
+                        const status = module.useConnectionStatus();
+
+                        // reconfigured after setup, before mount
+                        module.configureEcho({ authEndpoint: "/other/auth" });
+
+                        return () => h("div", status.value);
+                    },
+                }),
+            );
+
+            expect(echoInstances).toHaveLength(1);
+            expect(echoInstances[0].onConnectionChange).toHaveBeenCalledTimes(
+                1,
+            );
+
+            wrapper.unmount();
+            expect(echoInstances[0].__listeners.size).toBe(0);
+        });
+
         it("useSocketId re-reads the socket id on every emission", async () => {
             const module = await getModule();
 
