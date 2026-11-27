@@ -65,7 +65,8 @@ const config: UserConfig = (() => {
             lib: {
                 entry: resolve(import.meta.dirname, "src/echo.ts"),
                 formats: ["es", "cjs"],
-                fileName: (format, entryName) => `${entryName}.${format === "es" ? "js" : "common.js"}`,
+                // fork: .cjs, because "type": "module" makes Node load a .js file as ESM, which breaks require() (F-141)
+                fileName: (format, entryName) => `${entryName}.${format === "es" ? "js" : "common.cjs"}`,
             },
             rollupOptions: {
                 external: (id: string) => optionalPeers.includes(id) || isAblyDevice(id),

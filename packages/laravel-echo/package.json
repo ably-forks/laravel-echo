@@ -19,7 +19,7 @@
         "name": "Taylor Otwell"
     },
     "type": "module",
-    "main": "dist/echo.common.js",
+    "main": "dist/echo.common.cjs",
     "module": "dist/echo.js",
     "types": "dist/echo.d.ts",
     "scripts": {
@@ -71,7 +71,7 @@
         ".": {
             "types": "./dist/echo.d.ts",
             "import": "./dist/echo.js",
-            "require": "./dist/echo.common.js"
+            "require": "./dist/echo.common.cjs"
         },
         "./iife": "./dist/echo.iife.js"
     },
