@@ -125,9 +125,14 @@ restore_release_files() {
     fi
 }
 trap restore_release_files EXIT
+# Make INT and TERM an explicit exit, so that the EXIT trap restores the files whichever shell runs the script.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 echo "Updating the version of all four packages..."
-# --no-git-checks: pnpm 12's own `pnpm version` refuses a dirty working tree, which it is after the first package.
+# --no-git-checks: pnpm 12's own `pnpm version` refuses a dirty working tree, which it is after the first package is
+# bumped. Skipping pnpm's check is safe because this script has already checked, before changing anything, that the
+# working tree is clean (in both modes) and, for a real release, that HEAD is the release branch.
 run pnpm -r --filter './packages/*' exec pnpm version "$VERSION" --no-git-tag-version --no-git-checks
 for file in "${RELEASE_FILES[@]:0:4}"; do
     [ "$(package_field "$file" version)" = "$VERSION" ] || error "$file was not updated to $VERSION."
