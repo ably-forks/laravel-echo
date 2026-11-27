@@ -53,7 +53,8 @@
             "react-native": "./dist/index.common.cjs",
             "import": "./dist/index.js",
             "require": "./dist/index.common.cjs"
-        }
+        },
+        "./iife": "./dist/echo-react.iife.js"
     },
     "files": [
         "dist"

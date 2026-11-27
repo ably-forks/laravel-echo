@@ -48,7 +48,8 @@
             "svelte": "./dist/index.js",
             "import": "./dist/index.js",
             "require": "./dist/index.common.cjs"
-        }
+        },
+        "./iife": "./dist/echo-svelte.iife.js"
     },
     "svelte": "./dist/index.js",
     "files": [
