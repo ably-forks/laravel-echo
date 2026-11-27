@@ -28,6 +28,14 @@ export default defineConfig({
                 },
             },
             {
+                // Ably connector: deliberate console hints (MAU 40161/40168/40167, ignored Ably globals, identity switch)
+                files: [
+                    "packages/laravel-echo/src/connector/ably-connector.ts",
+                    "packages/laravel-echo/src/channel/ably/**",
+                ],
+                rules: { "no-console": "off" },
+            },
+            {
                 files: ["packages/react/**"],
                 plugins: ["react"],
                 rules: {
@@ -38,7 +46,12 @@ export default defineConfig({
         ],
     },
     fmt: {
-        ignorePatterns: [".github/**", "CHANGELOG.md"],
+        ignorePatterns: [
+            ".github/**",
+            "CHANGELOG.md",
+            "CHANGELOG-ABLY.md",
+            "UPDATING.md",
+        ],
         printWidth: 80,
         sortPackageJson: false,
     },

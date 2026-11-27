@@ -1,6 +1,6 @@
-import { httpDeleteAsync, httpPostAsync, toBase64UrlEncoded } from './utils';
+import { httpDeleteAsync, httpPostAsync, toBase64UrlEncoded } from "./utils";
 
-let sandboxUrl = 'https://sandbox-rest.ably.io/apps';
+let sandboxUrl = "https://sandbox-rest.ably.io/apps";
 
 const SETUP_ATTEMPTS = 3;
 const SETUP_ATTEMPT_TIMEOUT_MS = 5000;
@@ -32,7 +32,10 @@ const creatNewApp = async (options: SetupOptions = {}) => {
             } = await httpPostAsync(sandboxUrl, body, SETUP_ATTEMPT_TIMEOUT_MS);
             return res;
         } catch (err: any) {
-            const transient = err?.code === 50003 || err?.code === 50000 || (err?.statusCode ?? 0) >= 500;
+            const transient =
+                err?.code === 50003 ||
+                err?.code === 50000 ||
+                (err?.statusCode ?? 0) >= 500;
             if (!transient || attempt >= SETUP_ATTEMPTS) {
                 throw err;
             }
@@ -41,9 +44,12 @@ const creatNewApp = async (options: SetupOptions = {}) => {
     }
 };
 
-const deleteApp = async (app) => {
+const deleteApp = async (app: {
+    appId: string;
+    keys: { keyStr: string }[];
+}) => {
     let authKey = app.keys[0].keyStr;
-    const headers = { Authorization: 'Basic ' + toBase64UrlEncoded(authKey) };
+    const headers = { Authorization: "Basic " + toBase64UrlEncoded(authKey) };
     return await httpDeleteAsync(`${sandboxUrl}/${app.appId}`, headers);
 };
 

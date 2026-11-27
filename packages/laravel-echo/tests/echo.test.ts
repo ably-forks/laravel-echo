@@ -6,7 +6,13 @@ import Echo from "../src/echo";
 describe("Echo", () => {
     test("it will not throw error for supported driver", () => {
         expect(
-            () => new Echo({ broadcaster: "ably", withoutInterceptors: true, autoConnect: false, requestTokenFn: async () => "" }),
+            () =>
+                new Echo({
+                    broadcaster: "ably",
+                    withoutInterceptors: true,
+                    autoConnect: false,
+                    requestTokenFn: async () => ({ token: "" }),
+                }),
         ).not.toThrow("Broadcaster string ably is not supported.");
 
         expect(
@@ -59,7 +65,7 @@ describe("Echo", () => {
             broadcaster: "ably",
             withoutInterceptors: true,
             autoConnect: false,
-            requestTokenFn: async () => "",
+            requestTokenFn: async () => ({ token: "" }),
         });
 
         expect(echo.connector).toBeInstanceOf(AblyConnector);

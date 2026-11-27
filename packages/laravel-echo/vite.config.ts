@@ -3,19 +3,25 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { defineConfig, UserConfig } from "vite-plus";
 
-const pkg = JSON.parse(readFileSync(resolve(import.meta.dirname, "package.json"), "utf8"));
+const pkg = JSON.parse(
+    readFileSync(resolve(import.meta.dirname, "package.json"), "utf8"),
+);
 const require = createRequire(import.meta.url);
 
 // Single install: @ably/pubsub-device is a dependency. ESM/CJS keep it external (the app's bundler or
 // Node resolves it); the IIFE bundles its browser build, so a script-tag page needs no Ably global.
-const isAblyDevice = (id: string) => id === "@ably/pubsub-device" || id.startsWith("@ably/pubsub-device/");
+const isAblyDevice = (id: string) =>
+    id === "@ably/pubsub-device" || id.startsWith("@ably/pubsub-device/");
 const optionalPeers = ["pusher-js", "socket.io-client"];
 const globals = { "pusher-js": "Pusher", "socket.io-client": "io" };
 const define = { __ECHO_VERSION__: JSON.stringify(pkg.version) };
 
 // pnpm-safe: resolve the installed package (Node's "require" condition gives dist/node.js), then its browser build
 // (the legacy "browser" field file, dist/index.js) for the browser-build project.
-const pubsubDeviceDir = dirname(require.resolve("@ably/pubsub-device")).replace(/[\\/]dist$/, "");
+const pubsubDeviceDir = dirname(require.resolve("@ably/pubsub-device")).replace(
+    /[\\/]dist$/,
+    "",
+);
 // The live-sandbox suites: each creates its own Ably sandbox app (tests/ably/setup/sandbox.ts), so no keys are needed.
 const sandboxFiles = [
     "tests/ably/ably-channel.test.ts",
@@ -67,10 +73,12 @@ const config: UserConfig = (() => {
                 entry: resolve(import.meta.dirname, "src/echo.ts"),
                 formats: ["es", "cjs"],
                 // fork: .cjs, because "type": "module" makes Node load a .js file as ESM, which breaks require() (F-141)
-                fileName: (format, entryName) => `${entryName}.${format === "es" ? "js" : "common.cjs"}`,
+                fileName: (format, entryName) =>
+                    `${entryName}.${format === "es" ? "js" : "common.cjs"}`,
             },
             rollupOptions: {
-                external: (id: string) => optionalPeers.includes(id) || isAblyDevice(id),
+                external: (id: string) =>
+                    optionalPeers.includes(id) || isAblyDevice(id),
                 output: { globals },
             },
             emptyOutDir: true,
@@ -97,7 +105,11 @@ const config: UserConfig = (() => {
                     test: {
                         name: "ably",
                         environment: "node",
-                        include: ["tests/ably/**/*.test.ts", "tests/parity/**/*.test.ts", "tests/export-surface.test.ts"],
+                        include: [
+                            "tests/ably/**/*.test.ts",
+                            "tests/parity/**/*.test.ts",
+                            "tests/export-surface.test.ts",
+                        ],
                         exclude: sandboxFiles,
                     },
                 },
@@ -127,13 +139,25 @@ const config: UserConfig = (() => {
                         maxWorkers: 4,
                     },
                     resolve: {
-                        alias: [{ find: /^@ably\/pubsub-device$/, replacement: join(pubsubDeviceDir, "dist/index.js") }],
+                        alias: [
+                            {
+                                find: /^@ably\/pubsub-device$/,
+                                replacement: join(
+                                    pubsubDeviceDir,
+                                    "dist/index.js",
+                                ),
+                            },
+                        ],
                     },
                 },
                 {
                     // smoke tests of dist/: run after the build
                     extends: true,
-                    test: { name: "bundles", environment: "node", include: ["tests/bundles/**/*.test.ts"] },
+                    test: {
+                        name: "bundles",
+                        environment: "node",
+                        include: ["tests/bundles/**/*.test.ts"],
+                    },
                 },
             ],
         },

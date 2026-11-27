@@ -24,11 +24,13 @@ export class FakeEmitter {
         }
         const [event, listener] = args;
         const names = Array.isArray(event) ? event : [event];
-        names.forEach((n) => (this.events[n] = this.events[n] || []).push(listener));
+        names.forEach((n) =>
+            (this.events[n] = this.events[n] || []).push(listener),
+        );
     }
 
     once(event: string, listener: Function) {
-        const wrapper = (...a) => {
+        const wrapper = (...a: any[]) => {
             this.off(event, wrapper);
             listener(...a);
         };
@@ -41,14 +43,22 @@ export class FakeEmitter {
             this.events = {};
             return;
         }
-        if (args.length === 1 && typeof args[0] === 'function') {
+        if (args.length === 1 && typeof args[0] === "function") {
             this.any = this.any.filter((l) => l !== args[0]);
-            Object.keys(this.events).forEach((k) => (this.events[k] = this.events[k].filter((l) => l !== args[0])));
+            Object.keys(this.events).forEach(
+                (k) =>
+                    (this.events[k] = this.events[k].filter(
+                        (l) => l !== args[0],
+                    )),
+            );
             return;
         }
         const [event, listener] = args;
         if (!listener) delete this.events[event];
-        else this.events[event] = (this.events[event] || []).filter((l) => l !== listener);
+        else
+            this.events[event] = (this.events[event] || []).filter(
+                (l) => l !== listener,
+            );
     }
 
     emit(event: string, ...args: any[]) {
@@ -70,12 +80,12 @@ export const makeFakeChannel = (name: string) => {
     const presenceEmitter = new FakeEmitter();
     const channel: any = {
         name,
-        state: 'initialized',
+        state: "initialized",
         stateEmitter,
         messages,
-        on: (...a) => stateEmitter.on(...a),
-        once: (...a) => (stateEmitter as any).once(...a),
-        off: (...a) => stateEmitter.off(...a),
+        on: (...a: any[]) => stateEmitter.on(...a),
+        once: (...a: any[]) => (stateEmitter as any).once(...a),
+        off: (...a: any[]) => stateEmitter.off(...a),
         attach: vi.fn(() => Promise.resolve(null)),
         detach: vi.fn(() => Promise.resolve()),
         publish: vi.fn(() => Promise.resolve()),
@@ -102,7 +112,12 @@ export const makeFakeChannel = (name: string) => {
         transition(current: string, reason?: any) {
             const previous = channel.state;
             channel.state = current;
-            stateEmitter.emit(current, { previous, current, reason, resumed: false });
+            stateEmitter.emit(current, {
+                previous,
+                current,
+                reason,
+                resumed: false,
+            });
         },
     };
     return channel;
@@ -112,7 +127,8 @@ export const makeFakeAbly = () => {
     const channels: Record<string, any> = {};
     return {
         channels: {
-            get: (name: string) => (channels[name] = channels[name] || makeFakeChannel(name)),
+            get: (name: string) =>
+                (channels[name] = channels[name] || makeFakeChannel(name)),
             all: channels,
         },
     };
@@ -121,20 +137,23 @@ export const makeFakeAbly = () => {
 /** A stub AblyAuth with just what private/presence channel constructors use. */
 export const stubAuth: any = { onChannelFailed: () => () => undefined };
 
-export const ECHO_OPTIONS = { namespace: 'App.Events' };
+export const ECHO_OPTIONS = { namespace: "App.Events" };
 
 /** Collects unhandled promise rejections raised while a test runs. */
 export const trackUnhandledRejections = () => {
     const rejections: any[] = [];
     const handler = (reason: any) => rejections.push(reason);
-    process.on('unhandledRejection', handler);
-    return { rejections, stop: () => process.off('unhandledRejection', handler) };
+    process.on("unhandledRejection", handler);
+    return {
+        rejections,
+        stop: () => process.off("unhandledRejection", handler),
+    };
 };
 
 /** Let pending promise chains settle and Node emit `unhandledRejection` for them. */
 export const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
-export const ablyError = (message = 'ably failure', code = 40160) => {
+export const ablyError = (message = "ably failure", code = 40160) => {
     const e: any = new Error(message);
     e.code = code;
     e.statusCode = 401;
@@ -142,15 +161,27 @@ export const ablyError = (message = 'ably failure', code = 40160) => {
 };
 
 const b64u = (o: any) =>
-    Buffer.from(JSON.stringify(o)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    Buffer.from(JSON.stringify(o))
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
 
-export const makeJwt = (capability: Record<string, string[]> = { 'private:*': ['*'] }, clientId = 'user1') => {
+export const makeJwt = (
+    capability: Record<string, string[]> = { "private:*": ["*"] },
+    clientId = "user1",
+) => {
     const now = Math.floor(Date.now() / 1000);
     return (
-        b64u({ alg: 'HS256', typ: 'JWT', kid: 'a.b' }) +
-        '.' +
-        b64u({ iat: now, exp: now + 3600, 'x-ably-clientId': clientId, 'x-ably-capability': JSON.stringify(capability) }) +
-        '.sig'
+        b64u({ alg: "HS256", typ: "JWT", kid: "a.b" }) +
+        "." +
+        b64u({
+            iat: now,
+            exp: now + 3600,
+            "x-ably-clientId": clientId,
+            "x-ably-capability": JSON.stringify(capability),
+        }) +
+        ".sig"
     );
 };
 

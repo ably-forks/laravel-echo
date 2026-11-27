@@ -22,7 +22,10 @@ type AblyChannel = Broadcaster["ably"]["public"];
 type AblyPrivateChannel = Broadcaster["ably"]["private"];
 type AblyPresenceChannel = Broadcaster["ably"]["presence"];
 
-const requestTokenFn: AblyOptions["requestTokenFn"] = async (channelName, existingToken) => ({
+const requestTokenFn: AblyOptions["requestTokenFn"] = async (
+    channelName,
+    existingToken,
+) => ({
     token: `${channelName ?? "connection"}:${existingToken ?? ""}`,
 });
 const ablyOptions: EchoOptions<"ably"> = {
@@ -33,17 +36,34 @@ const ablyOptions: EchoOptions<"ably"> = {
     autoConnect: false,
 };
 const echo = new Echo<"ably">(ablyOptions);
-const inferred = new Echo({ broadcaster: "ably", requestTokenFn, autoConnect: false });
+const inferred = new Echo({
+    broadcaster: "ably",
+    requestTokenFn,
+    autoConnect: false,
+});
 
 const connector: AblyConnector = echo.connector;
 const sameConnector: AblyConnector = inferred.connector;
 const state: string = connector.ably.connection.state;
-const publicChannel: AblyChannel = echo.channel("orders").listen("OrderShipped", () => {});
-const privateChannel: AblyPrivateChannel = echo.private("chat").whisper("typing", { a: 1 });
-const presenceChannel: AblyPresenceChannel = echo.join("room").here(() => {}).joining(() => {}).leaving(() => {});
+const publicChannel: AblyChannel = echo
+    .channel("orders")
+    .listen("OrderShipped", () => {});
+const privateChannel: AblyPrivateChannel = echo
+    .private("chat")
+    .whisper("typing", { a: 1 });
+const presenceChannel: AblyPresenceChannel = echo
+    .join("room")
+    .here(() => {})
+    .joining(() => {})
+    .leaving(() => {});
 const asUpstreamChannel: Channel = publicChannel;
 const asUpstreamPresence: PresenceChannel = presenceChannel;
-const asUpstreamConnector: Connector<"ably", AblyChannel, AblyPrivateChannel, AblyPresenceChannel> = connector;
+const asUpstreamConnector: Connector<
+    "ably",
+    AblyChannel,
+    AblyPrivateChannel,
+    AblyPresenceChannel
+> = connector;
 
 const visibilities: ChannelVisibility[] = ["public", "private", "presence"];
 visibilities.forEach((visibility) => echo.leaveChannel("orders", visibility));
@@ -54,4 +74,14 @@ const status: ConnectionStatus = echo.connectionStatus();
 const encrypted: never = echo.encryptedPrivate("secret");
 new EventFormatter("App.Events").format("OrderShipped");
 
-void [sameConnector, state, privateChannel, asUpstreamChannel, asUpstreamPresence, asUpstreamConnector, fullName, status, encrypted];
+void [
+    sameConnector,
+    state,
+    privateChannel,
+    asUpstreamChannel,
+    asUpstreamPresence,
+    asUpstreamConnector,
+    fullName,
+    status,
+    encrypted,
+];

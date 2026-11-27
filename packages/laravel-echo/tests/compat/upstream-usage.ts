@@ -19,46 +19,125 @@ import Echo, {
     type EchoOptions,
     type PresenceChannel,
 } from "laravel-echo";
-import { NullConnector, PusherConnector, SocketIoConnector, MercureConnector } from "laravel-echo/dist/connector";
+import {
+    NullConnector,
+    PusherConnector,
+    SocketIoConnector,
+    MercureConnector,
+} from "laravel-echo/dist/connector";
 import Pusher from "pusher-js";
 import { io } from "socket.io-client";
 
 // pusher
-const pusher = new Echo<"pusher">({ broadcaster: "pusher", key: "k", cluster: "mt1", forceTLS: true, authEndpoint: "/broadcasting/auth", csrfToken: "x", bearerToken: "t", wsHost: "h", wsPort: 80, enabledTransports: ["ws", "wss"] });
-const p2 = new Echo<"pusher">({ broadcaster: "pusher", key: "k", cluster: "mt1", client: new Pusher("k", { cluster: "mt1" }) });
+const pusher = new Echo<"pusher">({
+    broadcaster: "pusher",
+    key: "k",
+    cluster: "mt1",
+    forceTLS: true,
+    authEndpoint: "/broadcasting/auth",
+    csrfToken: "x",
+    bearerToken: "t",
+    wsHost: "h",
+    wsPort: 80,
+    enabledTransports: ["ws", "wss"],
+});
+const p2 = new Echo<"pusher">({
+    broadcaster: "pusher",
+    key: "k",
+    cluster: "mt1",
+    client: new Pusher("k", { cluster: "mt1" }),
+});
 const typed: Echo<"pusher"> = pusher;
-const opts: EchoOptions<"pusher"> = { broadcaster: "pusher", key: "k", cluster: "mt1", auth: { headers: { a: "b" } }, withoutInterceptors: true, namespace: false, userAuthentication: { endpoint: "/u", headers: {}, transport: "ajax" } };
+const opts: EchoOptions<"pusher"> = {
+    broadcaster: "pusher",
+    key: "k",
+    cluster: "mt1",
+    auth: { headers: { a: "b" } },
+    withoutInterceptors: true,
+    namespace: false,
+    userAuthentication: { endpoint: "/u", headers: {}, transport: "ajax" },
+};
 // reverb
-const reverb = new Echo<"reverb">({ broadcaster: "reverb", key: "k", wsHost: "h", wsPort: 8080, wssPort: 443, forceTLS: false, enabledTransports: ["ws", "wss"] });
+const reverb = new Echo<"reverb">({
+    broadcaster: "reverb",
+    key: "k",
+    wsHost: "h",
+    wsPort: 8080,
+    wssPort: 443,
+    forceTLS: false,
+    enabledTransports: ["ws", "wss"],
+});
 const reverbOpts: EchoOptions<"reverb"> = { broadcaster: "reverb", key: "k" };
 // socket.io
-const sio = new Echo<"socket.io">({ broadcaster: "socket.io", host: "localhost:6001", client: io, namespace: "App.Events", auth: { headers: {} } });
+const sio = new Echo<"socket.io">({
+    broadcaster: "socket.io",
+    host: "localhost:6001",
+    client: io,
+    namespace: "App.Events",
+    auth: { headers: {} },
+});
 // null
 const nul = new Echo<"null">({ broadcaster: "null" });
 // mercure
-const mercure = new Echo<"mercure">({ broadcaster: "mercure", host: "h", key: "k" });
+const mercure = new Echo<"mercure">({
+    broadcaster: "mercure",
+    host: "h",
+    key: "k",
+});
 // custom connector class
 class MyConnector extends Connector<"null", Channel, Channel, PresenceChannel> {
-    constructor(options: any) { super(options); }
+    constructor(options: any) {
+        super(options);
+    }
     connect(): void {}
-    channel(name: string): Channel { return null as any; }
-    privateChannel(name: string): Channel { return null as any; }
-    presenceChannel(name: string): PresenceChannel { return null as any; }
+    channel(name: string): Channel {
+        return null as any;
+    }
+    privateChannel(name: string): Channel {
+        return null as any;
+    }
+    presenceChannel(name: string): PresenceChannel {
+        return null as any;
+    }
     leave(name: string): void {}
     leaveChannel(name: string): void {}
-    socketId(): string { return "1"; }
+    socketId(): string {
+        return "1";
+    }
     disconnect(): void {}
-    connectionStatus(): ConnectionStatus { return "connected"; }
-    onConnectionChange(cb: (s: ConnectionStatus) => void): () => void { return () => {}; }
+    connectionStatus(): ConnectionStatus {
+        return "connected";
+    }
+    onConnectionChange(cb: (s: ConnectionStatus) => void): () => void {
+        return () => {};
+    }
 }
 const custom = new Echo<"function">({ broadcaster: MyConnector as any });
 const customNull = new Echo<"function">({ broadcaster: NullConnector as any });
-const customPusher = new Echo<"function">({ broadcaster: PusherConnector as any });
+const customPusher = new Echo<"function">({
+    broadcaster: PusherConnector as any,
+});
 
 // channel API
-pusher.channel("orders").listen("OrderShipped", (e: any) => e).listen(".x", () => {}).stopListening("OrderShipped").listenForWhisper("t", () => {}).notification(() => {}).error(() => {});
-pusher.private("chat").listen("A", () => {}).whisper("typing", { a: 1 });
-pusher.join("room").here((u: any[]) => u).joining((u: any) => u).leaving((u: any) => u).listen("A", () => {}).whisper("w", {});
+pusher
+    .channel("orders")
+    .listen("OrderShipped", (e: any) => e)
+    .listen(".x", () => {})
+    .stopListening("OrderShipped")
+    .listenForWhisper("t", () => {})
+    .notification(() => {})
+    .error(() => {});
+pusher
+    .private("chat")
+    .listen("A", () => {})
+    .whisper("typing", { a: 1 });
+pusher
+    .join("room")
+    .here((u: any[]) => u)
+    .joining((u: any) => u)
+    .leaving((u: any) => u)
+    .listen("A", () => {})
+    .whisper("w", {});
 pusher.encryptedPrivate("secret").listen("A", () => {});
 pusher.listen("c", "e", () => {});
 pusher.leave("orders");
@@ -66,7 +145,13 @@ pusher.leaveChannel("private-chat");
 pusher.leaveAllChannels();
 const sid: string | undefined = pusher.socketId();
 const st: ConnectionStatus = pusher.connectionStatus();
-const statuses: ConnectionStatus[] = ["connected", "disconnected", "connecting", "reconnecting", "failed"];
+const statuses: ConnectionStatus[] = [
+    "connected",
+    "disconnected",
+    "connecting",
+    "reconnecting",
+    "failed",
+];
 pusher.connect();
 pusher.disconnect();
 pusher.registerInterceptors();
@@ -74,22 +159,56 @@ pusher.registerAxiosRequestInterceptor();
 pusher.registerVueRequestInterceptor();
 pusher.registerjQueryAjaxSetup();
 pusher.registerTurboRequestInterceptor();
-(pusher.connector as PusherConnector<"pusher">).pusher.connection.bind("x", () => {});
+(pusher.connector as PusherConnector<"pusher">).pusher.connection.bind(
+    "x",
+    () => {},
+);
 const optsRead: EchoOptions<"pusher"> = pusher.options;
 const ch: Channel = pusher.channel("x");
 const pc: PresenceChannel = pusher.join("x");
-const ef = new EventFormatter("App.Events"); ef.format("X"); ef.setNamespace(false);
-nul.private("a").listen("b", () => {}); nul.encryptedPrivate("a");
+const ef = new EventFormatter("App.Events");
+ef.format("X");
+ef.setNamespace(false);
+nul.private("a").listen("b", () => {});
+nul.encryptedPrivate("a");
 mercure.encryptedPrivate("a");
 sio.join("x").here(() => {});
 // generics / types
-function useEcho<T extends BroadcastDriver>(e: Echo<T>): Broadcaster[T]["connector"] { return e.connector; }
-useEcho(pusher); useEcho(sio); useEcho(nul);
+function useEcho<T extends BroadcastDriver>(
+    e: Echo<T>,
+): Broadcaster[T]["connector"] {
+    return e.connector;
+}
+useEcho(pusher);
+useEcho(sio);
+useEcho(nul);
 type Drv = BroadcastDriver;
 const d: Drv[] = ["reverb", "pusher", "ably", "socket.io", "mercure", "null"];
 declare const generic: Echo<keyof Broadcaster>;
 generic.channel("x");
 // Window global style (upstream pattern: window.Echo = new Echo({...}))
-declare global { interface Window { Echo: Echo<"reverb">; } }
+declare global {
+    interface Window {
+        Echo: Echo<"reverb">;
+    }
+}
 window.Echo = new Echo<"reverb">({ broadcaster: "reverb", key: "k" });
-void [p2, typed, opts, reverb, reverbOpts, custom, customNull, customPusher, sid, st, statuses, optsRead, ch, pc, d, SocketIoConnector, MercureConnector];
+void [
+    p2,
+    typed,
+    opts,
+    reverb,
+    reverbOpts,
+    custom,
+    customNull,
+    customPusher,
+    sid,
+    st,
+    statuses,
+    optsRead,
+    ch,
+    pc,
+    d,
+    SocketIoConnector,
+    MercureConnector,
+];

@@ -1,13 +1,16 @@
-import { AblyChannel } from './ably-channel';
-import type { AblyAuth } from './ably/auth';
-import type { PresenceChannel } from './presence-channel';
-import { safeInvoke } from './ably/utils';
-import type { ErrorInfo, PresenceMessage } from '../types/ably';
+import { AblyChannel } from "./ably-channel";
+import type { AblyAuth } from "./ably/auth";
+import type { PresenceChannel } from "./presence-channel";
+import { safeInvoke } from "./ably/utils";
+import type { ErrorInfo, PresenceMessage } from "../types/ably";
 
 /**
  * This class represents an Ably presence channel.
  */
-export class AblyPresenceChannel extends AblyChannel implements PresenceChannel {
+export class AblyPresenceChannel
+    extends AblyChannel
+    implements PresenceChannel
+{
     /**
      * The member data from the auth response (`info`), used on enter(). any: its shape is defined by the app.
      */
@@ -20,14 +23,19 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
     lastEnterSucceeded: boolean | undefined = false;
 
     // any: the connector passes its Ably client and options; the parity tests pass fakes (SDK boundary)
-    constructor(ably: any, name: string, options: any, auth: AblyAuth | undefined) {
+    constructor(
+        ably: any,
+        name: string,
+        options: any,
+        auth: AblyAuth | undefined,
+    ) {
         super(ably, name, options, false);
         if (auth) {
             // P3: no AblyAuth with options.client, so no 40160 re-authorize
-            this.channel.on('failed', auth.onChannelFailed(this));
+            this.channel.on("failed", auth.onChannelFailed(this));
         }
 
-        this.channel.on('attached', (stateChange) => {
+        this.channel.on("attached", (stateChange) => {
             // T15: on a resumed attach the server kept our membership and ably re-enters it (RTP17); don't enter twice.
             // If the last enter() failed there is no membership to restore, so enter again.
             if (!stateChange?.resumed || this.lastEnterSucceeded === false) {
@@ -36,7 +44,12 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
                 const stateChangeReasonsBefore = this.stateChangeReasonCount;
                 this.enter(
                     this.presenceData,
-                    (err: ErrorInfo | Error | null) => err && this._alertSubscribeError(err, stateChangeReasonsBefore)
+                    (err: ErrorInfo | Error | null) =>
+                        err &&
+                        this._alertSubscribeError(
+                            err,
+                            stateChangeReasonsBefore,
+                        ),
                 );
             }
         });
@@ -54,13 +67,16 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
      */
     here(callback: CallableFunction): this {
         this.channel.presence
-            .subscribe(['enter', 'update', 'leave'], () =>
-                this.channel.presence
-                    .get()
-                    .then(
-                        (members: PresenceMessage[]) => safeInvoke(callback, members.map(({ data }) => data), null),
-                        (err: ErrorInfo | Error) => safeInvoke(callback, [], err)
-                    )
+            .subscribe(["enter", "update", "leave"], () =>
+                this.channel.presence.get().then(
+                    (members: PresenceMessage[]) =>
+                        safeInvoke(
+                            callback,
+                            members.map(({ data }) => data),
+                            null,
+                        ),
+                    (err: ErrorInfo | Error) => safeInvoke(callback, [], err),
+                ),
             )
             .catch(this._subscribeErrorHandler());
         return this;
@@ -71,9 +87,12 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
      */
     joining(callback: CallableFunction): this {
         this.channel.presence
-            .subscribe(['enter', 'update'], ({ data, ...metaData }: PresenceMessage) => {
-                callback(data, metaData);
-            })
+            .subscribe(
+                ["enter", "update"],
+                ({ data, ...metaData }: PresenceMessage) => {
+                    callback(data, metaData);
+                },
+            )
             .catch(this._subscribeErrorHandler());
 
         return this;
@@ -84,7 +103,7 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
      */
     leaving(callback: CallableFunction): this {
         this.channel.presence
-            .subscribe('leave', ({ data, ...metaData }: PresenceMessage) => {
+            .subscribe("leave", ({ data, ...metaData }: PresenceMessage) => {
                 callback(data, metaData);
             })
             .catch(this._subscribeErrorHandler());
@@ -100,22 +119,20 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
      */
     enter(data: unknown, callback?: CallableFunction): this {
         this.lastEnterSucceeded = undefined;
-        this.channel.presence
-            .enter(data)
-            .then(
-                () => {
-                    this.lastEnterSucceeded = true;
-                    safeInvoke(callback, null);
-                },
-                (err: ErrorInfo | Error) => {
-                    this.lastEnterSucceeded = false;
-                    if (callback) {
-                        safeInvoke(callback, err);
-                    } else {
-                        this._alertErrorListeners(err);
-                    }
+        this.channel.presence.enter(data).then(
+            () => {
+                this.lastEnterSucceeded = true;
+                safeInvoke(callback, null);
+            },
+            (err: ErrorInfo | Error) => {
+                this.lastEnterSucceeded = false;
+                if (callback) {
+                    safeInvoke(callback, err);
+                } else {
+                    this._alertErrorListeners(err);
                 }
-            );
+            },
+        );
 
         return this;
     }
@@ -127,12 +144,13 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
      * @returns this channel
      */
     leave(data: unknown, callback?: CallableFunction): this {
-        this.channel.presence
-            .leave(data)
-            .then(
-                () => safeInvoke(callback, null),
-                (err: ErrorInfo | Error) => (callback ? safeInvoke(callback, err) : this._alertErrorListeners(err))
-            );
+        this.channel.presence.leave(data).then(
+            () => safeInvoke(callback, null),
+            (err: ErrorInfo | Error) =>
+                callback
+                    ? safeInvoke(callback, err)
+                    : this._alertErrorListeners(err),
+        );
 
         return this;
     }
@@ -144,12 +162,13 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
      * @returns this channel
      */
     update(data: unknown, callback?: CallableFunction): this {
-        this.channel.presence
-            .update(data)
-            .then(
-                () => safeInvoke(callback, null),
-                (err: ErrorInfo | Error) => (callback ? safeInvoke(callback, err) : this._alertErrorListeners(err))
-            );
+        this.channel.presence.update(data).then(
+            () => safeInvoke(callback, null),
+            (err: ErrorInfo | Error) =>
+                callback
+                    ? safeInvoke(callback, err)
+                    : this._alertErrorListeners(err),
+        );
 
         return this;
     }
@@ -157,13 +176,18 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
     /**
      * Send a whisper event to other clients in the channel.
      */
-    whisper(eventName: string, data: Record<any, any>, callback?: CallableFunction): this {
-        this.channel
-            .publish(`client-${eventName}`, data)
-            .then(
-                () => safeInvoke(callback, null),
-                (err: ErrorInfo | Error) => (callback ? safeInvoke(callback, err) : this._alertErrorListeners(err))
-            );
+    whisper(
+        eventName: string,
+        data: Record<any, any>,
+        callback?: CallableFunction,
+    ): this {
+        this.channel.publish(`client-${eventName}`, data).then(
+            () => safeInvoke(callback, null),
+            (err: ErrorInfo | Error) =>
+                callback
+                    ? safeInvoke(callback, err)
+                    : this._alertErrorListeners(err),
+        );
         return this;
     }
 }
