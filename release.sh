@@ -111,25 +111,31 @@ for file in "${RELEASE_FILES[@]:0:4}"; do
     [ -z "$published" ] || error "$name@$VERSION is already on npm."
 done
 
-NOTES_FILE=$(mktemp "${TMPDIR:-/tmp}/ably-echo-release-notes.XXXXXX")
-release_notes CHANGELOG-ABLY.md "$VERSION" > "$NOTES_FILE" ||
-    error "CHANGELOG-ABLY.md has no entry for $VERSION$([ "$PRERELEASE" = true ] && echo " or ${VERSION%%-rc.*}"). Add it first."
-
-# From here on, restore the release files if the script stops before committing them.
+# On any exit: remove the release notes file and, if the script changed the release files but stopped before committing
+# them, restore them. The working tree was clean above, so the restore only undoes this script's own changes.
+NOTES_FILE=""
+CHANGING=0
 COMMITTED=0
-restore_release_files() {
-    rm -f "$NOTES_FILE"
-    if [ "$COMMITTED" = 0 ] && [ -n "$(git status --porcelain -- "${RELEASE_FILES[@]}")" ]; then
+clean_up() {
+    if [ -n "$NOTES_FILE" ]; then
+        rm -f "$NOTES_FILE"
+    fi
+    if [ "$CHANGING" = 1 ] && [ "$COMMITTED" = 0 ] && [ -n "$(git status --porcelain -- "${RELEASE_FILES[@]}")" ]; then
         echo "Restoring ${RELEASE_FILES[*]}."
         git checkout -- "${RELEASE_FILES[@]}"
     fi
 }
-trap restore_release_files EXIT
-# Make INT and TERM an explicit exit, so that the EXIT trap restores the files whichever shell runs the script.
+trap clean_up EXIT
+# Make INT and TERM an explicit exit, so that the EXIT trap runs whichever shell runs the script.
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+NOTES_FILE=$(mktemp "${TMPDIR:-/tmp}/ably-echo-release-notes.XXXXXX")
+release_notes CHANGELOG-ABLY.md "$VERSION" > "$NOTES_FILE" ||
+    error "CHANGELOG-ABLY.md has no entry for $VERSION$([ "$PRERELEASE" = true ] && echo " or ${VERSION%%-rc.*}"). Add it first."
+
 echo "Updating the version of all four packages..."
+CHANGING=1
 # --no-git-checks: pnpm 12's own `pnpm version` refuses a dirty working tree, which it is after the first package is
 # bumped. Skipping pnpm's check is safe because this script has already checked, before changing anything, that the
 # working tree is clean (in both modes) and, for a real release, that HEAD is the release branch.
