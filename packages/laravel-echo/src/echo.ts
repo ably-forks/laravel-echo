@@ -45,6 +45,11 @@ export type ConnectionStatus =
     | "failed";
 
 /**
+ * A channel's visibility, as the framework adapters' hooks know it (fork-only, P-04).
+ */
+export type ChannelVisibility = "public" | "private" | "presence";
+
+/**
  * This class is the primary API for interacting with broadcasting.
  */
 export default class Echo<T extends keyof Broadcaster> {
@@ -138,9 +143,28 @@ export default class Echo<T extends keyof Broadcaster> {
 
     /**
      * Leave the given channel.
+     *
+     * Without `visibility`, `channel` is the connector's full channel name, as before. With it, `channel` is the
+     * name the app used (`"orders"` for `echo.private("orders")`) and Echo builds the full name the connector
+     * expects, so connector-neutral callers such as the framework hooks need not know the connector's prefixes
+     * (fork-only; provisional: P-04, option a).
      */
-    leaveChannel(channel: string): void {
-        this.connector.leaveChannel(channel);
+    leaveChannel(channel: string, visibility?: ChannelVisibility): void {
+        this.connector.leaveChannel(
+            visibility ? this.connectorChannelName(channel, visibility) : channel,
+        );
+    }
+
+    /**
+     * The connector-specific full channel name, as used by connector.leaveChannel() (fork-only; provisional: P-04).
+     */
+    connectorChannelName(name: string, visibility: ChannelVisibility): string {
+        if (this.connector instanceof AblyConnector) {
+            return `${visibility}:${name}`;
+        }
+
+        // Pusher, Reverb, Socket.IO, Mercure, Null and custom connectors use upstream's Pusher-style names
+        return visibility === "public" ? name : `${visibility}-${name}`;
     }
 
     /**

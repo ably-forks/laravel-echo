@@ -3,7 +3,7 @@
  * classes, and the fork-only API decisions keep their behaviour. No network: Ably runs on a fake client.
  */
 import { describe, expect, expectTypeOf, test, vi } from "vite-plus/test";
-import Echo, { type AblyOptions, type EchoOptions } from "../../src/echo";
+import Echo, { type AblyOptions, type ChannelVisibility, type EchoOptions } from "../../src/echo";
 import { AblyConnector } from "../../src/connector";
 import { AblyChannel, AblyPresenceChannel, AblyPrivateChannel } from "../../src/channel";
 import { makeFakeAblyClient } from "../parity/fake-ably";
@@ -71,5 +71,64 @@ describe("encryptedPrivate() with the ably broadcaster (P-10)", () => {
         expect(() => echo.encryptedPrivate("secret")).toThrow(
             "Broadcaster string socket.io does not support encrypted private channels.",
         );
+    });
+});
+
+describe("visibility-aware leaveChannel() (P-04)", () => {
+    test("with a visibility, the Ably connector gets its prefixed name", () => {
+        const echo = makeEcho();
+        const leaveChannel = vi.spyOn(echo.connector, "leaveChannel");
+
+        echo.leaveChannel("orders", "private");
+        echo.leaveChannel("orders", "presence");
+        echo.leaveChannel("orders", "public");
+
+        expect(leaveChannel.mock.calls).toEqual([["private:orders"], ["presence:orders"], ["public:orders"]]);
+    });
+
+    test("without a visibility, the name is passed through unchanged", () => {
+        const echo = makeEcho();
+        const leaveChannel = vi.spyOn(echo.connector, "leaveChannel");
+
+        echo.leaveChannel("private:orders");
+
+        expect(leaveChannel).toHaveBeenCalledExactlyOnceWith("private:orders");
+    });
+
+    test("leaves exactly the channel of that visibility", () => {
+        const echo = makeEcho();
+        echo.private("orders");
+        echo.join("orders");
+
+        echo.leaveChannel("orders", "private");
+
+        expect(Object.keys(echo.connector.channels)).toEqual(["presence:orders"]);
+    });
+
+    test("leaveAllChannels() still passes the connector's full names", () => {
+        const echo = makeEcho();
+        echo.channel("a");
+        echo.private("b");
+        echo.join("c");
+
+        echo.leaveAllChannels();
+
+        expect(echo.connector.channels).toEqual({});
+    });
+
+    test("connectorChannelName() uses Pusher-style names for the other connectors", () => {
+        const echo = new Echo({ broadcaster: "null", withoutInterceptors: true });
+        const names = (["public", "private", "presence"] as ChannelVisibility[]).map((v) =>
+            echo.connectorChannelName("orders", v),
+        );
+
+        expect(names).toEqual(["orders", "private-orders", "presence-orders"]);
+    });
+
+    test("connectorChannelName() uses the Ably namespaces for the Ably connector", () => {
+        const echo = makeEcho();
+
+        expect(echo.connectorChannelName("orders", "private")).toBe("private:orders");
+        expect(echo.connectorChannelName("orders", "public")).toBe("public:orders");
     });
 });
