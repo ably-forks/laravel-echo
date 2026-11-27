@@ -117,13 +117,17 @@ export const httpPostAsync = async (
     return await httpRequestAsync(postOptions, timeoutMs);
 };
 
-export const httpDeleteAsync = async (url: string, headers: any) => {
+export const httpDeleteAsync = async (
+    url: string,
+    headers: any,
+    timeoutMs?: number,
+) => {
     let deleteOptions = {
         uri: url,
         method: "DELETE",
         headers,
     };
-    return await httpRequestAsync(deleteOptions);
+    return await httpRequestAsync(deleteOptions, timeoutMs);
 };
 
 export default safeAssert;

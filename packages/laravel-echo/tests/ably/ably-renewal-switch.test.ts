@@ -668,7 +668,26 @@ describe("AblyRenewalSwitch", () => {
             30000,
             250,
         );
-        await sleep(3000);
+        await sleep(3000); // observation margin: a late switch, `failed` or new connection shows up in the asserts below
+        // The sandbox can leave the connection briefly reconnecting at this point. Wait until it has settled
+        // (connected, or a terminal state the asserts below report) instead of asserting a snapshot; the test's
+        // own timeout bounds the wait.
+        await new Promise<void>((resolve) => {
+            const settled = () =>
+                ["connected", "failed", "closed"].includes(
+                    client.connection.state,
+                );
+            if (settled()) {
+                return resolve();
+            }
+            const onStateChange = () => {
+                if (settled()) {
+                    client.connection.off(onStateChange);
+                    resolve();
+                }
+            };
+            client.connection.on(onStateChange);
+        });
         console.log(
             `same identity: token renewed, states: ${conn.states.join(",")}, ` +
                 `connection.id unchanged: ${client.connection.id === connectionId}`,

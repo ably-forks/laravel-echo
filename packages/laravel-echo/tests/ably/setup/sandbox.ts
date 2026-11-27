@@ -46,13 +46,38 @@ const creatNewApp = async (options: SetupOptions = {}) => {
     }
 };
 
-const deleteApp = async (app: {
-    appId: string;
-    keys: { keyStr: string }[];
-}) => {
-    let authKey = app.keys[0].keyStr;
+const DELETE_TIMEOUT_MS = 5000;
+
+/**
+ * Deletes a sandbox app. Teardown only: when setup() failed there is no app (or no key) and nothing is deleted, and a
+ * failed or timed-out delete is reported as a warning, not an error, so it cannot fail a file whose tests passed.
+ * The delete is bounded well inside every suite's hook timeout. Creation failures stay fatal (setup() throws).
+ */
+const deleteApp = async (
+    app:
+        | {
+              appId: string;
+              keys: { keyStr: string }[];
+          }
+        | null
+        | undefined,
+) => {
+    const authKey = app?.keys?.[0]?.keyStr;
+    if (!app?.appId || !authKey) {
+        return;
+    }
     const headers = { Authorization: "Basic " + toBase64UrlEncoded(authKey) };
-    return await httpDeleteAsync(`${sandboxUrl}/${app.appId}`, headers);
+    try {
+        return await httpDeleteAsync(
+            `${sandboxUrl}/${app.appId}`,
+            headers,
+            DELETE_TIMEOUT_MS,
+        );
+    } catch (err: any) {
+        process.emitWarning(
+            `Sandbox app ${app.appId} was not deleted: ${err?.message ?? String(err)}`,
+        );
+    }
 };
 
 export { creatNewApp as setup, deleteApp as tearDown };
