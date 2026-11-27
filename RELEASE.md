@@ -1,19 +1,45 @@
 # Release Instructions
 
-This library uses [semantic versioning](http://semver.org/). Below, `<version>` is the version being released (e.g. `1.1.1`) and the git tag is `ably-echo-<version>`. Releases are published manually.
+> **Status:** this is the planned 2.x release process. The release tooling it describes (`release.sh` for this fork, the `publish.yml` workflow and the tarball checks) is being set up for the first 2.0.0 release candidate. Check each step against those files, and update this document with what was actually done.
 
-**Why:** a stale git-ignored `dist/` and the upstream README were once published, because `prepublishOnly` is skipped under `ignore-scripts=true`. So `npm run release:pack` does a clean build and checks the package, and you only publish the file it creates.
+This repository publishes four packages with one shared version (lockstep), using [semantic versioning](http://semver.org/):
 
-1. Create a new branch for the release, named like `release/<version>`.
-2. Set the version in `package.json` and `package-lock.json`: `npm version <version> --no-git-tag-version`.
-3. Run [`github_changelog_generator`](https://github.com/github-changelog-generator/github-changelog-generator) to automate the update of the [CHANGELOG-ABLY.md](CHANGELOG-ABLY.md). This may require some manual intervention, both in terms of how the command is run and how the change log file is modified. Your mileage may vary:
-    - The command you will need to run will look something like this: `github_changelog_generator -u ably-forks -p laravel-echo --since-tag ably-echo-<previous-version> --output delta.md --token $GITHUB_TOKEN_WITH_REPO_ACCESS`. Generate token [here](https://github.com/settings/tokens/new?description=GitHub%20Changelog%20Generator%20token).
-    - Using the command above, `--output delta.md` writes changes made after `--since-tag` to a new file.
-    - The contents of that new file (`delta.md`) then need to be manually inserted at the top of the [CHANGELOG-ABLY.md](CHANGELOG-ABLY.md), changing the "Unreleased" heading and linking with the current version numbers.
-    - Also ensure that the "Full Changelog" link points to the new version tag instead of the `HEAD`.
-4. Commit the version bump and [CHANGELOG-ABLY.md](CHANGELOG-ABLY.md), and make a PR against `master`.
-5. Once the PR is approved, merge it into `master`.
-6. Update your local `master` and tag it, then push the tag: `git checkout master && git pull origin master && git tag ably-echo-<version> && git push origin ably-echo-<version>`.
-7. `release:pack` packs the current checkout, so commit or stash any local changes, then check out the release tag: `git checkout ably-echo-<version>`. `git describe --tags --exact-match` must print `ably-echo-<version>` (it errors otherwise). Then run `npm run release:pack -- <version>`. It refuses to run if `package.json` is not that version, and creates `ably-laravel-echo-<version>.tgz` only if its sanity checks pass, printing the tarball's integrity.
-8. Publish that tarball, never a folder: `npm whoami` (log in first if it fails), then `npm publish ably-laravel-echo-<version>.tgz`. Check `npm view @ably/laravel-echo@<version> dist.integrity` against the integrity that `release:pack` printed.
-9. Visit https://github.com/ably-forks/laravel-echo/tags and add release notes to the release (generally you can just copy the notes you added to the CHANGELOG), and update the [Ably Changelog](https://changelog.ably.com/) (via [headwayapp](https://headwayapp.co/)) with the same notes.
+- `@ably/laravel-echo`
+- `@ably/laravel-echo-react`
+- `@ably/laravel-echo-vue`
+- `@ably/laravel-echo-svelte`
+
+Releases of the 2.x line are made from the `2.x` branch. One git tag, `ably-echo-<version>` (for example `ably-echo-2.0.0`), covers all four packages. Below, `<version>` is the version being released.
+
+## Rules
+
+- **Publish from CI only.** The `publish.yml` workflow publishes the packages with npm trusted publishing (OIDC) and provenance. There is no npm token.
+- **Never rely on `prepublish*` or `postpublish` scripts.** Setups with `ignore-scripts=true` skip them; this is how a stale `dist/` and the wrong README were once published. CI builds explicitly, checks each tarball, and publishes exactly the tarballs it checked.
+- **Release together with laravel-broadcaster.** Echo 2.x works only with laravel-broadcaster 2.x. Release on the same day as the matching laravel-broadcaster release: Echo may go first, **never laravel-broadcaster first**.
+- **Every push, tag, GitHub release and npm action needs the maintainers' explicit go-ahead.**
+
+## Steps
+
+1. **Prepare the changelog.** Add the release's entry to the top of [CHANGELOG-ABLY.md](CHANGELOG-ABLY.md), with a "Full Changelog" link that compares the previous tag with the new one. [`github_changelog_generator`](https://github.com/github-changelog-generator/github-changelog-generator) can help: `github_changelog_generator -u ably-forks -p laravel-echo --since-tag ably-echo-<previous-version> --output delta.md --token <token>` writes the changes since the previous tag to `delta.md`; edit them into the entry by hand.
+2. **Bump the version** with `./release.sh <version>` on an up-to-date `2.x`. It:
+    - sets `<version>` in all four `package.json` files;
+    - sets the React, Vue and Svelte packages' peer dependency on `@ably/laravel-echo`: `^2.0.0-rc.0` for a release candidate, `^2.0.0` for a final release;
+    - updates the lockfile (`pnpm install`);
+    - commits `Release <version>` and tags `ably-echo-<version>`;
+    - pushes the commit and the tag, and creates the GitHub release from the changelog entry (a prerelease for a release candidate).
+3. **CI publishes.** The GitHub release starts `publish.yml`:
+    - a `verify` job builds, tests and audits, packs the four packages and checks each tarball (built `dist` files with `.cjs` CommonJS entries, `@ably/pubsub-device` external in the ESM and CommonJS builds and bundled in the core IIFE, the embedded version, the Ably README, no `workspace:` ranges, the adapters' peer range, `repository.url`);
+    - a `publish` job then publishes the four checked tarballs one at a time, the core first, under the npm dist-tag `next` for a prerelease and `latest` otherwise.
+4. **If a publish leg fails** after the core was published, don't unpublish. Fix the cause and re-run only the failed legs. Keep the GitHub release marked as a prerelease (or draft) until all four packages have the same version.
+5. **Check npm:** `npm view @ably/laravel-echo dist-tags`, and the same for the other three packages.
+6. **Announce:** update the [Ably Changelog](https://changelog.ably.com/) (via [headwayapp](https://headwayapp.co/)) with the release notes.
+
+## Release candidates and 2.0.0
+
+- Publish `2.0.0-rc.N` first, under the dist-tag `next`, and test it with a laravel-broadcaster 2.x build before publishing `2.0.0` under `latest`.
+- At the 2.0.0 release, make `2.x` the repository's default branch on GitHub.
+- The first publish of `@ably/laravel-echo-react`, `-vue` and `-svelte` may need an npm owner, if npm cannot configure a trusted publisher for a package that does not exist yet. In that case an npm owner publishes `2.0.0-rc.0` of those packages once by hand, from the tarballs that CI built, and then configures the trusted publisher.
+
+## 1.x maintenance releases
+
+1.x releases (`@ably/laravel-echo` 1.x only) are made from the `master` branch, following the release process documented there. They are published under the npm dist-tag `latest-1`, so that they don't replace 2.x as `latest`, and their GitHub releases are not marked as the latest release.
