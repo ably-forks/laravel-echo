@@ -91,7 +91,7 @@ export type ModelEvents<T extends string> =
  *
  * @example
  * // Alternative: Module augmentation
- * declare module '@laravel/echo-vue' {
+ * declare module '@ably/laravel-echo-vue' {
  *   interface Events {
  *     OrganizationUpdated: {
  *       id: number;

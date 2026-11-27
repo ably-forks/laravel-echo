@@ -108,7 +108,7 @@ export type ModelEvents<T extends string> =
  *
  * @example
  * // Alternative: Module augmentation
- * declare module '@laravel/echo-svelte' {
+ * declare module '@ably/laravel-echo-svelte' {
  *   interface Events {
  *     OrganizationUpdated: {
  *       id: number;

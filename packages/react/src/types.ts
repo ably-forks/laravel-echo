@@ -89,7 +89,7 @@ export type ModelEvents<T extends string> =
  *
  * @example
  * // Alternative: Module augmentation
- * declare module '@laravel/echo-react' {
+ * declare module '@ably/laravel-echo-react' {
  *   interface Events {
  *     OrganizationUpdated: {
  *       id: number;

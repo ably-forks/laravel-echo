@@ -1,17 +1,18 @@
 {
-    "name": "@laravel/echo-react",
-    "version": "2.6.3",
-    "description": "React hooks for seamless integration with Laravel Echo.",
+    "name": "@ably/laravel-echo-react",
+    "version": "2.0.0",
+    "description": "React hooks for @ably/laravel-echo.",
     "keywords": [
         "laravel",
         "pusher",
         "ably",
         "react"
     ],
-    "homepage": "https://github.com/laravel/echo/tree/2.x/packages/react",
+    "homepage": "https://github.com/ably-forks/laravel-echo/tree/2.x/packages/react",
     "repository": {
         "type": "git",
-        "url": "https://github.com/laravel/echo"
+        "url": "https://github.com/ably-forks/laravel-echo",
+        "directory": "packages/react"
     },
     "license": "MIT",
     "author": {
@@ -24,8 +25,6 @@
     "scripts": {
         "build": "vp build && FORMAT=iife vp build && tsc -p tsconfig.build.json",
         "dev": "vp dev",
-        "prepublish": "pnpm run build",
-        "release": "vp test --run && pnpm publish --no-git-checks",
         "test": "vp test"
     },
     "devDependencies": {
@@ -44,6 +43,7 @@
         "vite-plus": "catalog:"
     },
     "peerDependencies": {
+        "@ably/laravel-echo": "^2.0.0-rc.0",
         "pusher-js": "*",
         "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0",
         "socket.io-client": "*"
@@ -63,7 +63,7 @@
         }
     },
     "engines": {
-        "node": "^20.19.0 || >=22.12.0"
+        "node": ">=22"
     },
     "exports": {
         ".": {
@@ -74,7 +74,10 @@
         }
     },
     "files": [
-        "dist",
-        "resources/boost"
-    ]
+        "dist"
+    ],
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    }
 }
