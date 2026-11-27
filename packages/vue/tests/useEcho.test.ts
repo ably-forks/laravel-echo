@@ -175,6 +175,8 @@ vi.mock("@ably/laravel-echo", () => {
     Echo.prototype.connectionStatus = vi.fn(() => "connected");
     Echo.prototype.socketId = vi.fn(() => undefined);
     Echo.prototype.connector = { onConnectionChange: vi.fn(() => () => {}) };
+    // fork (provisional: P-03): the composables subscribe through Echo.onConnectionChange
+    Echo.prototype.onConnectionChange = vi.fn(() => () => {});
 
     return { default: Echo };
 });
@@ -323,7 +325,8 @@ describe("useEcho hook", async () => {
         wrapper.vm.leaveChannel();
 
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            "private-" + channelName,
+            channelName,
+            "private",
         );
     });
 
@@ -356,7 +359,10 @@ describe("useEcho hook", async () => {
 
         wrapper.vm.leaveChannel();
 
-        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(channelName);
+        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
+            channelName,
+            "public",
+        );
     });
 
     it("listen method adds event listeners", async () => {
@@ -539,7 +545,10 @@ describe("useEchoPublic hook", async () => {
 
         wrapper.unmount();
 
-        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(channelName);
+        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
+            channelName,
+            "public",
+        );
     });
 
     it("won't subscribe multiple times to the same channel", async () => {
@@ -562,7 +571,10 @@ describe("useEchoPublic hook", async () => {
         expect(echoInstance.leaveChannel).not.toHaveBeenCalled();
 
         wrapper2.unmount();
-        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(channelName);
+        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
+            channelName,
+            "public",
+        );
     });
 
     it("can leave a channel", async () => {
@@ -574,7 +586,10 @@ describe("useEchoPublic hook", async () => {
 
         wrapper.vm.leaveChannel();
 
-        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(channelName);
+        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
+            channelName,
+            "public",
+        );
     });
 
     it("can leave all channel variations", async () => {
@@ -677,7 +692,8 @@ describe("useEchoPresence hook", async () => {
         wrapper.unmount();
 
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `presence-${channelName}`,
+            channelName,
+            "presence",
         );
     });
 
@@ -702,7 +718,8 @@ describe("useEchoPresence hook", async () => {
 
         wrapper2.unmount();
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `presence-${channelName}`,
+            channelName,
+            "presence",
         );
     });
 
@@ -716,7 +733,8 @@ describe("useEchoPresence hook", async () => {
         wrapper.vm.leaveChannel();
 
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `presence-${channelName}`,
+            channelName,
+            "presence",
         );
     });
 
@@ -942,7 +960,8 @@ describe("useEchoNotification hook", async () => {
 
         expect(channel.stopListeningForNotification).toHaveBeenCalled();
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `private-${channelName}`,
+            channelName,
+            "private",
         );
     });
 
@@ -969,7 +988,8 @@ describe("useEchoNotification hook", async () => {
 
         wrapper2.unmount();
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `private-${channelName}`,
+            channelName,
+            "private",
         );
     });
 
@@ -986,7 +1006,8 @@ describe("useEchoNotification hook", async () => {
         wrapper.vm.leaveChannel();
 
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `private-${channelName}`,
+            channelName,
+            "private",
         );
     });
 
@@ -1121,12 +1142,10 @@ describe("useSocketId composable", () => {
             .fn()
             .mockReturnValueOnce(undefined)
             .mockReturnValue("new-socket.abc123");
-        (Echo as any).prototype.connector = {
-            onConnectionChange: vi.fn((cb: () => void) => {
-                connectionCallback = cb;
-                return () => {};
-            }),
-        };
+        (Echo as any).prototype.onConnectionChange = vi.fn((cb: () => void) => {
+            connectionCallback = cb;
+            return () => {};
+        });
 
         const TestComponent = defineComponent({
             setup() {
