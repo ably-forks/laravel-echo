@@ -19,16 +19,19 @@
         "name": "Taylor Otwell"
     },
     "type": "module",
-    "main": "dist/echo.common.js",
+    "main": "dist/echo.common.cjs",
     "module": "dist/echo.js",
     "types": "dist/echo.d.ts",
     "scripts": {
         "build": "vp build && FORMAT=iife vp build && tsc -p tsconfig.build.json",
         "build:js": "vp build && FORMAT=iife vp build",
         "dev": "vp dev",
-        "test": "vp test",
-        "test:browser-build": "echo \"enabled in Phase 04\" && exit 1",
-        "test:bundles": "echo \"enabled in Phase 04\" && exit 1"
+        "test": "vp test --run --project unit --project ably",
+        "test:sandbox": "vp test --run --project sandbox",
+        "test:browser-build": "vp test --run --project browser-build",
+        "test:bundles": "vp test --run --project bundles",
+        "test:all": "vp test --run",
+        "test:compat": "tsc -p tests/compat/tsconfig.json"
     },
     "devDependencies": {
         "@ably/pubsub-server": "^3.0.0",
@@ -69,7 +72,7 @@
         ".": {
             "types": "./dist/echo.d.ts",
             "import": "./dist/echo.js",
-            "require": "./dist/echo.common.js"
+            "require": "./dist/echo.common.cjs"
         },
         "./iife": "./dist/echo.iife.js"
     },

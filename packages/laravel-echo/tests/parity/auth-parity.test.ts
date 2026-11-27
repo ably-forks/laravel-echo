@@ -1,3 +1,5 @@
+import { vi, describe, test, expect, beforeEach } from "vite-plus/test";
+import type { Mock } from "vite-plus/test";
 /**
  * AblyAuth callback <-> promise bridges: authCallback, tryAuthorizeOnSameConnection, and the patched _attach
  * (beforeChannelAttach) error callback.
@@ -20,14 +22,14 @@ class FakeRealtimeChannel {
     }
 }
 
-const makeAuth = (requestTokenFn: Function, authorize: jest.Mock = jest.fn((_, opts) => Promise.resolve(opts.token))) => {
+const makeAuth = (requestTokenFn: Function, authorize: Mock = vi.fn((_, opts) => Promise.resolve(opts.token))) => {
     const client: any = {
         channels: { get: (n: string) => Object.assign(new FakeRealtimeChannel(n), { client }) },
-        getTimestamp: jest.fn(() => Promise.resolve(Date.now())),
+        getTimestamp: vi.fn(() => Promise.resolve(Date.now())),
         getTimestampUsingOffset: () => Date.now(),
         auth: { tokenDetails: null, authorize, clientId: 'user1' },
-        connection: { on: jest.fn(), off: jest.fn() },
-        connect: jest.fn(),
+        connection: { on: vi.fn(), off: vi.fn() },
+        connect: vi.fn(),
     };
     const connector: any = { ably: client, channels: {} };
     const auth = new AblyAuth(connector, {
@@ -44,7 +46,7 @@ describe('authCallback (ably-facing, callback style since 1.0.6)', () => {
     test('success: ably callback called once with (null, tokenDetails)', async () => {
         const jwt = makeJwt();
         const { auth } = makeAuth(async () => ({ token: jwt }));
-        const cb = jest.fn();
+        const cb = vi.fn();
         await (auth.options.authCallback as any)({}, cb);
         expect(cb).toHaveBeenCalledTimes(1);
         expect(cb.mock.calls[0][0]).toBeNull();
@@ -55,14 +57,14 @@ describe('authCallback (ably-facing, callback style since 1.0.6)', () => {
     test('requestTokenFn rejects: ably callback called once with (err, null)', async () => {
         const err = new Error('auth endpoint down');
         const { auth } = makeAuth(() => Promise.reject(err));
-        const cb = jest.fn();
+        const cb = vi.fn();
         await (auth.options.authCallback as any)({}, cb);
         expect(cb.mock.calls).toEqual([[err, null]]);
     });
 
     test('malformed token: ably callback called once with an error', async () => {
         const { auth } = makeAuth(async () => ({ token: 'not-a-jwt' }));
-        const cb = jest.fn();
+        const cb = vi.fn();
         await (auth.options.authCallback as any)({}, cb);
         expect(cb).toHaveBeenCalledTimes(1);
         expect(cb.mock.calls[0][0]).toBeInstanceOf(Error);
@@ -74,7 +76,7 @@ describe('authCallback (ably-facing, callback style since 1.0.6)', () => {
     });
     test('if the ably callback throws on success it is not called a second time with that exception', async () => {
         const { auth } = makeAuth(async () => ({ token: makeJwt() }));
-        const cb = jest.fn((err) => {
+        const cb = vi.fn((err) => {
             if (!err) throw new Error('internal');
         });
         await (auth.options.authCallback as any)({}, cb).catch(() => undefined);
@@ -85,12 +87,12 @@ describe('authCallback (ably-facing, callback style since 1.0.6)', () => {
 describe('tryAuthorizeOnSameConnection', () => {
     test('success / failure: callback once', async () => {
         const td = { token: 'x' };
-        const ok = makeAuth(async () => ({ token: makeJwt() }), jest.fn(() => Promise.resolve(td)));
-        const cb1 = jest.fn();
+        const ok = makeAuth(async () => ({ token: makeJwt() }), vi.fn(() => Promise.resolve(td)));
+        const cb1 = vi.fn();
         ok.auth.tryAuthorizeOnSameConnection({}, cb1);
         const err = new Error('authorize failed');
-        const ko = makeAuth(async () => ({ token: makeJwt() }), jest.fn(() => Promise.reject(err)));
-        const cb2 = jest.fn();
+        const ko = makeAuth(async () => ({ token: makeJwt() }), vi.fn(() => Promise.reject(err)));
+        const cb2 = vi.fn();
         ko.auth.tryAuthorizeOnSameConnection({}, cb2);
         await settle();
         expect(cb1.mock.calls).toEqual([[null, td]]);
@@ -99,7 +101,7 @@ describe('tryAuthorizeOnSameConnection', () => {
 
     test('a callback that throws on success is not re-invoked with that exception', async () => {
         const { auth } = makeAuth(async () => ({ token: makeJwt() }));
-        const cb = jest.fn((err) => {
+        const cb = vi.fn((err) => {
             if (!err) throw new Error('internal attach threw');
         });
         auth.tryAuthorizeOnSameConnection({}, cb);
@@ -112,13 +114,13 @@ describe('beforeChannelAttach (patched RealtimeChannel._attach)', () => {
     const attachVia = (auth: AblyAuth, name: string) => {
         auth.enableAuthorizeBeforeChannelAttach();
         const ch = Object.assign(new FakeRealtimeChannel(name), { client: auth.ablyClient() });
-        const cb = jest.fn();
+        const cb = vi.fn();
         ch._attach(false, null, cb);
         return { ch, cb };
     };
 
     test('public channel: internal attach called immediately with the original callback', async () => {
-        const { auth } = makeAuth(jest.fn());
+        const { auth } = makeAuth(vi.fn());
         const { ch, cb } = attachVia(auth, 'public:x');
         expect(FakeRealtimeChannel.internalAttachCalls).toEqual([['public:x', false, null]]);
         expect(cb.mock.calls).toEqual([[null]]);
@@ -127,7 +129,7 @@ describe('beforeChannelAttach (patched RealtimeChannel._attach)', () => {
 
     test('private channel success: token requested, authorize called, internal attach called once', async () => {
         const jwt = makeJwt();
-        const authorize = jest.fn((_, opts) => Promise.resolve(opts.token));
+        const authorize = vi.fn((_, opts) => Promise.resolve(opts.token));
         const { auth } = makeAuth(async (channel) => ({ token: jwt, info: { channel } }), authorize);
         const { ch, cb } = attachVia(auth, 'private:x');
         await settle();
@@ -141,7 +143,7 @@ describe('beforeChannelAttach (patched RealtimeChannel._attach)', () => {
     test.each([
         ['requestTokenFn rejects', () => Promise.reject(new Error('endpoint 403')), undefined],
         ['requestTokenFn returns a malformed token', async () => ({ token: 'garbage' }), undefined],
-        ['authorize rejects', async () => ({ token: makeJwt() }), jest.fn(() => Promise.reject(new Error('40102')))],
+        ['authorize rejects', async () => ({ token: makeJwt() }), vi.fn(() => Promise.reject(new Error('40102')))],
     ])('%s: attach callback gets the error once, internal attach not called, authorizing reset', async (_, fn, authorize) => {
         const { auth } = makeAuth(fn as any, authorize as any);
         const { ch, cb } = attachVia(auth, 'private:y');
@@ -156,8 +158,8 @@ describe('beforeChannelAttach (patched RealtimeChannel._attach)', () => {
         const { auth } = makeAuth(async () => ({ token: makeJwt() }));
         auth.enableAuthorizeBeforeChannelAttach();
         const ch = Object.assign(new FakeRealtimeChannel('private:z'), { client: auth.ablyClient() });
-        const cb1 = jest.fn();
-        const cb2 = jest.fn();
+        const cb1 = vi.fn();
+        const cb2 = vi.fn();
         ch._attach(false, null, cb1);
         ch._attach(false, null, cb2); // e.g. channel.subscribe() -> attach() while the first attach is authorizing
         await settle();
@@ -172,7 +174,7 @@ describe('beforeChannelAttach (patched RealtimeChannel._attach)', () => {
 
         auth.enableAuthorizeBeforeChannelAttach();
         const ch = Object.assign(new FakeRealtimeChannel('private:w'), { client });
-        const cb = jest.fn();
+        const cb = vi.fn();
         try {
             ch._attach(false, null, cb);
         } catch (e) {
@@ -193,7 +195,7 @@ describe('nothing Echo scheduled reopens a connection the app closed (RTC8c: aut
         const pending = deferred();
         const { auth, client } = makeAuth(() => pending.promise);
         client.connection.state = 'connected';
-        const cb = jest.fn();
+        const cb = vi.fn();
         const run = (auth.options.authCallback as any)({}, cb);
         client.connection.state = 'closing'; // Echo.disconnect() while the token request is in flight
         pending.resolve({ token: makeJwt() });
@@ -207,11 +209,11 @@ describe('nothing Echo scheduled reopens a connection the app closed (RTC8c: aut
         const pending = deferred();
         const { auth, client, connector } = makeAuth(() => pending.promise);
         client.connection.state = 'connected';
-        const cb = jest.fn();
+        const cb = vi.fn();
         const run = (auth.options.authCallback as any)({}, cb);
         // AblyConnector.connect() again: releaseClient() closes the old client and the connector now holds a new one
         client.connection.state = 'closed';
-        connector.ably = { connection: { state: 'connecting', on: jest.fn(), off: jest.fn() }, auth: {}, connect: jest.fn() };
+        connector.ably = { connection: { state: 'connecting', on: vi.fn(), off: vi.fn() }, auth: {}, connect: vi.fn() };
         pending.resolve({ token: makeJwt() });
         await run;
         expect(cb).toHaveBeenCalledTimes(1);
@@ -223,9 +225,9 @@ describe('nothing Echo scheduled reopens a connection the app closed (RTC8c: aut
         const pending = deferred();
         const { auth, client, connector } = makeAuth(() => pending.promise);
         client.connection.state = 'closed'; // the app called authorize() on a closed client: the closed check is skipped
-        const cb = jest.fn();
+        const cb = vi.fn();
         const run = (auth.options.authCallback as any)({}, cb);
-        connector.ably = { connection: { state: 'connecting', on: jest.fn(), off: jest.fn() }, auth: {}, connect: jest.fn() };
+        connector.ably = { connection: { state: 'connecting', on: vi.fn(), off: vi.fn() }, auth: {}, connect: vi.fn() };
         pending.resolve({ token: makeJwt() });
         await run;
         expect(cb).toHaveBeenCalledTimes(1);
@@ -236,7 +238,7 @@ describe('nothing Echo scheduled reopens a connection the app closed (RTC8c: aut
     test('a token request that starts on a closed connection (the app calls authorize() itself) is still delivered', async () => {
         const { auth, client } = makeAuth(async () => ({ token: makeJwt() }));
         client.connection.state = 'closed';
-        const cb = jest.fn();
+        const cb = vi.fn();
         await (auth.options.authCallback as any)({}, cb);
         expect(cb.mock.calls[0][0]).toBeNull();
         expect(cb.mock.calls[0][1]).toBeTruthy();
@@ -245,7 +247,7 @@ describe('nothing Echo scheduled reopens a connection the app closed (RTC8c: aut
     test.each(['closing', 'closed'])('tryAuthorizeOnSameConnection on a %s connection does not call authorize()', async (state) => {
         const { auth, client } = makeAuth(async () => ({ token: makeJwt() }));
         client.connection.state = state;
-        const cb = jest.fn();
+        const cb = vi.fn();
         auth.tryAuthorizeOnSameConnection({}, cb);
         await settle();
         expect(client.auth.authorize).not.toHaveBeenCalled();

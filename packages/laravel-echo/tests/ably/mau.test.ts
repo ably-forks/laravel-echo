@@ -1,3 +1,5 @@
+import { vi, describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from "vite-plus/test";
+import type { MockInstance } from "vite-plus/test";
 /**
  * MAU (monthly active users) behaviour of Echo, against a real MAU-enforced sandbox app (`setup({ mau: true })`): the
  * server requires an identified client, so a connection with a null or '*' clientId is refused with 40161.
@@ -14,7 +16,7 @@ import { AblyConnector } from '../../src/connector';
 import { trackUnhandledRejections } from '../parity/fake-ably';
 import waitForExpect from 'wait-for-expect';
 
-jest.setTimeout(45000);
+vi.setConfig({ testTimeout: 45000, hookTimeout: 45000 });
 
 /**
  * Diagnostics for the once-only hint check (see dumpHintDiagnostics). Every AblyConnector and Ably client created in
@@ -84,7 +86,7 @@ describe('MAU account (real MAU-enforced sandbox app)', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
     let echo: Echo | undefined;
-    let errorSpy: jest.SpyInstance;
+    let errorSpy: MockInstance;
     let skipReason: string | undefined;
     let ready = false; // beforeAll completed: the per-test hooks only run then, so a setup failure is the only error
 
@@ -138,7 +140,7 @@ describe('MAU account (real MAU-enforced sandbox app)', () => {
         mockAuthServer.clientId = null;
         mockAuthServer.guestClientId = false;
         mockAuthServer.rotateGuestId();
-        errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     });
 
     afterEach(async () => {
@@ -178,12 +180,12 @@ describe('MAU account (real MAU-enforced sandbox app)', () => {
 
         const publicChannel = echo.channel('mau') as AblyChannel;
         await new Promise((resolve) => publicChannel.subscribed(resolve));
-        const publicError = jest.fn();
+        const publicError = vi.fn();
         publicChannel.error(publicError);
 
         mockAuthServer.clientId = 'user1';
         const privateChannel = echo.private('mau') as AblyPrivateChannel;
-        const privateError = jest.fn();
+        const privateError = vi.fn();
         privateChannel.error(privateError);
         const reattached = Promise.all([
             new Promise((resolve) => publicChannel.subscribed(resolve)),

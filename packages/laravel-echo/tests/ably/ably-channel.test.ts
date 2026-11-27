@@ -1,3 +1,4 @@
+import { vi, describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from "vite-plus/test";
 import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
@@ -5,7 +6,7 @@ import { AblyChannel, AblyPresenceChannel } from '../../src/channel';
 import safeAssert, { execute } from './setup/utils';
 import waitForExpect from 'wait-for-expect';
 
-jest.setTimeout(20000);
+vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
 describe('AblyChannel', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
@@ -29,54 +30,56 @@ describe('AblyChannel', () => {
         });
     });
 
-    afterEach((done) => {
-        echo.disconnect();
-        echo.connector.ably.connection.once('closed', () => {
-            done();
+    afterEach(async () => {
+        await new Promise<void>((resolve) => {
+            echo.disconnect();
+            echo.connector.ably.connection.once('closed', () => {
+                resolve();
+            });
         });
     });
 
-    test('channel subscription', (done) => {
+    test('channel subscription', () => new Promise<void>((resolve) => {
         echo.channel('test').subscribed(() => {
-            done();
+            resolve();
         });
-    });
+    }));
 
-    test('Listen to a default broadcaster event', (done) => {
+    test('Listen to a default broadcaster event', () => new Promise<void>((resolve, reject) => {
         const publicChannel = echo.channel('test') as AblyChannel;
         publicChannel
             .subscribed(() => {
                 mockAuthServer.broadcast('public:test', 'App\\Events\\testEvent', 'Hello there');
             })
             .listen('testEvent', (data) => {
-                safeAssert(() => expect(data).toBe('Hello there'), done, true);
+                safeAssert(() => expect(data).toBe('Hello there'), { resolve, reject }, true);
             });
-    });
+    }));
 
     // https://laravel.com/docs/9.x/broadcasting#broadcast-name
-    test('Listen to a broadcast as event', (done) => {
+    test('Listen to a broadcast as event', () => new Promise<void>((resolve, reject) => {
         const publicChannel = echo.channel('test') as AblyChannel;
         publicChannel
             .subscribed(() => {
                 mockAuthServer.broadcast('public:test', 'testEvent', 'Hello there');
             })
             .listen('.testEvent', (data) => {
-                safeAssert(() => expect(data).toBe('Hello there'), done, true);
+                safeAssert(() => expect(data).toBe('Hello there'), { resolve, reject }, true);
             });
-    });
+    }));
 
-    test('Listen to a whisper', (done) => {
+    test('Listen to a whisper', () => new Promise<void>((resolve, reject) => {
         const publicChannel = echo.channel('test') as AblyChannel;
         publicChannel
             .subscribed(() => {
                 mockAuthServer.broadcast('public:test', 'client-msg', 'Hello there');
             })
             .listenForWhisper('msg', (data) => {
-                safeAssert(() => expect(data).toBe('Hello there'), done, true);
+                safeAssert(() => expect(data).toBe('Hello there'), { resolve, reject }, true);
             });
-    });
+    }));
 
-    test('Listen to a notification', (done) => {
+    test('Listen to a notification', () => new Promise<void>((resolve, reject) => {
         const publicChannel = echo.channel('test') as AblyChannel;
         publicChannel
             .subscribed(() => {
@@ -87,11 +90,11 @@ describe('AblyChannel', () => {
                 );
             })
             .notification((data) => {
-                safeAssert(() => expect(data).toBe('Hello there'), done, true);
+                safeAssert(() => expect(data).toBe('Hello there'), { resolve, reject }, true);
             });
-    });
+    }));
 
-    test('Listen to all events', (done) => {
+    test('Listen to all events', () => new Promise<void>((resolve, reject) => {
         const publicChannel = echo.channel('test1') as AblyChannel;
         publicChannel
             .subscribed(() => {
@@ -103,17 +106,17 @@ describe('AblyChannel', () => {
                         expect(eventName).toBe('.testEvent');
                         expect(data).toBe('Hello there');
                     },
-                    done,
+                    { resolve, reject },
                     true
                 );
             });
-    });
+    }));
 
     test('stop listening to a event', async () => {
         const publicChannel = echo.channel('test') as AblyChannel;
-        const eventHandler1 = jest.fn();
-        const eventHandler2 = jest.fn();
-        const eventHandler3 = jest.fn();
+        const eventHandler1 = vi.fn();
+        const eventHandler2 = vi.fn();
+        const eventHandler3 = vi.fn();
 
         await new Promise((resolve) => {
             publicChannel
@@ -147,35 +150,35 @@ describe('AblyChannel', () => {
 
         await broadcastAndWaitForDelivery(4);
 
-        expect(eventHandler1).toBeCalledTimes(4);
-        expect(eventHandler2).toBeCalledTimes(4);
-        expect(eventHandler3).toBeCalledTimes(4);
+        expect(eventHandler1).toHaveBeenCalledTimes(4);
+        expect(eventHandler2).toHaveBeenCalledTimes(4);
+        expect(eventHandler3).toHaveBeenCalledTimes(4);
 
-        jest.clearAllMocks();
+        vi.clearAllMocks();
         publicChannel.stopListening('.testEvent', eventHandler1);
 
         await broadcastAndWaitForDelivery(3);
 
-        expect(eventHandler1).toBeCalledTimes(0);
-        expect(eventHandler2).toBeCalledTimes(3);
-        expect(eventHandler3).toBeCalledTimes(3);
+        expect(eventHandler1).toHaveBeenCalledTimes(0);
+        expect(eventHandler2).toHaveBeenCalledTimes(3);
+        expect(eventHandler3).toHaveBeenCalledTimes(3);
 
-        jest.clearAllMocks();
+        vi.clearAllMocks();
         publicChannel.stopListening('.testEvent');
 
         await broadcastAndWaitForDelivery(3);
 
-        expect(eventHandler1).toBeCalledTimes(0);
-        expect(eventHandler2).toBeCalledTimes(0);
-        expect(eventHandler3).toBeCalledTimes(0);
+        expect(eventHandler1).toHaveBeenCalledTimes(0);
+        expect(eventHandler2).toHaveBeenCalledTimes(0);
+        expect(eventHandler3).toHaveBeenCalledTimes(0);
     });
 
     // internally calls stop listening to a event
     test('stop listening to a whisper/client-event', async () => {
         const publicChannel = echo.channel('test') as AblyChannel;
-        const eventHandler1 = jest.fn();
-        const eventHandler2 = jest.fn();
-        const eventHandler3 = jest.fn();
+        const eventHandler1 = vi.fn();
+        const eventHandler2 = vi.fn();
+        const eventHandler3 = vi.fn();
 
         await new Promise((resolve) => {
             publicChannel
@@ -189,21 +192,21 @@ describe('AblyChannel', () => {
         execute(() => mockAuthServer.broadcast('public:test', 'client-msg2', 'Hello there'), 1);
 
         await waitForExpect(() => {
-            expect(eventHandler1).toBeCalledTimes(4);
-            expect(eventHandler2).toBeCalledTimes(4);
-            expect(eventHandler3).toBeCalledTimes(1);
+            expect(eventHandler1).toHaveBeenCalledTimes(4);
+            expect(eventHandler2).toHaveBeenCalledTimes(4);
+            expect(eventHandler3).toHaveBeenCalledTimes(1);
         });
 
-        jest.clearAllMocks();
+        vi.clearAllMocks();
         publicChannel.stopListeningForWhisper('msg', eventHandler1);
 
         execute(() => mockAuthServer.broadcast('public:test', 'client-msg', 'Hello there'), 3);
         execute(() => mockAuthServer.broadcast('public:test', 'client-msg2', 'Hello there'), 2);
 
         await waitForExpect(() => {
-            expect(eventHandler1).toBeCalledTimes(0);
-            expect(eventHandler2).toBeCalledTimes(3);
-            expect(eventHandler3).toBeCalledTimes(2);
+            expect(eventHandler1).toHaveBeenCalledTimes(0);
+            expect(eventHandler2).toHaveBeenCalledTimes(3);
+            expect(eventHandler3).toHaveBeenCalledTimes(2);
         });
     });
 

@@ -1,0 +1,19 @@
+{
+    // Type-checks upstream laravel-echo 2.x usage (upstream-usage.ts, via the `laravel-echo` mapping) and the fork's
+    // additions (fork-usage.ts, via the package's own `exports`) against the built declarations. Build first.
+    "compilerOptions": {
+        "strict": true,
+        "noEmit": true,
+        "target": "es2022",
+        "module": "esnext",
+        "moduleResolution": "bundler",
+        "lib": ["es2022", "dom"],
+        "types": [],
+        "skipLibCheck": true,
+        "paths": {
+            "laravel-echo": ["../../dist/echo.d.ts"],
+            "laravel-echo/dist/connector": ["../../dist/connector/index.d.ts"]
+        }
+    },
+    "files": ["upstream-usage.ts", "fork-usage.ts"]
+}

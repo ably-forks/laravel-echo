@@ -1,3 +1,4 @@
+import { describe, test, expect } from "vite-plus/test";
 /**
  * Guards the package's runtime export surface (R26). `import type` is elided by TypeScript, so a value export
  * that is accidentally imported as a type silently disappears from the ESM/CJS bundles.

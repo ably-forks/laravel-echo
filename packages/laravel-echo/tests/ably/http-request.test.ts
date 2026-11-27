@@ -1,3 +1,5 @@
+import { vi, describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from "vite-plus/test";
+import type { Mock } from "vite-plus/test";
 import { createServer, Server } from 'http';
 import { AddressInfo } from 'net';
 import { httpRequestAsync } from '../../src/channel/ably/utils';
@@ -84,10 +86,10 @@ describe('httpRequestAsync', () => {
 
     describe('credentials', () => {
         const realFetch = global.fetch;
-        let fetchMock: jest.Mock;
+        let fetchMock: Mock;
 
         beforeEach(() => {
-            fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '{}' });
+            fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '{}' });
             global.fetch = fetchMock;
         });
 

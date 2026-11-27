@@ -1,3 +1,4 @@
+import { vi, describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from "vite-plus/test";
 import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
@@ -6,7 +7,7 @@ import { createClient } from '@ably/pubsub-device';
 import waitForExpect from 'wait-for-expect';
 import { trackUnhandledRejections } from '../parity/fake-ably';
 
-jest.setTimeout(60000);
+vi.setConfig({ testTimeout: 60000, hookTimeout: 60000 });
 
 /**
  * Identity switch on a RENEWED connection token: another tab logged in or out, so the next token the page is handed
@@ -170,7 +171,7 @@ describe('AblyRenewalSwitch', () => {
         await subscribedAll;
         await waitForExpect(() => expect(echo.connector.ably.auth.clientId).toBe('user1'));
         const seen = await observe('public:x');
-        const publicErrors = jest.fn();
+        const publicErrors = vi.fn();
         const privateErrors: any[] = [];
         const presenceErrors: any[] = [];
         publicChannel.error(publicErrors);
@@ -211,7 +212,7 @@ describe('AblyRenewalSwitch', () => {
         await subscribedAll;
         await waitForExpect(() => expect(echo.connector.ably.auth.clientId).toBe('user1'));
         const seen = await observe('public:x');
-        const publicErrors = jest.fn();
+        const publicErrors = vi.fn();
         const privateErrors: any[] = [];
         const presenceErrors: any[] = [];
         publicChannel.error(publicErrors);
@@ -271,7 +272,7 @@ describe('AblyRenewalSwitch', () => {
         }
         await waitForExpect(() => expect(echo.connector.ably.auth.clientId).toBe('user1'));
         const seen = await observe('public:x');
-        const errorSpy = jest.fn();
+        const errorSpy = vi.fn();
         publicChannel.error(errorSpy);
         const conn = watchConnection();
 
@@ -305,7 +306,7 @@ describe('AblyRenewalSwitch', () => {
         expect(echo.connector.ably.auth.clientId).toBe(mockAuthServer.guestId);
         const publicChannel = echo.channel('r4') as AblyChannel;
         await new Promise((resolve) => publicChannel.subscribed(resolve));
-        const errorSpy = jest.fn();
+        const errorSpy = vi.fn();
         publicChannel.error(errorSpy);
         const seen = await observe('public:x');
         const conn = watchConnection();
@@ -334,7 +335,7 @@ describe('AblyRenewalSwitch', () => {
         expect(echo.connector.ably.auth.clientId).toBeFalsy();
         const publicChannel = echo.channel('r5') as AblyChannel;
         await new Promise((resolve) => publicChannel.subscribed(resolve));
-        const errorSpy = jest.fn();
+        const errorSpy = vi.fn();
         publicChannel.error(errorSpy);
         const seen = await observe('public:x');
         const conn = watchConnection();
@@ -372,7 +373,7 @@ describe('AblyRenewalSwitch', () => {
         await attached(presenceChannel);
         await waitForExpect(() => expect(echo.connector.ably.auth.clientId).toBe('user1'));
         const seen = await observe('public:x');
-        const publicErrors = jest.fn();
+        const publicErrors = vi.fn();
         const privateErrors: any[] = [];
         const presenceErrors: any[] = [];
         publicChannel.error(publicErrors);
@@ -409,7 +410,7 @@ describe('AblyRenewalSwitch', () => {
         const publicChannel = echo.channel('h3') as AblyChannel;
         await new Promise((resolve) => publicChannel.subscribed(resolve));
         await attached(publicChannel);
-        const publicErrors = jest.fn();
+        const publicErrors = vi.fn();
         publicChannel.error(publicErrors);
         const conn = watchConnection();
 
@@ -421,7 +422,7 @@ describe('AblyRenewalSwitch', () => {
         await attached(publicChannel);
         // a private channel is only authorized for a signed-in user: join it after the switch
         const privateChannel = echo.private('h3') as AblyPrivateChannel;
-        const privateErrors = jest.fn();
+        const privateErrors = vi.fn();
         privateChannel.error(privateErrors);
         await new Promise((resolve) => privateChannel.subscribed(resolve));
         await attached(privateChannel);
@@ -504,10 +505,10 @@ describe('AblyRenewalSwitch', () => {
         await waitForExpect(() => expect(echo.connector.ably.auth.clientId ?? null).toBe(expectedId()));
         const publicChannel = echo.channel(channelName) as AblyChannel;
         await new Promise((resolve) => publicChannel.subscribed(resolve));
-        const errorSpy = jest.fn();
+        const errorSpy = vi.fn();
         publicChannel.error(errorSpy);
         const client = echo.connector.ably;
-        const authorizeSpy = jest.spyOn(client.auth, 'authorize');
+        const authorizeSpy = vi.spyOn(client.auth, 'authorize');
         const connectionId = client.connection.id;
         const clientId = client.auth.clientId;
         const conn = watchConnection();

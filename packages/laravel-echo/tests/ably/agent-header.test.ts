@@ -1,13 +1,15 @@
+import { describe, test, expect, beforeAll, afterAll } from "vite-plus/test";
 /**
  * R16: assert the real Ably-Agent header (not device internals or the private httpRequester): it must carry
  * laravel-echo/<version> and the ably-pubsub-device declaration that drives MAU billing. R14: LIB_VERSION guard.
  */
+import { readFileSync } from 'fs';
 import * as http from 'http';
 import { AddressInfo } from 'net';
 import Echo from '../../src/echo';
 import { AblyConnector } from '../../src/connector/ably-connector';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const pkg = require('../../package.json');
+
+const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
 
 describe('Ably-Agent header', () => {
     let server: http.Server;

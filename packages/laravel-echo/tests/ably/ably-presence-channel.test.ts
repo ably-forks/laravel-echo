@@ -1,10 +1,11 @@
+import { vi, describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from "vite-plus/test";
 import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
 import { AblyPresenceChannel } from '../../src/channel';
 import safeAssert from './setup/utils';
 
-jest.setTimeout(20000);
+vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
 
 let channelCounter = 0;
 // Unique per test and per run: a previous test's connection may still be a member of a shared channel for a moment.
@@ -33,22 +34,24 @@ describe('AblyPresenceChannel', () => {
         });
     });
 
-    afterEach((done) => {
-        echo.disconnect();
-        echo.connector.ably.connection.once('closed', () => {
-            done();
+    afterEach(async () => {
+        await new Promise<void>((resolve) => {
+            echo.disconnect();
+            echo.connector.ably.connection.once('closed', () => {
+                resolve();
+            });
         });
     });
 
-    test('channel subscription', (done) => {
+    test('channel subscription', () => new Promise<void>((resolve) => {
         const presenceChannel = echo.join(uniqueChannel('subscription')) as AblyPresenceChannel;
         presenceChannel.subscribed(() => {
             presenceChannel.unregisterSubscribed();
-            done();
+            resolve();
         });
-    });
+    }));
 
-    test('channel member list change', (done) => {
+    test('channel member list change', () => new Promise<void>((resolve, reject) => {
         const presenceChannel = echo.join(uniqueChannel('list')) as AblyPresenceChannel;
         presenceChannel.here((members, err) => {
             safeAssert(
@@ -59,13 +62,13 @@ describe('AblyPresenceChannel', () => {
                     expect(members[0].name).toBe('sacOO7');
                     expect(members[0]).toStrictEqual({ id: 'sacOO7@github.com', name: 'sacOO7' });
                 },
-                done,
+                { resolve, reject },
                 true
             );
         });
-    });
+    }));
 
-    test('member joined', (done) => {
+    test('member joined', () => new Promise<void>((resolve, reject) => {
         const presenceChannel = echo.join(uniqueChannel('joined')) as AblyPresenceChannel;
         presenceChannel.joining((memberData, memberMetaData) => {
             safeAssert(
@@ -73,13 +76,13 @@ describe('AblyPresenceChannel', () => {
                     expect(memberData).toStrictEqual({ id: 'sacOO7@github.com', name: 'sacOO7' });
                     expect(memberMetaData.clientId).toBe('sacOO7@github.com');
                 },
-                done,
+                { resolve, reject },
                 true
             );
         });
-    });
+    }));
 
-    test('member left', (done) => {
+    test('member left', () => new Promise<void>((resolve, reject) => {
         const presenceChannel = echo.join(uniqueChannel('left')) as AblyPresenceChannel;
         presenceChannel.leaving((memberData, memberMetaData) => {
             safeAssert(
@@ -87,10 +90,10 @@ describe('AblyPresenceChannel', () => {
                     expect(memberData).toStrictEqual({ name: 'sacOO7 leaving the channel' });
                     expect(memberMetaData.clientId).toBe('sacOO7@github.com');
                 },
-                done,
+                { resolve, reject },
                 true
             );
         });
         presenceChannel.joining(() => presenceChannel.leave({ name: 'sacOO7 leaving the channel' }));
-    });
+    }));
 });

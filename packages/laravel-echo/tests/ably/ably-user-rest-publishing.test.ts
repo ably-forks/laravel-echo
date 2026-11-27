@@ -1,3 +1,4 @@
+import { vi, describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from "vite-plus/test";
 import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
@@ -5,7 +6,7 @@ import { AblyChannel, AblyPrivateChannel } from '../../src/channel';
 import waitForExpect from 'wait-for-expect';
 import { fromBase64UrlEncoded } from '../../src/channel/ably/utils';
 
-jest.setTimeout(30000);
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
 describe('AblyUserRestPublishing', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
@@ -24,7 +25,7 @@ describe('AblyUserRestPublishing', () => {
         echoInstances = [];
     })
 
-    afterEach((done) => {
+    afterEach(async () => {
         let promises: Array<Promise<boolean>> = []
         for (const echo of echoInstances) {
             echo.disconnect();
@@ -35,9 +36,7 @@ describe('AblyUserRestPublishing', () => {
             })
             promises.push(promise);
         }
-        Promise.all(promises).then(_ => {
-            done();
-        })
+        await Promise.all(promises);
     });
 
     async function getGuestUserChannel(channelName: string) {

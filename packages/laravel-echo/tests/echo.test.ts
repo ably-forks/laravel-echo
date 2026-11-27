@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { NullConnector } from "../src/connector";
+import { AblyConnector } from "../src/connector/ably-connector";
 import Echo from "../src/echo";
 
 describe("Echo", () => {
@@ -51,6 +52,19 @@ describe("Echo", () => {
                 // eslint-disable-next-line @typescript-eslint/no-empty-function
                 new Echo({ broadcaster: () => {}, withoutInterceptors: true }),
         ).not.toThrow("Broadcaster function is not supported.");
+    });
+
+    test("it creates the native Ably connector for broadcaster ably (offline)", () => {
+        const echo = new Echo({
+            broadcaster: "ably",
+            withoutInterceptors: true,
+            autoConnect: false,
+            requestTokenFn: async () => "",
+        });
+
+        expect(echo.connector).toBeInstanceOf(AblyConnector);
+        expect(echo.connector.ably.connection.state).toBe("initialized");
+        echo.disconnect();
     });
 
     test("it will throw error for unsupported driver", () => {

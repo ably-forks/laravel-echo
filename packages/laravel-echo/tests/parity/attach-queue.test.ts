@@ -1,3 +1,4 @@
+import { vi, describe, test, expect } from "vite-plus/test";
 /**
  * Patched _attach (beforeChannelAttach): callers queued while a channel is authorizing (review P1, T18, CodeRabbit CR-3).
  * They settle with the outcome of that authorization and ATTACH. One of them can be ably's own fire-and-forget
@@ -47,11 +48,11 @@ const makeClient = (
     const channels: Record<string, FakeRealtimeChannel> = {};
     const client: any = {
         channels: { get: (n: string) => (channels[n] = channels[n] || Object.assign(new FakeRealtimeChannel(n), { client })) },
-        getTimestamp: jest.fn(() => Promise.resolve(Date.now())),
+        getTimestamp: vi.fn(() => Promise.resolve(Date.now())),
         getTimestampUsingOffset: () => Date.now(),
-        auth: { tokenDetails: null, authorize: jest.fn((_, o) => Promise.resolve(o.token)), clientId: 'user1' },
-        connection: { on: jest.fn(), off: jest.fn() },
-        connect: jest.fn(),
+        auth: { tokenDetails: null, authorize: vi.fn((_, o) => Promise.resolve(o.token)), clientId: 'user1' },
+        connection: { on: vi.fn(), off: vi.fn() },
+        connect: vi.fn(),
     };
     const connector: any = { ably: client, channels: {} };
     const auth = new AblyAuth(connector, {

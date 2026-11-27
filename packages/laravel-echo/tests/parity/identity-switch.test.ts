@@ -1,3 +1,4 @@
+import { vi, describe, test, expect, beforeEach, afterEach } from "vite-plus/test";
 /**
  * clientId switching without network. E1 authOptionsForToken, E2 re-armable 40102 handler, E3 switch window,
  * E4 error de-dup and an MAU 40161 attach failure (no unhandled rejection).
@@ -11,7 +12,7 @@ import { FakeEmitter, ECHO_OPTIONS, stubAuth, ablyError, makeFakeAbly, makeFakeA
 let unhandled: ReturnType<typeof trackUnhandledRejections>;
 beforeEach(() => (unhandled = trackUnhandledRejections()));
 afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
     unhandled.stop();
     expect(unhandled.rejections).toEqual([]);
 });
@@ -97,7 +98,7 @@ describe('E4: one error() call for a state change plus the identical attach() re
         let reject: (e: any) => void = () => undefined;
         fake.attach.mockImplementation(() => new Promise((_, r) => (reject = r)));
         const echoChannel = new AblyChannel(client, 'public:dedup', ECHO_OPTIONS);
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         echoChannel.error(errorListener);
         const reason = ablyError('denied', 40161);
         fake.transition('failed', reason);
@@ -115,7 +116,7 @@ describe('an MAU 40161 attach failure with listen() raises no unhandled rejectio
         const reason = ablyError('no capability, MAU', 40161);
         fake.attach.mockImplementation(() => Promise.reject(reason));
         const echoChannel = new AblyChannel(client, 'public:news', ECHO_OPTIONS);
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         echoChannel.error(errorListener);
         fake.transition('failed', reason);
         echoChannel.listen('A', () => undefined).listenToAll(() => undefined);
@@ -128,7 +129,7 @@ describe('an MAU 40161 attach failure with listen() raises no unhandled rejectio
 /** An Echo channel on `client` with an error listener. */
 const listened = (client: any, name = 'public:ch') => {
     const echoChannel = new AblyChannel(client, name, ECHO_OPTIONS);
-    const errorListener = jest.fn();
+    const errorListener = vi.fn();
     echoChannel.error(errorListener);
     return { echoChannel, fake: client.channels.get(name), errorListener };
 };
@@ -178,15 +179,15 @@ describe('E3: the identity-switch window', () => {
     });
 
     test('after the 30 s timeout a 40102 is delivered', () => {
-        jest.useFakeTimers();
+        vi.useFakeTimers();
         const client = makeFakeAblyClient('user1');
         const { fake, errorListener } = listened(client);
         beginIdentitySwitch(client);
-        jest.advanceTimersByTime(29_000);
+        vi.advanceTimersByTime(29_000);
         fake.transition('failed', ablyError('inside', SWITCH));
         expect(errorListener).not.toHaveBeenCalled();
         beginIdentitySwitch(client); // a fresh window, then let it run out
-        jest.advanceTimersByTime(30_000);
+        vi.advanceTimersByTime(30_000);
         fake.transition('failed', ablyError('after', SWITCH));
         expect(errorListener).toHaveBeenCalledTimes(1);
     });
@@ -206,7 +207,7 @@ describe('E3: the identity-switch window', () => {
         const client = makeFakeAblyClient('user1');
         const { fake, errorListener } = listened(client, 'private:room');
         client.auth.authorize.mockImplementation(() => Promise.reject(ablyError('clientId mismatch', SWITCH)));
-        const callback = jest.fn();
+        const callback = vi.fn();
         makeAuth(client).tryAuthorizeOnSameConnection({ token: { clientId: 'user2', token: 'x' } as any }, callback);
         await settle();
         expect(callback).toHaveBeenCalledTimes(1);
@@ -313,12 +314,12 @@ describe('E3: the identity-switch window', () => {
 describe('switchIdentityOnRenewal: a renewed token that carries another clientId', () => {
     /** Build the AblyAuth on a mutable connector, with a requestTokenFn returning the next queued clientId. */
     const setup = (clientId: string | null | undefined, connectionId: string | null = 'conn-1') => {
-        jest.useFakeTimers();
+        vi.useFakeTimers();
         const client = makeFakeAblyClient(clientId);
         client.connection.id = connectionId ?? undefined;
         client.connection.state = 'connected';
         const connector: any = { options: {}, ably: client, channels: {} };
-        const requestTokenFn = jest.fn(async () => ({ token: tokenFor(next) }));
+        const requestTokenFn = vi.fn(async () => ({ token: tokenFor(next) }));
         let next: string | null = 'user2';
         const auth = new AblyAuth(connector, {
             authEndpoint: 'http://127.0.0.1:1/broadcasting/auth',
@@ -347,7 +348,7 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
     test('no switch on the first token (no cached clientId, no connection yet), and the window stays closed', async () => {
         const { client, renew, fake, errorListener } = setup(undefined, null);
         await renew('user2');
-        jest.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(1000);
         expect(client.auth.authorize).not.toHaveBeenCalled();
         fake.transition('failed', ablyError('x', SWITCH));
         expect(errorListener).toHaveBeenCalledTimes(1);
@@ -357,7 +358,7 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
         const { client, renew } = setup('user1', null);
         client.connection.state = state === 'closed' ? 'connecting' : 'failed'; // closed: the app reconnects
         await renew('user2');
-        jest.advanceTimersByTime(0);
+        vi.advanceTimersByTime(0);
         expect(client.auth.authorize).toHaveBeenCalledTimes(1);
         expect(client.auth.authorize.mock.calls[0][1]).toMatchObject({ clientId: null, token: expect.objectContaining({ clientId: 'user2' }) });
     });
@@ -368,7 +369,7 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
     ])('cached clientId %s (null -> user): no authorize (ably-js adopts it), but the E3 window opens', async (_n, cached) => {
         const { client, renew, fake, errorListener, order } = setup(cached as any);
         const [error, token] = await renew('user1');
-        jest.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(1000);
         expect(error).toBeNull();
         expect(token.clientId).toBe('user1');
         expect(order).toEqual(['callback']);
@@ -382,7 +383,7 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
     test('no switch for the same clientId', async () => {
         const { client, renew, fake, errorListener } = setup('user1');
         await renew('user1');
-        jest.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(1000);
         expect(client.auth.authorize).not.toHaveBeenCalled();
         fake.transition('failed', ablyError('x', SWITCH));
         expect(errorListener).toHaveBeenCalledTimes(1);
@@ -399,7 +400,7 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
         expect(tokenDetails.clientId ?? null).toBe(newId);
         expect(order).toEqual(['callback']); // not before the timer runs
         expect(client.auth.authorize).not.toHaveBeenCalled();
-        jest.advanceTimersByTime(0);
+        vi.advanceTimersByTime(0);
         expect(order).toEqual(['callback', 'authorize']);
         expect(client.auth.authorize).toHaveBeenCalledTimes(1);
         const [tokenParams, authOptions] = client.auth.authorize.mock.calls[0];
@@ -407,7 +408,7 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
         expect(authOptions.clientId).toBeNull();
         expect(authOptions.token).toBe(tokenDetails);
         expect(authOptions.token.clientId ?? null).toBe(newId);
-        jest.advanceTimersByTime(60_000);
+        vi.advanceTimersByTime(60_000);
         expect(client.auth.authorize).toHaveBeenCalledTimes(1);
         expect(requestTokenFn).toHaveBeenCalledTimes(1); // authCallback never re-entered
     });
@@ -422,9 +423,9 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
     });
 
     test('a rejected authorize is swallowed (no unhandled rejection)', async () => {
-        jest.useRealTimers();
+        vi.useRealTimers();
         const { client, renew } = setup('user1');
-        jest.useRealTimers();
+        vi.useRealTimers();
         client.auth.authorize.mockImplementation(() => Promise.reject(ablyError('mismatch', SWITCH)));
         await renew('user2');
         await settle();
@@ -436,7 +437,7 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
         const { client, connector, renew } = setup('user1');
         await renew('user2');
         connector.ably = makeFakeAblyClient('user1'); // Echo.connect() replaced the client
-        jest.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(1000);
         expect(client.auth.authorize).not.toHaveBeenCalled();
         expect(connector.ably.auth.authorize).not.toHaveBeenCalled();
     });
@@ -445,18 +446,18 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
         const { client, renew } = setup('user1');
         await renew('user2');
         client.connection.state = state;
-        jest.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(1000);
         expect(client.auth.authorize).not.toHaveBeenCalled();
     });
 
     test('requestTokenFn is called once per authCallback invocation, across renewals', async () => {
         const { client, renew, requestTokenFn } = setup('user1');
         await renew('user2');
-        jest.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(1000);
         expect(requestTokenFn).toHaveBeenCalledTimes(1);
         client.auth.clientId = null; // ably-js cleared it via authorize({clientId: null})
         await renew('user2');
-        jest.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(1000);
         expect(requestTokenFn).toHaveBeenCalledTimes(2);
         expect(client.auth.authorize).toHaveBeenCalledTimes(1);
     });
@@ -472,7 +473,7 @@ describe('switchIdentityOnRenewal: a renewed token that carries another clientId
                 resolve(a);
             }),
         );
-        jest.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(1000);
         expect(error).toBeTruthy();
         expect(token).toBeNull();
         expect(order).toEqual(['callback']);
@@ -489,7 +490,7 @@ describe('E3 + E4: a presence channel gets the same failure through its state ch
         let rejectEnter!: (e: any) => void;
         fake.presence.enter.mockImplementation(() => new Promise((_, reject) => (rejectEnter = reject)));
         const echoChannel = new AblyPresenceChannel(client, 'presence:room', ECHO_OPTIONS, stubAuth);
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         echoChannel.error(errorListener);
         fake.transition('attached'); // starts enter()
         return { client, fake, errorListener, rejectEnter: (e: any) => rejectEnter(e) };
@@ -589,11 +590,11 @@ describe('the renewal re-attach window: the transient 40160 of ably-js re-attach
     });
 
     test('ends after 30 s and on release', () => {
-        jest.useFakeTimers();
+        vi.useFakeTimers();
         const client = makeFakeAblyClient('user1');
         const { fake, errorListener } = listened(client, 'private:ch');
         beginRenewalReattach(client);
-        jest.advanceTimersByTime(30_000);
+        vi.advanceTimersByTime(30_000);
         fake.transition('failed', ablyError('late', DENIED));
         expect(errorListener).toHaveBeenCalledTimes(1);
 
@@ -608,7 +609,7 @@ describe('the renewal re-attach window: the transient 40160 of ably-js re-attach
     test('the swallowed 40160 still triggers the re-authorize (AblyAuth.onChannelFailed)', () => {
         const client = makeFakeAblyClient('user1');
         const auth = makeAuth(client);
-        const handle = jest.spyOn(auth, 'handleChannelAuthError').mockImplementation(() => undefined);
+        const handle = vi.spyOn(auth, 'handleChannelAuthError').mockImplementation(() => undefined);
         const { echoChannel, fake, errorListener } = listened(client, 'private:ch');
         fake.on('failed', auth.onChannelFailed(echoChannel));
         beginRenewalReattach(client);
@@ -634,11 +635,11 @@ describe('the renewal re-attach window: the transient 40160 of ably-js re-attach
 describe('channelsReattachedByAuth: the connector skips its re-attach once after AblyAuth.onClientIdChanged', () => {
     /** A real AblyConnector on a fake client (options.client: it has no AblyAuth) plus an AblyAuth wired to it. */
     const build = () => {
-        jest.useFakeTimers();
-        jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        vi.useFakeTimers();
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
         const connection: any = new FakeEmitter();
         connection.state = 'connected';
-        const fake: any = { ...makeFakeAbly(), connection, close: jest.fn(), connect: jest.fn(), auth: {} };
+        const fake: any = { ...makeFakeAbly(), connection, close: vi.fn(), connect: vi.fn(), auth: {} };
         const echo = new Echo({ broadcaster: 'ably', client: fake });
         const channels = ['a', 'b'].map((n) => echo.channel(n) as any);
         channels.forEach((ch) => (ch.channel.state = 'attached'));
@@ -654,7 +655,7 @@ describe('channelsReattachedByAuth: the connector skips its re-attach once after
         channels.forEach((ch) => ch.channel.attach.mockClear());
         return { echo, connector: echo.connector as any, auth, channels, attachCalls, fail, connect, detachAll };
     };
-    afterEach(() => jest.restoreAllMocks());
+    afterEach(() => vi.restoreAllMocks());
 
     test('(a) onClientIdChanged sets the flag; the next connected does not re-attach again: one attach per channel', () => {
         const { connector, auth, attachCalls, fail, connect, detachAll } = build();
@@ -664,7 +665,7 @@ describe('channelsReattachedByAuth: the connector skips its re-attach once after
         auth.onClientIdChanged();
         expect((auth.ablyClient() as any).connect).toHaveBeenCalledTimes(1);
         expect(connector.channelsReattachedByAuth).toBe(false); // set only in the setTimeout, after the failed event
-        jest.advanceTimersByTime(0);
+        vi.advanceTimersByTime(0);
         expect(connector.channelsReattachedByAuth).toBe(true);
         expect(attachCalls()).toEqual([1, 1]);
         connect(); // the channels are still failed here (the fake attach() does not change state)
@@ -677,7 +678,7 @@ describe('channelsReattachedByAuth: the connector skips its re-attach once after
         fail();
         detachAll();
         auth.onClientIdChanged();
-        jest.advanceTimersByTime(0);
+        vi.advanceTimersByTime(0);
         connect();
         connect();
         expect(attachCalls()).toEqual([1, 1]);
@@ -688,7 +689,7 @@ describe('channelsReattachedByAuth: the connector skips its re-attach once after
         fail();
         detachAll();
         auth.onClientIdChanged();
-        jest.advanceTimersByTime(0);
+        vi.advanceTimersByTime(0);
         expect(connector.channelsReattachedByAuth).toBe(true);
         expect(attachCalls()).toEqual([1, 1]);
         fail(); // the reconnect failed too
@@ -702,7 +703,7 @@ describe('channelsReattachedByAuth: the connector skips its re-attach once after
         fail();
         detachAll();
         auth.onClientIdChanged();
-        jest.advanceTimersByTime(0);
+        vi.advanceTimersByTime(0);
         expect(connector.channelsReattachedByAuth).toBe(true);
         (connector.ably.connection as any).emit(state, { current: state });
         expect(connector.channelsReattachedByAuth).toBe(false);
@@ -725,7 +726,7 @@ describe('channelsReattachedByAuth: the connector skips its re-attach once after
         fail();
         detachAll();
         auth.onClientIdChanged();
-        jest.advanceTimersByTime(0);
+        vi.advanceTimersByTime(0);
         fail();
         channels[0].channel.state = 'attached';
         channels[1].channel.state = 'attaching';
@@ -740,7 +741,7 @@ describe('channelsReattachedByAuth: the connector skips its re-attach once after
         detachAll();
         auth.onClientIdChanged();
         (connector.ably.connection as any).state = state; // failed again, or closed by the app, before the timer
-        jest.advanceTimersByTime(0);
+        vi.advanceTimersByTime(0);
         expect(connector.channelsReattachedByAuth).toBe(false);
         expect(attachCalls()).toEqual([0, 0]);
     });
@@ -750,8 +751,8 @@ describe('channelsReattachedByAuth: the connector skips its re-attach once after
         fail();
         detachAll();
         auth.onClientIdChanged();
-        connector.ably = { connection: new FakeEmitter(), auth: {}, connect: jest.fn() }; // a direct connector.connect()
-        jest.advanceTimersByTime(0);
+        connector.ably = { connection: new FakeEmitter(), auth: {}, connect: vi.fn() }; // a direct connector.connect()
+        vi.advanceTimersByTime(0);
         expect(connector.channelsReattachedByAuth).toBe(false);
         expect(attachCalls()).toEqual([0, 0]);
     });
