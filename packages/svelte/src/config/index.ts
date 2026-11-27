@@ -39,9 +39,9 @@ const assertPusherAvailable = (config: EchoConfig): void => {
     }
 
     throw new Error(
-        `The "${broadcaster}" broadcaster needs pusher-js, which @ably/laravel-echo-svelte does not bundle. ` +
-            `Pass it in the options, configureEcho({ broadcaster: "${broadcaster}", Pusher }) with ` +
-            `import Pusher from "pusher-js", or set window.Pusher = Pusher before Echo is used.`,
+        `The "${broadcaster}" broadcaster needs the Pusher class from pusher-js, which @ably/laravel-echo-svelte ` +
+            `does not bundle. Pass it in the options, configureEcho({ broadcaster: "${broadcaster}", Pusher }), ` +
+            `or set window.Pusher = Pusher before Echo is used.`,
     );
 };
 

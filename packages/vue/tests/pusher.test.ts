@@ -122,7 +122,7 @@ describe("Pusher and Reverb without a bundled pusher-js", () => {
             configureEcho({ broadcaster, key: "app-key" });
 
             expect(() => echo()).toThrow(
-                `The "${broadcaster}" broadcaster needs pusher-js, which @ably/laravel-echo-vue does not bundle.`,
+                `The "${broadcaster}" broadcaster needs the Pusher class from pusher-js, which @ably/laravel-echo-vue does not bundle.`,
             );
             expect(() => echo()).toThrow(
                 `configureEcho({ broadcaster: "${broadcaster}", Pusher })`,
