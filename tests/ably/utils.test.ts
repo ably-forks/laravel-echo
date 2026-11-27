@@ -1,3 +1,5 @@
+import { AblyConnector } from '../../src/connector/ably-connector';
+import { makeFakeAblyClient } from '../parity/fake-ably';
 import { fromBase64UrlEncoded, fullUrl, parseJwt, toBase64UrlEncoded, toTokenDetails } from '../../src/channel/ably/utils';
 
 describe('Utils', () => {
@@ -139,3 +141,22 @@ describe('Utils', () => {
     });
 });
 
+
+describe('AblyConnector.socketId', () => {
+    test("is '' while the connection has no key, and decodes to {connectionKey, clientId} once it has one", () => {
+        const client = makeFakeAblyClient('user1');
+        const connector = new AblyConnector({ broadcaster: 'ably', client });
+
+        expect(connector.socketId()).toBe('');
+
+        client.connection.key = 'k1';
+        expect(fromBase64UrlEncoded(connector.socketId())).toBe(JSON.stringify({ connectionKey: 'k1', clientId: 'user1' }));
+    });
+
+    test('clientId is null for an anonymous connection', () => {
+        const client = makeFakeAblyClient();
+        client.connection.key = 'k2';
+        const connector = new AblyConnector({ broadcaster: 'ably', client });
+        expect(JSON.parse(fromBase64UrlEncoded(connector.socketId()))).toEqual({ connectionKey: 'k2', clientId: null });
+    });
+});
