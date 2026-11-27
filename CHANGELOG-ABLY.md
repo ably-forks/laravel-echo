@@ -30,7 +30,7 @@ Please refer to [UPDATING.md](UPDATING.md#1x--200) for the full details, includi
 See [UPDATING.md](UPDATING.md#breaking-changes) for each one and what to do.
 
 - Echo 2.0.0 works only with laravel-broadcaster 2.0.0 or later, and every connection, including a guest's, has a client ID.
-- `socketId()` returns `undefined` until the connection is up (1.x returned `''`).
+- `socketId()` returns `undefined` until the connection is up (1.1.1 returned a placeholder string).
 - The package is `"type": "module"` with an `exports` map, so deep imports no longer resolve. Types are at `dist/echo.d.ts`; `typings/` is no longer shipped. The build target is ES2022.
 - A custom `broadcaster` must be a class. Custom connectors must implement `connectionStatus()` and `onConnectionChange()`.
 - TypeScript: `Echo` and `Connector` are generic, channel methods return `this`, and `whisper()` takes an object.

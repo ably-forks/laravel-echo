@@ -87,7 +87,7 @@ The Ably connector maps Ably's [connection states](https://ably.com/docs/connect
 
 When the user changes (login, logout, user switch), Ably briefly reports `failed` (40102) while Echo reconnects with the new client ID. Echo reports that as `"reconnecting"` (or `"connecting"` before the first connection), for at most 1 s if the connection stays `failed`.
 
-To be told about changes, use `onConnectionChange()`. It returns a function that unsubscribes. The callback is not called when you subscribe, only on a change:
+To be told about changes, use `onConnectionChange()`. It returns a function that unsubscribes. The callback is not called when you subscribe, only when the status (or, with Ably, the socket ID) changes:
 
 ```js
 const unsubscribe = window.Echo.onConnectionChange((status) => {
