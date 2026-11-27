@@ -50,6 +50,7 @@ describe("AblyUserRestPublishing", () => {
 
     async function getGuestUserChannel(channelName: string) {
         mockAuthServer.clientId = null;
+        mockAuthServer.resetSession(); // each guest is another visitor, with its own guest id
         const guestUser = new Echo({
             broadcaster: "ably",
             useTls: true,
@@ -59,10 +60,11 @@ describe("AblyUserRestPublishing", () => {
         echoInstances.push(guestUser);
         const publicChannel = guestUser.channel(channelName) as AblyChannel;
         await new Promise((resolve) => publicChannel.subscribed(resolve));
-        expect(guestUser.connector.ably.auth.clientId).toBeFalsy();
-        expect(
-            guestUser.connector.ablyAuth!.existingToken()!.clientId,
-        ).toBeNull();
+        // laravel-broadcaster v2 always issues a guest client id
+        expect(guestUser.connector.ably.auth.clientId).toMatch(/^guest:/);
+        expect(guestUser.connector.ablyAuth!.existingToken()!.clientId).toBe(
+            guestUser.connector.ably.auth.clientId,
+        );
         return publicChannel;
     }
 
@@ -89,7 +91,7 @@ describe("AblyUserRestPublishing", () => {
         return privateChannel;
     }
 
-    test("Guest user return socketId as base64 encoded connectionkey and null clientId", async () => {
+    test("Guest user return socketId as base64 encoded connectionkey and the guest clientId", async () => {
         await getGuestUserChannel("dummyChannel");
         const guestUser = echoInstances[0];
         const socketIdObj = JSON.parse(
@@ -101,21 +103,29 @@ describe("AblyUserRestPublishing", () => {
         expect(socketIdObj.connectionKey).toBe(expectedConnectionKey);
         expect(socketIdObj.connectionKey).toBeTruthy();
 
-        expect(socketIdObj.clientId).toBeNull();
+        // 1.x sent null here; with laravel-broadcaster v2 it is the guest id
+        expect(socketIdObj.clientId).toMatch(/^guest:/);
+        expect(socketIdObj.clientId).toBe(
+            guestUser.connector.ably.auth.clientId,
+        );
     });
 
     test("Guest user publishes message via rest API", async () => {
         let messagesReceived: Array<string> = [];
+        const receivedBySender: Array<string> = [];
+        const receivedByOther: Array<string> = [];
         let channelName = "testChannel";
 
         const publicChannel1 = await getGuestUserChannel(channelName);
         publicChannel1.listenToAll((eventName: string, data: unknown) => {
             messagesReceived.push(eventName);
+            receivedBySender.push(eventName);
         });
 
         const publicChannel2 = await getGuestUserChannel(channelName);
         publicChannel2.listenToAll((eventName: string, data: unknown) => {
             messagesReceived.push(eventName);
+            receivedByOther.push(eventName);
         });
 
         // Publish message to all clients
@@ -145,6 +155,10 @@ describe("AblyUserRestPublishing", () => {
                 messagesReceived.filter((m) => m == ".toOthers").length,
             ).toBe(1);
         });
+        // toOthers excludes the sender's connection (connectionKey, echoMessages: false), whatever its guest clientId
+        expect(receivedByOther).toContain(".toOthers");
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        expect(receivedBySender).not.toContain(".toOthers");
     });
 
     test("Logged in user return socketId as base64 encoded connectionkey and clientId", async () => {

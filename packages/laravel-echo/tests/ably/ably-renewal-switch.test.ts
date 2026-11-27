@@ -20,10 +20,11 @@ vi.setConfig({ testTimeout: 60000, hookTimeout: 60000 });
 
 /**
  * Identity switch on a RENEWED connection token: another tab logged in or out, so the next token the page is handed
- * carries another clientId (the mock's clientId / guestClientId change, and the test waits for the renewal; Echo
- * never calls echo.connect()). Echo's authCallback then switches identity itself (switchIdentityOnRenewal): one
- * reconnect as the new identity, channels re-attach, private ones re-authorize. Outcomes match the in-page
- * equivalents in ably-identity-switch.test.ts.
+ * carries another clientId (the mock's clientId changes, and the test waits for the renewal; Echo never calls
+ * echo.connect()). Echo's authCallback then switches identity itself (switchIdentityOnRenewal): one reconnect as the
+ * new identity, channels re-attach, private ones re-authorize. Outcomes match the in-page equivalents in
+ * ably-identity-switch.test.ts. The mock behaves like laravel-broadcaster 2.0, so a guest always has a guest client id;
+ * the no-clientId cases use a custom auth endpoint (`getSignedTokenWithoutGuestId`), the paths Echo still supports.
  */
 describe("AblyRenewalSwitch", () => {
     let testApp: any;
@@ -43,8 +44,7 @@ describe("AblyRenewalSwitch", () => {
 
     beforeEach(() => {
         mockAuthServer.clientId = null;
-        mockAuthServer.guestClientId = false;
-        mockAuthServer.rotateGuestId();
+        mockAuthServer.resetSession(); // each test is a new browser session
         mockAuthServer.tokenExpiry = 6;
         mockAuthServer.renewalMode = "reuse"; // TTL <= 30 s loops even with fresh tokens (Ably asks for re-auth 30 s before expiry); these suites test the identity switch, not renewal freshness, so keep the old reuse behaviour
         mockAuthServer.publicCapability = [
@@ -60,7 +60,6 @@ describe("AblyRenewalSwitch", () => {
     afterEach(async () => {
         rejections.stop();
         mockAuthServer.clientId = null;
-        mockAuthServer.guestClientId = false;
         mockAuthServer.tokenExpiry = 60;
         mockAuthServer.renewalMode = "reverify";
         mockAuthServer.publicCapability = [
@@ -79,14 +78,19 @@ describe("AblyRenewalSwitch", () => {
         }
     });
 
-    const makeEcho = () =>
+    const makeEcho = (
+        requestTokenFn: MockAuthServer["getSignedToken"] = mockAuthServer.getSignedToken,
+    ) =>
         new Echo({
             broadcaster: "ably",
             useTls: true,
             endpoint: "nonprod:sandbox",
-            requestTokenFn: mockAuthServer.getSignedToken,
+            requestTokenFn,
             echoMessages: true,
         });
+    /** A custom auth endpoint (not laravel-broadcaster v2): a request without a user gets a token with no clientId. */
+    const makeEchoWithCustomEndpoint = () =>
+        makeEcho(mockAuthServer.getSignedTokenWithoutGuestId);
 
     const connected = () =>
         waitForExpect(() =>
@@ -243,8 +247,7 @@ describe("AblyRenewalSwitch", () => {
         presenceChannel.error((e: any) => presenceErrors.push(e));
         const conn = watchConnection();
 
-        mockAuthServer.guestClientId = true;
-        mockAuthServer.clientId = null;
+        mockAuthServer.clientId = null; // the next renewed token is a fresh guest id
         conn.arm();
         await recovered(conn, () => mockAuthServer.guestId);
 
@@ -272,9 +275,9 @@ describe("AblyRenewalSwitch", () => {
         await expectNoUnhandledRejections();
     });
 
-    test("user1 -> null: reconnects as an anonymous client, server no longer attributes it to user1, private gets one 403", async () => {
+    test("custom auth endpoint: user1 -> no clientId: reconnects as an anonymous client, server no longer attributes it to user1, private gets one 403", async () => {
         mockAuthServer.clientId = "user1";
-        echo = makeEcho();
+        echo = makeEchoWithCustomEndpoint();
         await connected();
         const publicChannel = echo.channel("r2") as AblyChannel;
         const privateChannel = echo.private("r2") as AblyPrivateChannel;
@@ -298,7 +301,7 @@ describe("AblyRenewalSwitch", () => {
         presenceChannel.error((e: any) => presenceErrors.push(e));
         const conn = watchConnection();
 
-        mockAuthServer.clientId = null; // guestClientId stays false
+        mockAuthServer.clientId = null; // the custom endpoint signs no clientId
         conn.arm();
         await recovered(conn, () => null);
 
@@ -403,9 +406,9 @@ describe("AblyRenewalSwitch", () => {
     );
 
     test("guest id -> user1: reconnects as user1 in under 5 s, then a private channel attaches", async () => {
-        mockAuthServer.guestClientId = true;
         echo = makeEcho();
         await connected();
+        expect(echo.connector.ably.auth.clientId).toMatch(/^guest:/);
         expect(echo.connector.ably.auth.clientId).toBe(mockAuthServer.guestId);
         const publicChannel = echo.channel("r4") as AblyChannel;
         await new Promise((resolve) => publicChannel.subscribed(resolve));
@@ -434,8 +437,8 @@ describe("AblyRenewalSwitch", () => {
         await expectNoUnhandledRejections();
     });
 
-    test("null -> user1: unchanged ably-js path, ends connected as user1 without error()", async () => {
-        echo = makeEcho();
+    test("custom auth endpoint: no clientId -> user1: unchanged ably-js path, ends connected as user1 without error()", async () => {
+        echo = makeEchoWithCustomEndpoint();
         await connected();
         expect(echo.connector.ably.auth.clientId).toBeFalsy();
         const publicChannel = echo.channel("r5") as AblyChannel;
@@ -496,8 +499,7 @@ describe("AblyRenewalSwitch", () => {
         presenceChannel.error((e: any) => presenceErrors.push(e));
         const conn = watchConnection();
 
-        mockAuthServer.guestClientId = true;
-        mockAuthServer.clientId = null;
+        mockAuthServer.clientId = null; // the next renewed token is a fresh guest id
         conn.arm();
         await echo.connector.ably.auth.authorize().catch(() => undefined);
         await recovered(conn, () => mockAuthServer.guestId);
@@ -525,9 +527,9 @@ describe("AblyRenewalSwitch", () => {
         await expectNoUnhandledRejections();
     });
 
-    test("in-band renewal null -> user1: ends connected as user1, error() is never called on public or private channels", async () => {
+    test("custom auth endpoint: in-band renewal no clientId -> user1: ends connected as user1, error() is never called on public or private channels", async () => {
         mockAuthServer.tokenExpiry = 60;
-        echo = makeEcho();
+        echo = makeEchoWithCustomEndpoint();
         await connected();
         expect(echo.connector.ably.auth.clientId).toBeFalsy();
         const publicChannel = echo.channel("h3") as AblyChannel;
@@ -693,7 +695,6 @@ describe("AblyRenewalSwitch", () => {
     });
 
     test("guest id -> same guest id renewal does not switch: no switch authorize(), same connection, no failed", async () => {
-        mockAuthServer.guestClientId = true;
         echo = makeEcho();
         await expectNoSwitchOnSameIdentity(() => mockAuthServer.guestId, "r7");
     });

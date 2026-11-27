@@ -19,9 +19,10 @@ import { trackUnhandledRejections } from "../parity/fake-ably";
 vi.setConfig({ testTimeout: 45000, hookTimeout: 45000 });
 
 /**
- * Identity switches inside one page (guest -> user, user -> user, user -> guest, null -> user -> null) against the
- * sandbox. A switch is triggered by changing mockAuthServer.clientId and requesting a new private channel; a logout
- * is the documented in-page path: the app calls echo.connect() and re-subscribes its channels.
+ * Identity switches inside one page (guest -> user, user -> user, user -> guest, guest -> user -> guest) against the
+ * sandbox. The mock auth server behaves like laravel-broadcaster 2.0: a guest always has a guest client id. A switch is
+ * triggered by changing mockAuthServer.clientId and requesting a new private channel; a logout is the documented in-page
+ * path: the app calls echo.connect() and re-subscribes its channels.
  */
 describe("AblyIdentitySwitch", () => {
     let testApp: any;
@@ -93,14 +94,12 @@ describe("AblyIdentitySwitch", () => {
 
     beforeEach(() => {
         mockAuthServer.clientId = null;
-        mockAuthServer.guestClientId = false;
-        mockAuthServer.rotateGuestId();
+        mockAuthServer.resetSession(); // each test is a new browser session
         rejections = trackUnhandledRejections();
     });
 
     afterEach(async () => {
         rejections.stop();
-        mockAuthServer.guestClientId = false;
         mockAuthServer.clientId = null;
         mockAuthServer.publicCapability = [
             "subscribe",
@@ -117,7 +116,6 @@ describe("AblyIdentitySwitch", () => {
     });
 
     test("guest id -> user1: no error() call, recovers as user1, channels attached, public message received", async () => {
-        mockAuthServer.guestClientId = true;
         mockAuthServer.publicCapability = [
             "subscribe",
             "history",
@@ -127,6 +125,7 @@ describe("AblyIdentitySwitch", () => {
         ];
         echo = makeEcho();
         await connected();
+        expect(echo.connector.ably.auth.clientId).toMatch(/^guest:/);
         expect(echo.connector.ably.auth.clientId).toBe(mockAuthServer.guestId);
         // second client with the API key: reads the server-stamped clientId of what the page publishes
         observer = createClient({
@@ -236,7 +235,6 @@ describe("AblyIdentitySwitch", () => {
     });
 
     test("user1 -> guest id logout via echo.connect(): new guest id, public receives, private re-auth gives 403", async () => {
-        mockAuthServer.guestClientId = true;
         mockAuthServer.clientId = "user1";
         echo = makeEcho();
         await connected();
@@ -251,17 +249,16 @@ describe("AblyIdentitySwitch", () => {
         await waitForExpect(() =>
             expect(echo.connector.ably.auth.clientId).toBe("user1"),
         );
-        const previousGuestId = mockAuthServer.guestId;
+        expect(mockAuthServer.guestId).toBeNull(); // the user's requests keep no guest id in the session
 
         // logout
         const oldClient = echo.connector.ably;
         mockAuthServer.clientId = null;
-        mockAuthServer.rotateGuestId();
         echo.connect();
         const newClient = echo.connector.ably;
         expect(newClient).not.toBe(oldClient);
         await connected();
-        expect(mockAuthServer.guestId).not.toBe(previousGuestId);
+        expect(newClient.auth.clientId).toMatch(/^guest:/);
         expect(newClient.auth.clientId).toBe(mockAuthServer.guestId);
         await waitForExpect(() =>
             expect(["closing", "closed"]).toContain(oldClient.connection.state),
@@ -280,10 +277,11 @@ describe("AblyIdentitySwitch", () => {
         await expectNoUnhandledRejections();
     });
 
-    test("non-MAU: null -> user1 recovers, then user1 -> null via echo.connect() recovers with a null clientId", async () => {
+    test("guest id -> user1 recovers, then user1 -> guest via echo.connect() recovers with a fresh guest id", async () => {
         echo = makeEcho();
         await connected();
-        expect(echo.connector.ably.auth.clientId).toBeFalsy();
+        const guestId = echo.connector.ably.auth.clientId;
+        expect(guestId).toMatch(/^guest:/);
         const publicChannel = echo.channel("t5") as AblyChannel;
         await new Promise((resolve) => publicChannel.subscribed(resolve));
 
@@ -304,8 +302,12 @@ describe("AblyIdentitySwitch", () => {
         echo.connect();
         await connected();
         expect(echo.connector.ably).not.toBe(oldClient);
-        expect(echo.connector.ably.auth.clientId).toBeFalsy();
-        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBeNull();
+        // the user's requests cleared the session's guest id: the guest after logout gets a fresh one
+        expect(echo.connector.ably.auth.clientId).toMatch(/^guest:/);
+        expect(echo.connector.ably.auth.clientId).not.toBe(guestId);
+        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBe(
+            echo.connector.ably.auth.clientId,
+        );
         await waitForExpect(() =>
             expect(["closing", "closed"]).toContain(oldClient.connection.state),
         );

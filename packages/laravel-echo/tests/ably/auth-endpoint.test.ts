@@ -133,7 +133,8 @@ describe("authEndpoint end to end", () => {
 
     test("user login through authEndpoint: guest -> user (40102) reconnects and re-attaches public and private channels", async () => {
         mode = "ok";
-        mockAuthServer.clientId = null; // guest
+        mockAuthServer.clientId = null; // guest: laravel-broadcaster v2 issues a guest client id
+        mockAuthServer.resetSession();
         const echo = makeEcho();
         try {
             await waitForExpect(() =>
@@ -141,9 +142,9 @@ describe("authEndpoint end to end", () => {
             );
             const publicChannel = echo.channel("r7login") as AblyChannel;
             await new Promise((resolve) => publicChannel.subscribed(resolve));
-            expect(
-                echo.connector.ablyAuth!.existingToken()!.clientId,
-            ).toBeNull();
+            expect(echo.connector.ablyAuth!.existingToken()!.clientId).toMatch(
+                /^guest:/,
+            );
 
             mockAuthServer.clientId = "sacOO7@github.com"; // user logs in for the next auth request
             const privateChannel = echo.private(
