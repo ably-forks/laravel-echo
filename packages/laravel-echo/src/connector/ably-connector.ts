@@ -204,7 +204,8 @@ export class AblyConnector extends Connector<
      * Upstream merges a static `_defaultOptions` shallowly, so `auth.headers` and `userAuthentication.headers`
      * would be one object shared by every connector (and the caller's object would be mutated). Pass fresh copies
      * so the CSRF and bearer-token writes below never leak to another connector or survive a logout. A header the
-     * caller set explicitly is kept. Fork-only: the upstream Connector is not changed.
+     * caller set explicitly is kept. `agents` is copied for the same reason (F-342). Fork-only: the upstream
+     * Connector is not changed.
      */
     protected setOptions(options: EchoOptions<"ably">): void {
         const auth = options.auth ?? Connector._defaultOptions.auth;
@@ -213,6 +214,7 @@ export class AblyConnector extends Connector<
             Connector._defaultOptions.userAuthentication;
         super.setOptions({
             ...options,
+            agents: { ...options.agents }, // F-342: connect() adds laravel-echo to a copy, not to the caller's object
             auth: { ...auth, headers: { ...auth.headers } },
             userAuthentication: {
                 ...userAuthentication,
