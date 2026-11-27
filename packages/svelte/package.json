@@ -1,0 +1,75 @@
+{
+    "name": "@laravel/echo-svelte",
+    "version": "2.6.3",
+    "description": "Svelte 5 runes for seamless integration with Laravel Echo.",
+    "keywords": [
+        "laravel",
+        "pusher",
+        "ably",
+        "svelte"
+    ],
+    "homepage": "https://github.com/laravel/echo/tree/2.x/packages/svelte",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/laravel/echo"
+    },
+    "license": "MIT",
+    "author": {
+        "name": "Taylor Otwell"
+    },
+    "type": "module",
+    "main": "dist/index.common.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "vp build && FORMAT=iife vp build && tsc -p tsconfig.build.json",
+        "dev": "vp dev",
+        "prepublish": "pnpm run build",
+        "release": "vp test --run && pnpm publish --no-git-checks",
+        "test": "vp test"
+    },
+    "devDependencies": {
+        "@types/node": "^24.13.3",
+        "jsdom": "^30.0.0",
+        "laravel-echo": "workspace:^",
+        "pusher-js": "^8.4.0",
+        "socket.io-client": "^4.8.1",
+        "svelte": "^5.55.7",
+        "typescript": "catalog:",
+        "vite-plus": "catalog:"
+    },
+    "peerDependencies": {
+        "pusher-js": "*",
+        "socket.io-client": "*",
+        "svelte": "^5.55.7"
+    },
+    "peerDependenciesMeta": {
+        "pusher-js": {
+            "optional": true
+        },
+        "socket.io-client": {
+            "optional": true
+        }
+    },
+    "typesVersions": {
+        "*": {
+            "socket.io-client": [],
+            "pusher-js": []
+        }
+    },
+    "engines": {
+        "node": "^20.19.0 || >=22.12.0"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "svelte": "./dist/index.js",
+            "import": "./dist/index.js",
+            "require": "./dist/index.common.js"
+        }
+    },
+    "svelte": "./dist/index.js",
+    "files": [
+        "dist"
+    ]
+}

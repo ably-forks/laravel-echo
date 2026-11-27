@@ -1,0 +1,77 @@
+{
+    "name": "laravel-echo",
+    "version": "2.6.3",
+    "description": "Laravel Echo library for beautiful Pusher, Socket.IO, and Mercure integration",
+    "keywords": [
+        "laravel",
+        "pusher",
+        "ably",
+        "mercure"
+    ],
+    "homepage": "https://github.com/laravel/echo/tree/2.x/packages/laravel-echo",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/laravel/echo"
+    },
+    "license": "MIT",
+    "author": {
+        "name": "Taylor Otwell"
+    },
+    "type": "module",
+    "main": "dist/echo.common.js",
+    "module": "dist/echo.js",
+    "types": "dist/echo.d.ts",
+    "scripts": {
+        "build": "vp build && FORMAT=iife vp build && tsc -p tsconfig.build.json",
+        "dev": "vp dev",
+        "prepublish": "pnpm run build",
+        "release": "vp test --run && pnpm publish --no-git-checks",
+        "test": "vp test"
+    },
+    "devDependencies": {
+        "@types/jquery": "^3.5.32",
+        "@types/node": "^24.13.3",
+        "axios": "^1.18.0",
+        "jsdom": "^30.0.0",
+        "pusher-js": "^8.4.0",
+        "socket.io-client": "^4.8.3",
+        "typescript": "catalog:",
+        "vite-plus": "catalog:"
+    },
+    "peerDependencies": {
+        "pusher-js": "*",
+        "socket.io-client": "*"
+    },
+    "peerDependenciesMeta": {
+        "pusher-js": {
+            "optional": true
+        },
+        "socket.io-client": {
+            "optional": true
+        }
+    },
+    "typesVersions": {
+        "*": {
+            "socket.io-client": [],
+            "pusher-js": []
+        }
+    },
+    "engines": {
+        "node": "^20.19.0 || >=22.12.0"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/echo.d.ts",
+            "import": "./dist/echo.js",
+            "require": "./dist/echo.common.js"
+        },
+        "./iife": "./dist/echo.iife.js"
+    },
+    "files": [
+        "dist",
+        "resources/boost"
+    ],
+    "dependencies": {
+        "@ably/pubsub-device": "^3.0.0"
+    }
+}

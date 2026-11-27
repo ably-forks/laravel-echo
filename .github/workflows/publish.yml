@@ -1,0 +1,39 @@
+name: Publish Packages
+
+on:
+    release:
+        types: [released]
+
+permissions:
+    id-token: write # Required for OIDC
+    contents: read
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                adapter: ["laravel-echo", "react", "svelte", "vue"]
+        steps:
+            - name: Checkout
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                persist-credentials: false
+
+            - name: Install pnpm
+              uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+              with:
+                  node-version: 24
+                  registry-url: "https://registry.npmjs.org"
+                  cache: pnpm
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Audit dependencies
+              run: pnpm audit
+
+            - name: "Publish ${{ matrix.adapter }} to npm"
+              run: pnpm -r --filter ./packages/laravel-echo --filter ./packages/${{ matrix.adapter }} build && cd ./packages/${{ matrix.adapter }} && pnpm run release
