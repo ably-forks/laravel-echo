@@ -40,6 +40,9 @@ jobs:
       - name: Build the core (JS bundles and declarations)
         run: pnpm --filter @ably/laravel-echo run build
 
+      - name: Type-check upstream laravel-echo 2.x usage against the built declarations
+        run: pnpm --filter @ably/laravel-echo run test:compat
+
       - name: Execute the core tests (unit, Ably parity and local tests)
         run: pnpm --filter @ably/laravel-echo run test
 

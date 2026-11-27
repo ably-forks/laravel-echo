@@ -30,7 +30,8 @@
         "test:sandbox": "vp test --run --project sandbox",
         "test:browser-build": "vp test --run --project browser-build",
         "test:bundles": "vp test --run --project bundles",
-        "test:all": "vp test --run"
+        "test:all": "vp test --run",
+        "test:compat": "tsc -p tests/compat/tsconfig.json"
     },
     "devDependencies": {
         "@ably/pubsub-server": "^3.0.0",
