@@ -1,4 +1,4 @@
-import { type BroadcastDriver, type Broadcaster } from "laravel-echo";
+import { type BroadcastDriver, type Broadcaster } from "@ably/laravel-echo";
 
 export type Connection<T extends BroadcastDriver> =
     | Broadcaster[T]["public"]

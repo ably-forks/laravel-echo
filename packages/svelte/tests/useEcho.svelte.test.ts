@@ -35,7 +35,7 @@ const createMockPresenceChannel = () => ({
     whisper: vi.fn(),
 });
 
-vi.mock("laravel-echo", () => {
+vi.mock("@ably/laravel-echo", () => {
     const Echo = vi.fn(function (config: unknown) {
         const privateChannel = createMockPrivateChannel();
         const publicChannel = createMockPublicChannel();

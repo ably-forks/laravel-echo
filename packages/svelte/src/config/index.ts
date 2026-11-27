@@ -2,7 +2,7 @@ import Echo, {
     type BroadcastDriver,
     type Broadcaster,
     type EchoOptions,
-} from "laravel-echo";
+} from "@ably/laravel-echo";
 import Pusher from "pusher-js";
 import type { ConfigDefaults } from "../types";
 

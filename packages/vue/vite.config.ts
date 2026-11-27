@@ -21,14 +21,29 @@ const guardedEnvVariables = (names: string[]): Record<string, string> =>
               ]),
     );
 
+/*
+ * fork (D-03): @ably/laravel-echo is a peer dependency and @ably/pubsub-device comes with it, so no build
+ * (ESM, CJS or IIFE) bundles either of them. The IIFE reads the core IIFE's global `Echo`.
+ */
+const isAblyExternal = (id: string): boolean =>
+    ["@ably/laravel-echo", "@ably/pubsub-device"].some(
+        (pkg) => id === pkg || id.startsWith(`${pkg}/`),
+    );
+
 const config: UserConfig = (() => {
     const common: Partial<UserConfig["build"]> = {
         rollupOptions: {
-            external: ["vue", "pusher-js"],
+            external: (id: string) =>
+                id === "vue" ||
+                id.startsWith("vue/") ||
+                id === "pusher-js" ||
+                isAblyExternal(id),
             output: {
                 globals: {
                     vue: "Vue",
                     "pusher-js": "Pusher",
+                    "@ably/laravel-echo": "Echo",
+                    "@ably/pubsub-device": "AblyPubSub",
                 },
             },
         },

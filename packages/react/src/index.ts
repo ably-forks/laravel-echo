@@ -1,4 +1,4 @@
-export type { ConnectionStatus } from "laravel-echo";
+export type { ConnectionStatus } from "@ably/laravel-echo";
 export { configureEcho, echo, echoIsConfigured } from "./config/index";
 export {
     useChannel,

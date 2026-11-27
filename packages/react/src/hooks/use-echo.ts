@@ -1,4 +1,4 @@
-import { type BroadcastDriver, type ConnectionStatus } from "laravel-echo";
+import { type BroadcastDriver, type ConnectionStatus } from "@ably/laravel-echo";
 import {
     type DependencyList,
     useCallback,

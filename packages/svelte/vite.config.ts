@@ -71,16 +71,36 @@ const guardedEnvVariables = (names: string[]): Record<string, string> =>
               ]),
     );
 
+/*
+ * fork (D-03): @ably/laravel-echo is a peer dependency and @ably/pubsub-device comes with it, so no build
+ * (ESM, CJS or IIFE) bundles either of them. The IIFE reads the core IIFE's global `Echo`.
+ */
+const isAblyExternal = (id: string): boolean =>
+    ["@ably/laravel-echo", "@ably/pubsub-device"].some(
+        (pkg) => id === pkg || id.startsWith(`${pkg}/`),
+    );
+
+const globals = (id: string): string => {
+    if (id.startsWith("@ably/laravel-echo")) {
+        return "Echo";
+    }
+
+    if (id.startsWith("@ably/pubsub-device")) {
+        return "AblyPubSub";
+    }
+
+    return id === "pusher-js" ? "Pusher" : "Svelte";
+};
+
 const config: UserConfig = (() => {
     const common: Partial<UserConfig["build"]> = {
         rollupOptions: {
             external: (id) =>
                 id === "svelte" ||
                 id.startsWith("svelte/") ||
-                id === "pusher-js",
-            output: {
-                globals: (id) => (id === "pusher-js" ? "Pusher" : "Svelte"),
-            },
+                id === "pusher-js" ||
+                isAblyExternal(id),
+            output: { globals },
         },
         outDir: resolve(import.meta.dirname, "dist"),
         sourcemap: true,
@@ -99,6 +119,15 @@ const config: UserConfig = (() => {
                 },
                 emptyOutDir: false,
                 ...common,
+                rollupOptions: {
+                    ...common.rollupOptions,
+                    // fork (V1-B): compiled runes import svelte/internal/*, which the page's global `Svelte`
+                    // does not expose, so the IIFE bundles those internals and keeps only `svelte` external
+                    external: (id) =>
+                        id === "svelte" ||
+                        id === "pusher-js" ||
+                        isAblyExternal(id),
+                },
             },
         };
     }
