@@ -1,5 +1,6 @@
 {
-    // Type-checks upstream laravel-echo 2.x usage against the built declarations (run `pnpm run build` first).
+    // Type-checks upstream laravel-echo 2.x usage (upstream-usage.ts, via the `laravel-echo` mapping) and the fork's
+    // additions (fork-usage.ts, via the package's own `exports`) against the built declarations. Build first.
     "compilerOptions": {
         "strict": true,
         "noEmit": true,
@@ -14,5 +15,5 @@
             "laravel-echo/dist/connector": ["../../dist/connector/index.d.ts"]
         }
     },
-    "files": ["upstream-usage.ts"]
+    "files": ["upstream-usage.ts", "fork-usage.ts"]
 }
