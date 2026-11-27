@@ -1,17 +1,18 @@
 {
-    "name": "laravel-echo",
-    "version": "2.6.3",
-    "description": "Laravel Echo library for beautiful Pusher, Socket.IO, and Mercure integration",
+    "name": "@ably/laravel-echo",
+    "version": "2.0.0",
+    "description": "Laravel Echo library for beautiful Ably integration",
     "keywords": [
         "laravel",
-        "pusher",
         "ably",
+        "pusher",
         "mercure"
     ],
-    "homepage": "https://github.com/laravel/echo/tree/2.x/packages/laravel-echo",
+    "homepage": "https://github.com/ably-forks/laravel-echo/tree/2.x/packages/laravel-echo",
     "repository": {
         "type": "git",
-        "url": "https://github.com/laravel/echo"
+        "url": "https://github.com/ably-forks/laravel-echo",
+        "directory": "packages/laravel-echo"
     },
     "license": "MIT",
     "author": {
@@ -23,20 +24,25 @@
     "types": "dist/echo.d.ts",
     "scripts": {
         "build": "vp build && FORMAT=iife vp build && tsc -p tsconfig.build.json",
+        "build:js": "vp build && FORMAT=iife vp build",
         "dev": "vp dev",
-        "prepublish": "pnpm run build",
-        "release": "vp test --run && pnpm publish --no-git-checks",
-        "test": "vp test"
+        "test": "vp test",
+        "test:browser-build": "echo \"enabled in Phase 04\" && exit 1",
+        "test:bundles": "echo \"enabled in Phase 04\" && exit 1"
     },
     "devDependencies": {
+        "@ably/pubsub-server": "^3.0.0",
         "@types/jquery": "^3.5.32",
+        "@types/jsonwebtoken": "^9.0.7",
         "@types/node": "^24.13.3",
         "axios": "^1.18.0",
         "jsdom": "^30.0.0",
+        "jsonwebtoken": "^9.0.2",
         "pusher-js": "^8.4.0",
         "socket.io-client": "^4.8.3",
         "typescript": "catalog:",
-        "vite-plus": "catalog:"
+        "vite-plus": "catalog:",
+        "wait-for-expect": "^3.0.2"
     },
     "peerDependencies": {
         "pusher-js": "*",
@@ -57,7 +63,7 @@
         }
     },
     "engines": {
-        "node": "^20.19.0 || >=22.12.0"
+        "node": ">=22"
     },
     "exports": {
         ".": {
@@ -68,9 +74,12 @@
         "./iife": "./dist/echo.iife.js"
     },
     "files": [
-        "dist",
-        "resources/boost"
+        "dist"
     ],
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    },
     "dependencies": {
         "@ably/pubsub-device": "^3.0.0"
     }
