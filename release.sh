@@ -127,7 +127,8 @@ restore_release_files() {
 trap restore_release_files EXIT
 
 echo "Updating the version of all four packages..."
-run pnpm -r --filter './packages/*' exec pnpm version "$VERSION" --no-git-tag-version
+# --no-git-checks: pnpm 12's own `pnpm version` refuses a dirty working tree, which it is after the first package.
+run pnpm -r --filter './packages/*' exec pnpm version "$VERSION" --no-git-tag-version --no-git-checks
 for file in "${RELEASE_FILES[@]:0:4}"; do
     [ "$(package_field "$file" version)" = "$VERSION" ] || error "$file was not updated to $VERSION."
 done
@@ -157,6 +158,7 @@ run node scripts/check-release-tarballs.mjs --version "$VERSION" --prerelease "$
 CHANGED=$(git status --porcelain --untracked-files=all)
 UNEXPECTED=$(git status --porcelain --untracked-files=all -- . $(printf ":!%s " "${RELEASE_FILES[@]}"))
 echo ""
+git --no-pager diff -- 'packages/*/package.json'
 git --no-pager diff --stat
 [ -z "$UNEXPECTED" ] || error "unexpected changes besides ${RELEASE_FILES[*]}:
 $UNEXPECTED"
