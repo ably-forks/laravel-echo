@@ -17,6 +17,7 @@ Releases of the 2.x line are made from the `2.x` branch. One git tag, `ably-echo
 - **Never rely on `prepublish*` or `postpublish` scripts.** Setups with `ignore-scripts=true` skip them; this is how a stale `dist/` and the wrong README were once published. CI builds explicitly, checks each tarball, and publishes exactly the tarballs it checked.
 - **Release together with laravel-broadcaster.** Echo 2.x works only with laravel-broadcaster 2.x. Release on the same day as the matching laravel-broadcaster release: Echo may go first, **never laravel-broadcaster first**.
 - **Every step marked [GATE] needs the maintainers' explicit go-ahead:** every push, tag, GitHub release and npm action.
+- **Only maintainers release.** No agent or automation runs `release.sh` without `DRY_RUN=1`, or any publish, tag or push step, even in a throwaway worktree; a real run is done only by a maintainer, with the go-ahead.
 
 ## One-time setup: npm trusted publishers [GATE]
 
