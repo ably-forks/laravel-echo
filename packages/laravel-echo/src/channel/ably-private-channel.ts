@@ -3,7 +3,7 @@ import { AblyAuth } from './ably/auth';
 import { safeInvoke } from './ably/utils';
 
 export class AblyPrivateChannel extends AblyChannel {
-    constructor(ably: any, name: string, options: any, auth: AblyAuth) {
+    constructor(ably: any, name: string, options: any, auth: AblyAuth | undefined) {
         super(ably, name, options, false);
         if (auth) {
             // P3: no AblyAuth with options.client, so no 40160 re-authorize

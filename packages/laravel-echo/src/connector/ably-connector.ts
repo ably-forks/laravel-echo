@@ -1,7 +1,7 @@
 import { Connector, type EchoOptionsWithDefaults } from './connector';
 
 import { AblyChannel, AblyPrivateChannel, AblyPresenceChannel, AblyAuth } from './../channel';
-import type { AblyRealtime, ClientOptions, PubSubClient } from '../types/ably';
+import type { ClientOptions, ConnectionStateChange, PubSubClient } from '../types/ably';
 import type { ConnectionStatus } from '../echo';
 import { toBase64UrlEncoded, resolveAblyLib, warnIfAblyGlobalsIgnored } from '../channel/ably/utils';
 
@@ -74,9 +74,18 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
     ];
     
     /**
-     * The Ably instance.
+     * Connector options. Set by Connector.setOptions() from the base constructor.
+     *
+     * The fields below that connect() assigns are `declare`d (E-06, F-048): connect() runs from the base constructor,
+     * before this class's field initializers, so with ES2022 class fields (define semantics) a plain declaration
+     * would reset them to `undefined` after super(). Never give them an initializer.
      */
-    ably: AblyRealtime;
+    declare options: AblyOptions;
+
+    /**
+     * The Ably instance. Set by connect(), which runs from the base constructor.
+     */
+    declare ably: PubSubClient;
 
     /**
      * All of the subscribed channel names.
@@ -84,9 +93,10 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
     channels: Record<string, AblyChannel> = {};
 
     /**
-     * Auth instance containing all explicit channel authz ops.
+     * Auth instance containing all explicit channel authz ops. Set by connect(); undefined for a user-supplied
+     * options.client (P3).
      */
-    ablyAuth: AblyAuth;
+    declare ablyAuth: AblyAuth | undefined;
 
     /**
      * The MAU hint codes already logged by this connector (each code once).
@@ -103,7 +113,11 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
      * The connection listeners of the re-attach latch (R3), so releaseClient() can remove them (P7). No initializer:
      * connect() sets it from the base constructor, before field initializers run (like ablyAuth).
      */
-    recoveryListeners: { failed: (stateChange?: any) => void; connected: () => void; interrupted: () => void };
+    declare recoveryListeners: {
+        failed: (stateChange?: ConnectionStateChange) => void;
+        connected: () => void;
+        interrupted: () => void;
+    } | null;
 
     /**
      * Create a fresh Ably connection.
@@ -208,16 +222,17 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
     reattachChannelsAfterConnectionFailure(): void {
         // a supplied options.client may already be failed: no later state change would tell us
         let connectionFailed = this.ably.connection.state === 'failed';
-        const failed = (stateChange) => {
+        const failed = (stateChange?: ConnectionStateChange) => {
             connectionFailed = true;
             this.channelsReattachedByAuth = false; // that re-attach did not survive this failure
 
             // E5: a hint only for the MAU codes (40161, 40168, 40167), once per code
-            const code = stateChange?.reason?.code;
+            const reason = stateChange?.reason;
+            const code = reason?.code;
             const hint = code !== undefined ? MAU_HINTS[code] : undefined;
-            if (hint && !this.mauHintsLogged.has(code)) {
+            if (reason && code !== undefined && hint && !this.mauHintsLogged.has(code)) {
                 this.mauHintsLogged.add(code);
-                console.error(`@ably/laravel-echo: the Ably connection failed (${code}: ${stateChange.reason.message}). ${hint}`);
+                console.error(`@ably/laravel-echo: the Ably connection failed (${code}: ${reason.message}). ${hint}`);
             }
         };
         const connected = () => {

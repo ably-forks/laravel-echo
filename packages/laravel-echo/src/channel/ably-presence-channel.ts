@@ -15,7 +15,7 @@ export class AblyPresenceChannel extends AblyChannel implements PresenceChannel 
      */
     lastEnterSucceeded: boolean | undefined = false;
 
-    constructor(ably: any, name: string, options: any, auth: AblyAuth) {
+    constructor(ably: any, name: string, options: any, auth: AblyAuth | undefined) {
         super(ably, name, options, false);
         if (auth) {
             // P3: no AblyAuth with options.client, so no 40160 re-authorize
