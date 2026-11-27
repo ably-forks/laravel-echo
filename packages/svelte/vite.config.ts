@@ -71,16 +71,35 @@ const guardedEnvVariables = (names: string[]): Record<string, string> =>
               ]),
     );
 
+/*
+ * fork (D-03): @ably/laravel-echo is a peer dependency and @ably/pubsub-device comes with it, so no build
+ * (ESM, CJS or IIFE) bundles either of them. The IIFE reads the core IIFE's global `Echo`.
+ */
+const isAblyExternal = (id: string): boolean =>
+    ["@ably/laravel-echo", "@ably/pubsub-device"].some(
+        (pkg) => id === pkg || id.startsWith(`${pkg}/`),
+    );
+
+const globals = (id: string): string => {
+    if (id.startsWith("@ably/laravel-echo")) {
+        return "Echo";
+    }
+
+    if (id.startsWith("@ably/pubsub-device")) {
+        return "AblyPubSub";
+    }
+
+    return "Svelte";
+};
+
 const config: UserConfig = (() => {
     const common: Partial<UserConfig["build"]> = {
         rollupOptions: {
             external: (id) =>
                 id === "svelte" ||
                 id.startsWith("svelte/") ||
-                id === "pusher-js",
-            output: {
-                globals: (id) => (id === "pusher-js" ? "Pusher" : "Svelte"),
-            },
+                isAblyExternal(id),
+            output: { globals },
         },
         outDir: resolve(import.meta.dirname, "dist"),
         sourcemap: true,
@@ -99,6 +118,12 @@ const config: UserConfig = (() => {
                 },
                 emptyOutDir: false,
                 ...common,
+                rollupOptions: {
+                    ...common.rollupOptions,
+                    // fork (V1-B): compiled runes import svelte/internal/*, which the page's global `Svelte`
+                    // does not expose, so the IIFE bundles those internals and keeps only `svelte` external
+                    external: (id) => id === "svelte" || isAblyExternal(id),
+                },
             },
         };
     }
@@ -106,7 +131,7 @@ const config: UserConfig = (() => {
     return {
         plugins: [svelteRunesTsPlugin()],
         define: guardedEnvVariables([
-            "VITE_ABLY_PUBLIC_KEY",
+            "VITE_MERCURE_HUB_URL",
             "VITE_PUSHER_APP_CLUSTER",
             "VITE_PUSHER_APP_KEY",
             "VITE_PUSHER_HOST",
@@ -122,7 +147,8 @@ const config: UserConfig = (() => {
                 entry: resolve(import.meta.dirname, "src/index.ts"),
                 formats: ["es", "cjs"],
                 fileName: (format, entryName) => {
-                    return `${entryName}.${format === "es" ? "js" : "common.js"}`;
+                    // fork (F-333): .cjs, because "type": "module" makes Node load a .js file as ESM, which breaks require()
+                    return `${entryName}.${format === "es" ? "js" : "common.cjs"}`;
                 },
             },
             emptyOutDir: true,
@@ -130,7 +156,26 @@ const config: UserConfig = (() => {
         },
         test: {
             globals: true,
-            environment: "jsdom",
+            projects: [
+                {
+                    extends: true,
+                    test: {
+                        name: "unit",
+                        environment: "jsdom",
+                        include: ["tests/**/*.test.ts"],
+                        exclude: ["tests/bundles/**"],
+                    },
+                },
+                {
+                    // fork: smoke tests of dist/ (ESM, .cjs and IIFE); run after the build
+                    extends: true,
+                    test: {
+                        name: "bundles",
+                        environment: "node",
+                        include: ["tests/bundles/**/*.test.ts"],
+                    },
+                },
+            ],
         },
     };
 })();

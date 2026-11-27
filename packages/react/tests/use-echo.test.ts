@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import Echo from "laravel-echo";
+import Echo from "@ably/laravel-echo";
 import {
     afterEach,
     beforeEach,
@@ -12,7 +12,7 @@ import {
 const getEchoModule = async () => import("../src/hooks/use-echo");
 const getConfigModule = async () => import("../src/config/index");
 
-vi.mock("laravel-echo", () => {
+vi.mock("@ably/laravel-echo", () => {
     const mockPrivateChannel = {
         leaveChannel: vi.fn(),
         listen: vi.fn(),
@@ -1369,7 +1369,7 @@ describe("useSocketId hook", async () => {
     });
 
     it("returns the socket id when the connector provides one", async () => {
-        const Echo = (await import("laravel-echo")).default as any;
+        const Echo = (await import("@ably/laravel-echo")).default as any;
         Echo.prototype.socketId = vi.fn(() => "abc123.def456");
 
         const { result } = renderHook(() => echoModule.useSocketId());
@@ -1378,7 +1378,7 @@ describe("useSocketId hook", async () => {
     });
 
     it("updates when the connection reconnects with a new socket id", async () => {
-        const Echo = (await import("laravel-echo")).default as any;
+        const Echo = (await import("@ably/laravel-echo")).default as any;
         let connectionCallback: (() => void) | undefined;
 
         Echo.prototype.socketId = vi

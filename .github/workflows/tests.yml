@@ -1,6 +1,6 @@
 name: tests
 
-# Interim pnpm workflow: Phase 14 adds SHA pins, permissions, lint and the adapter jobs.
+# Interim pnpm workflow: Phase 14 adds lint and folds the adapter job into `pnpm test`.
 
 on:
   pull_request:
@@ -8,6 +8,9 @@ on:
     branches:
       - master
       - '*.x'
+
+permissions:
+  contents: read
 
 jobs:
   tests:
@@ -21,13 +24,13 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install pnpm (version from packageManager)
-        uses: pnpm/action-setup@v6.1.1
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node-version }}
           # Vite+ needs Node ^22.18 or ^24.11: resolve the newest release, not an older cached one.
@@ -49,19 +52,57 @@ jobs:
       - name: Smoke-test the built bundles (self-contained IIFE, ESM/CJS export surface)
         run: pnpm --filter @ably/laravel-echo run test:bundles
 
+  adapters:
+    # The React, Vue and Svelte packages (Phase 10). Their upstream suites still assert Pusher-style channel names
+    # until Phases 11-13 port them, so this job runs the fork's shared tests; Phase 14 folds it into `pnpm test`.
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [22, 24]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install pnpm (version from packageManager)
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          check-latest: true
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the core, then the adapters (JS bundles and declarations)
+        run: pnpm build
+
+      - name: Type-check upstream @laravel/echo-react, -vue and -svelte usage against the built declarations
+        run: pnpm --filter "@ably/laravel-echo-*" run test:compat
+
+      - name: Execute the shared adapter tests (native Ably default, leave by visibility incl. Mercure, connection status, reconfigure, pusher-js)
+        run: pnpm --filter "@ably/laravel-echo-*" run test --run ably-shared pusher mercure
+
+      - name: Smoke-test the built adapter bundles (ESM, .cjs and IIFE exports, externals)
+        run: pnpm --filter "@ably/laravel-echo-*" run test:bundles
+
   browser-build:
     # tests/ably against @ably/pubsub-device's browser build (dist/index.js), which users actually ship (R15).
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install pnpm (version from packageManager)
-        uses: pnpm/action-setup@v6.1.1
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           check-latest: true

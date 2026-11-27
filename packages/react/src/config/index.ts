@@ -2,9 +2,8 @@ import Echo, {
     type BroadcastDriver,
     type Broadcaster,
     type EchoOptions,
-} from "laravel-echo";
-import Pusher from "pusher-js";
-import type { ConfigDefaults } from "../types";
+} from "@ably/laravel-echo";
+import type { Channel, ConfigDefaults } from "../types";
 
 /**
  * The Echo constructor argument, which allows a custom connector class as the broadcaster.
@@ -13,6 +12,38 @@ type EchoConfig = ConstructorParameters<typeof Echo<keyof Broadcaster>>[0];
 
 let echoInstance: Echo<keyof Broadcaster> | null = null;
 let echoConfig: EchoConfig | null = null;
+
+/**
+ * fork (P-07): unlike upstream, the adapters neither import nor inject pusher-js, so the Pusher and Reverb
+ * broadcasters use the app's own copy. Without one, fail with a hint that names both ways to provide it, instead
+ * of the core's generic "Pusher client not found" (the checks mirror PusherConnector.connect()).
+ */
+const assertPusherAvailable = (config: EchoConfig): void => {
+    const { broadcaster } = config;
+
+    if (broadcaster !== "pusher" && broadcaster !== "reverb") {
+        return;
+    }
+
+    const windowPusher: unknown =
+        typeof window === "undefined"
+            ? undefined
+            : (window as unknown as { Pusher?: unknown }).Pusher;
+
+    if (
+        config.Pusher ||
+        typeof config.client !== "undefined" ||
+        typeof windowPusher !== "undefined"
+    ) {
+        return;
+    }
+
+    throw new Error(
+        `The "${broadcaster}" broadcaster needs the Pusher class from pusher-js, which @ably/laravel-echo-react ` +
+            `does not bundle. Pass it in the options, configureEcho({ broadcaster: "${broadcaster}", Pusher }), ` +
+            `or set window.Pusher = Pusher before Echo is used.`,
+    );
+};
 
 const getEchoInstance = <T extends keyof Broadcaster>(): Echo<T> => {
     if (echoInstance) {
@@ -25,7 +56,7 @@ const getEchoInstance = <T extends keyof Broadcaster>(): Echo<T> => {
         );
     }
 
-    echoConfig.Pusher ??= Pusher;
+    assertPusherAvailable(echoConfig);
 
     echoInstance = new Echo<keyof Broadcaster>(echoConfig);
 
@@ -74,22 +105,18 @@ export const configureEcho = <T extends keyof Broadcaster>(
         null: {
             broadcaster: "null",
         },
-        ably: {
-            broadcaster: "pusher",
-            key: import.meta.env.VITE_ABLY_PUBLIC_KEY,
-            wsHost: "realtime-pusher.ably.io",
-            wsPort: 443,
-            disableStats: true,
-            encrypted: true,
-        },
+        // fork (D-08): `ably` is the native Ably connector; authEndpoint defaults to /broadcasting/auth in the core
+        ably: { broadcaster: "ably" },
     };
 
+    // fork (provisional: P-02): without a broadcaster, the native Ably connector is used, as in the core.
     // Custom connector classes have no defaults to merge in...
-    const { broadcaster } = config;
+    const broadcaster = config.broadcaster ?? "ably";
 
     echoConfig = {
         ...(typeof broadcaster === "string" ? defaults[broadcaster] : null),
         ...config,
+        broadcaster,
     } as EchoConfig;
 
     // Reset the instance if it was already created
@@ -103,3 +130,22 @@ export const echo = <
 >(): Echo<T> => getEchoInstance<T>();
 
 export const echoIsConfigured = () => echoConfig !== null;
+
+/**
+ * fork (P-04, UB-19): the hooks' channel-registry key. The non-Ably drivers get upstream's id ("private-x",
+ * "presence-x" or the bare name), so hooks share registry entries exactly as upstream, also a public channel
+ * named "private-x" with the private channel "x". The native Ably connector names channels per visibility
+ * ("public:private-x", "private:x"), so its keys are distinct per visibility too.
+ */
+export const channelRegistryId = (
+    name: string,
+    visibility: Channel["visibility"],
+): string => {
+    if (echoConfig?.broadcaster === "ably") {
+        return `${visibility}:${name}`;
+    }
+
+    return ["private", "presence"].includes(visibility)
+        ? `${visibility}-${name}`
+        : name;
+};

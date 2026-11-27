@@ -1,6 +1,9 @@
-import type Echo from "laravel-echo";
-import { type BroadcastDriver, type ConnectionStatus } from "laravel-echo";
-import { echo } from "../config";
+import type Echo from "@ably/laravel-echo";
+import {
+    type BroadcastDriver,
+    type ConnectionStatus,
+} from "@ably/laravel-echo";
+import { channelRegistryId, echo } from "../config";
 import type {
     BroadcastNotification,
     CallbackInput,
@@ -71,8 +74,18 @@ const subscribeToChannel = <T extends BroadcastDriver>(
     return instance.channel(channel.name);
 };
 
-const leaveChannel = (channel: Channel, leaveAll: boolean = false): void => {
+const leaveChannel = (
+    channel: Channel,
+    leaveAll: boolean = false,
+    connection?: unknown,
+): void => {
     if (!channels[channel.id]) {
+        return;
+    }
+
+    // fork (UB-15, provisional): the entry belongs to another hook's subscription when this hook already left and a
+    // sibling subscribed the channel again; releasing it would leave the channel under the sibling
+    if (connection && channels[channel.id].connection !== connection) {
         return;
     }
 
@@ -87,7 +100,8 @@ const leaveChannel = (channel: Channel, leaveAll: boolean = false): void => {
     if (leaveAll) {
         echo().leave(channel.name);
     } else {
-        echo().leaveChannel(channel.id);
+        // fork (provisional: P-04): the core builds the connector's full name (Ably: "private:x"; others: "private-x")
+        echo().leaveChannel(channel.name, channel.visibility);
     }
 };
 
@@ -131,9 +145,8 @@ const resolveChannel = <TVisibility extends Channel["visibility"]>(
 
     return {
         name: resolvedChannelName,
-        id: ["private", "presence"].includes(visibility)
-            ? `${visibility}-${resolvedChannelName}`
-            : resolvedChannelName,
+        // fork (provisional: P-04; UB-19): upstream's id for non-Ably drivers, per visibility for Ably
+        id: channelRegistryId(resolvedChannelName, visibility),
         visibility,
     };
 };
@@ -244,7 +257,7 @@ export function useEcho<
 
     const tearDown = (leaveAll: boolean = false) => {
         stopListening();
-        leaveChannel(channel, leaveAll);
+        leaveChannel(channel, leaveAll, subscription);
     };
 
     $effect(() => {
@@ -421,7 +434,7 @@ export function useChannel<
         resolveChannelSubscription<TDriver>(channel);
 
     const tearDown = (leaveAll: boolean = false) => {
-        leaveChannel(channel, leaveAll);
+        leaveChannel(channel, leaveAll, subscription);
     };
 
     $effect(() => {
@@ -495,7 +508,8 @@ const useConnectionChange = (
             callback(echo().connectionStatus());
         }
 
-        const unsubscribe = echo().connector.onConnectionChange(callback);
+        // fork (provisional: P-03): Echo's registry survives Echo.connect() replacing the connector
+        const unsubscribe = echo().onConnectionChange(callback);
 
         return () => unsubscribe();
     });

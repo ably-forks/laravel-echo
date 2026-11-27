@@ -1,75 +1,63 @@
 {
-    "name": "@laravel/echo-vue",
-    "version": "2.6.3",
-    "description": "Vue hooks for seamless integration with Laravel Echo.",
+    "name": "@ably/laravel-echo-vue",
+    "version": "2.0.0",
+    "description": "Vue composables for @ably/laravel-echo.",
     "keywords": [
         "laravel",
         "pusher",
         "ably",
         "vue"
     ],
-    "homepage": "https://github.com/laravel/echo/tree/2.x/packages/vue",
+    "homepage": "https://github.com/ably-forks/laravel-echo/tree/2.x/packages/vue",
     "repository": {
         "type": "git",
-        "url": "https://github.com/laravel/echo"
+        "url": "https://github.com/ably-forks/laravel-echo",
+        "directory": "packages/vue"
     },
     "license": "MIT",
     "author": {
         "name": "Taylor Otwell"
     },
     "type": "module",
-    "main": "dist/index.common.js",
+    "main": "dist/index.common.cjs",
     "module": "dist/index.js",
     "types": "dist/index.d.ts",
     "scripts": {
         "build": "vp build && FORMAT=iife vp build && tsc -p tsconfig.build.json",
         "dev": "vp dev",
-        "prepublish": "pnpm run build",
-        "release": "vp test --run && pnpm publish --no-git-checks",
-        "test": "vp test"
+        "test": "vp test --project unit",
+        "test:bundles": "vp test --run --project bundles",
+        "test:compat": "tsc -p tests/compat/tsconfig.json"
     },
     "devDependencies": {
         "@types/node": "^24.13.3",
         "@vue/test-utils": "^2.4.11",
         "jsdom": "^30.0.0",
         "@ably/laravel-echo": "workspace:^",
-        "pusher-js": "^8.4.0",
-        "socket.io-client": "^4.8.1",
         "typescript": "catalog:",
         "vite-plus": "catalog:",
         "vue": "^3.5.41"
     },
     "peerDependencies": {
-        "pusher-js": "*",
-        "socket.io-client": "*",
+        "@ably/laravel-echo": "^2.0.0-rc.0",
         "vue": "^3.0.0"
     },
-    "peerDependenciesMeta": {
-        "pusher-js": {
-            "optional": true
-        },
-        "socket.io-client": {
-            "optional": true
-        }
-    },
-    "typesVersions": {
-        "*": {
-            "socket.io-client": [],
-            "pusher-js": []
-        }
-    },
     "engines": {
-        "node": "^20.19.0 || >=22.12.0"
+        "node": ">=22"
     },
     "exports": {
         ".": {
             "types": "./dist/index.d.ts",
             "import": "./dist/index.js",
-            "require": "./dist/index.common.js"
-        }
+            "require": "./dist/index.common.cjs"
+        },
+        "./iife": "./dist/echo-vue.iife.js"
     },
     "files": [
-        "dist",
-        "resources/boost"
-    ]
+        "dist"
+    ],
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    }
 }

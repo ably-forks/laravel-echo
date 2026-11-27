@@ -1,5 +1,5 @@
 import { mount } from "@vue/test-utils";
-import Echo from "laravel-echo";
+import Echo from "@ably/laravel-echo";
 import {
     afterEach,
     beforeEach,
@@ -137,7 +137,7 @@ const getNotificationTestComponent = (
     return mount(TestComponent);
 };
 
-vi.mock("laravel-echo", () => {
+vi.mock("@ably/laravel-echo", () => {
     const mockPrivateChannel = {
         leaveChannel: vi.fn(),
         listen: vi.fn(),

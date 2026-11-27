@@ -21,14 +21,25 @@ const guardedEnvVariables = (names: string[]): Record<string, string> =>
               ]),
     );
 
+/*
+ * fork (D-03): @ably/laravel-echo is a peer dependency and @ably/pubsub-device comes with it, so no build
+ * (ESM, CJS or IIFE) bundles either of them. The IIFE reads the core IIFE's global `Echo`.
+ */
+const isAblyExternal = (id: string): boolean =>
+    ["@ably/laravel-echo", "@ably/pubsub-device"].some(
+        (pkg) => id === pkg || id.startsWith(`${pkg}/`),
+    );
+
 const config: UserConfig = (() => {
     const common: Partial<UserConfig["build"]> = {
         rollupOptions: {
-            external: ["vue", "pusher-js"],
+            external: (id: string) =>
+                id === "vue" || id.startsWith("vue/") || isAblyExternal(id),
             output: {
                 globals: {
                     vue: "Vue",
-                    "pusher-js": "Pusher",
+                    "@ably/laravel-echo": "Echo",
+                    "@ably/pubsub-device": "AblyPubSub",
                 },
             },
         },
@@ -55,7 +66,7 @@ const config: UserConfig = (() => {
 
     return {
         define: guardedEnvVariables([
-            "VITE_ABLY_PUBLIC_KEY",
+            "VITE_MERCURE_HUB_URL",
             "VITE_PUSHER_APP_CLUSTER",
             "VITE_PUSHER_APP_KEY",
             "VITE_PUSHER_HOST",
@@ -71,7 +82,8 @@ const config: UserConfig = (() => {
                 entry: resolve(import.meta.dirname, "src/index.ts"),
                 formats: ["es", "cjs"],
                 fileName: (format, entryName) => {
-                    return `${entryName}.${format === "es" ? "js" : "common.js"}`;
+                    // fork (F-333): .cjs, because "type": "module" makes Node load a .js file as ESM, which breaks require()
+                    return `${entryName}.${format === "es" ? "js" : "common.cjs"}`;
                 },
             },
             emptyOutDir: true,
@@ -79,7 +91,26 @@ const config: UserConfig = (() => {
         },
         test: {
             globals: true,
-            environment: "jsdom",
+            projects: [
+                {
+                    extends: true,
+                    test: {
+                        name: "unit",
+                        environment: "jsdom",
+                        include: ["tests/**/*.test.ts"],
+                        exclude: ["tests/bundles/**"],
+                    },
+                },
+                {
+                    // fork: smoke tests of dist/ (ESM, .cjs and IIFE); run after the build
+                    extends: true,
+                    test: {
+                        name: "bundles",
+                        environment: "node",
+                        include: ["tests/bundles/**/*.test.ts"],
+                    },
+                },
+            ],
         },
     };
 })();

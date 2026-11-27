@@ -1,4 +1,4 @@
-import { type BroadcastDriver, type Broadcaster } from "laravel-echo";
+import { type BroadcastDriver, type Broadcaster } from "@ably/laravel-echo";
 
 export type Connection<T extends BroadcastDriver> =
     | Broadcaster[T]["public"]
@@ -91,7 +91,7 @@ export type ModelEvents<T extends string> =
  *
  * @example
  * // Alternative: Module augmentation
- * declare module '@laravel/echo-vue' {
+ * declare module '@ably/laravel-echo-vue' {
  *   interface Events {
  *     OrganizationUpdated: {
  *       id: number;

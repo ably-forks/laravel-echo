@@ -1,6 +1,9 @@
-import { type BroadcastDriver, type ConnectionStatus } from "laravel-echo";
+import {
+    type BroadcastDriver,
+    type ConnectionStatus,
+} from "@ably/laravel-echo";
 import { onMounted, onUnmounted, ref, watch, type Ref } from "vue";
-import { echo } from "../config";
+import { channelRegistryId, echo } from "../config";
 import type {
     BroadcastNotification,
     Channel,
@@ -52,8 +55,18 @@ const subscribeToChannel = <T extends BroadcastDriver>(
     return instance.channel(channel.name);
 };
 
-const leaveChannel = (channel: Channel, leaveAll: boolean = false): void => {
+const leaveChannel = (
+    channel: Channel,
+    leaveAll: boolean = false,
+    connection?: unknown,
+): void => {
     if (!channels[channel.id]) {
+        return;
+    }
+
+    // fork (UB-15, provisional): the entry belongs to another hook's subscription when this hook already left and a
+    // sibling subscribed the channel again; releasing it would leave the channel under the sibling
+    if (connection && channels[channel.id].connection !== connection) {
         return;
     }
 
@@ -68,7 +81,8 @@ const leaveChannel = (channel: Channel, leaveAll: boolean = false): void => {
     if (leaveAll) {
         echo().leave(channel.name);
     } else {
-        echo().leaveChannel(channel.id);
+        // fork (provisional: P-04): the core builds the connector's full name (Ably: "private:x"; others: "private-x")
+        echo().leaveChannel(channel.name, channel.visibility);
     }
 };
 
@@ -153,9 +167,8 @@ export function useEcho<
 
     const channel: Channel = {
         name: channelName,
-        id: ["private", "presence"].includes(visibility)
-            ? `${visibility}-${channelName}`
-            : channelName,
+        // fork (provisional: P-04; UB-19): upstream's id for non-Ably drivers, per visibility for Ably
+        id: channelRegistryId(channelName, visibility),
         visibility,
     };
 
@@ -193,7 +206,7 @@ export function useEcho<
 
     const tearDown = (leaveAll: boolean = false) => {
         stopListening();
-        leaveChannel(channel, leaveAll);
+        leaveChannel(channel, leaveAll, subscription);
     };
 
     onMounted(() => {
@@ -360,9 +373,8 @@ export function useChannel<
 >(channelName: string, visibility: TVisibility = "private" as TVisibility) {
     const channel: Channel = {
         name: channelName,
-        id: ["private", "presence"].includes(visibility)
-            ? `${visibility}-${channelName}`
-            : channelName,
+        // fork (provisional: P-04; UB-19): upstream's id for non-Ably drivers, per visibility for Ably
+        id: channelRegistryId(channelName, visibility),
         visibility,
     };
 
@@ -370,7 +382,7 @@ export function useChannel<
         resolveChannelSubscription<TDriver>(channel);
 
     const tearDown = (leaveAll: boolean = false) => {
-        leaveChannel(channel, leaveAll);
+        leaveChannel(channel, leaveAll, subscription);
     };
 
     onUnmounted(() => {
@@ -442,7 +454,9 @@ const useConnectionChange = (
             callback(echoInstance.connectionStatus());
         }
 
-        unsubscribe = echoInstance.connector.onConnectionChange(callback);
+        // fork (provisional: P-03): Echo's registry survives Echo.connect() replacing the connector; like upstream,
+        // it is the instance captured at setup (UB-28)
+        unsubscribe = echoInstance.onConnectionChange(callback);
     });
 
     onUnmounted(() => {

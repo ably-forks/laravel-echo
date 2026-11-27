@@ -1,4 +1,7 @@
-import { type BroadcastDriver, type ConnectionStatus } from "laravel-echo";
+import {
+    type BroadcastDriver,
+    type ConnectionStatus,
+} from "@ably/laravel-echo";
 import {
     type DependencyList,
     useCallback,
@@ -8,7 +11,7 @@ import {
     useRef,
     useState,
 } from "react";
-import { echo } from "../config";
+import { channelRegistryId, echo } from "../config";
 import type {
     BroadcastNotification,
     Channel,
@@ -40,8 +43,18 @@ const subscribeToChannel = <T extends BroadcastDriver>(
     return instance.channel(channel.name);
 };
 
-const leaveChannel = (channel: Channel, leaveAll: boolean): void => {
+const leaveChannel = (
+    channel: Channel,
+    leaveAll: boolean,
+    connection?: unknown,
+): void => {
     if (!channels[channel.id]) {
+        return;
+    }
+
+    // fork (UB-15, provisional): the entry belongs to another hook's subscription when this hook already left and a
+    // sibling subscribed the channel again; releasing it would leave the channel under the sibling
+    if (connection && channels[channel.id].connection !== connection) {
         return;
     }
 
@@ -54,7 +67,8 @@ const leaveChannel = (channel: Channel, leaveAll: boolean): void => {
     if (leaveAll) {
         echo().leave(channel.name);
     } else {
-        echo().leaveChannel(channel.id);
+        // fork (provisional: P-04): the core builds the connector's full name (Ably: "private:x"; others: "private-x")
+        echo().leaveChannel(channel.name, channel.visibility);
     }
 
     delete channels[channel.id];
@@ -151,9 +165,8 @@ export function useEcho<
     const channel: Channel = useMemo(
         () => ({
             name: channelName,
-            id: ["private", "presence"].includes(visibility)
-                ? `${visibility}-${channelName}`
-                : channelName,
+            // fork (provisional: P-04; UB-19): upstream's id for non-Ably drivers, per visibility for Ably
+            id: channelRegistryId(channelName, visibility),
             visibility,
         }),
         [channelName, visibility],
@@ -198,7 +211,7 @@ export function useEcho<
         (leaveAll: boolean = false) => {
             stopListening();
 
-            leaveChannel(channel, leaveAll);
+            leaveChannel(channel, leaveAll, subscription.current);
         },
         [stopListening, channel],
     );
@@ -393,9 +406,8 @@ export function useChannel<
     const channel: Channel = useMemo(
         () => ({
             name: channelName,
-            id: ["private", "presence"].includes(visibility)
-                ? `${visibility}-${channelName}`
-                : channelName,
+            // fork (provisional: P-04; UB-19): upstream's id for non-Ably drivers, per visibility for Ably
+            id: channelRegistryId(channelName, visibility),
             visibility,
         }),
         [channelName, visibility],
@@ -405,7 +417,7 @@ export function useChannel<
 
     const tearDown = useCallback(
         (leaveAll: boolean = false) => {
-            leaveChannel(channel, leaveAll);
+            leaveChannel(channel, leaveAll, subscription.current);
         },
         [channel],
     );
@@ -494,7 +506,8 @@ const useConnectionChange = (
             callbackRef.current(echo().connectionStatus());
         }
 
-        return echo().connector.onConnectionChange((status) =>
+        // fork (provisional: P-03): Echo's registry survives Echo.connect() replacing the connector
+        return echo().onConnectionChange((status) =>
             callbackRef.current(status),
         );
     }, []); // eslint-disable-line react-hooks/exhaustive-deps

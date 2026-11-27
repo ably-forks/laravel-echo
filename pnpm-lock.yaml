@@ -193,18 +193,12 @@ importers:
       jsdom:
         specifier: ^30.0.0
         version: 30.0.1
-      pusher-js:
-        specifier: ^8.4.0
-        version: 8.6.0
       react:
         specifier: ^19.1.0
         version: 19.2.8
       react-dom:
         specifier: ^19.1.0
         version: 19.2.8(react@19.2.8)
-      socket.io-client:
-        specifier: ^4.8.1
-        version: 4.8.3(supports-color@8.1.1)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -223,12 +217,6 @@ importers:
       jsdom:
         specifier: ^30.0.0
         version: 30.0.1
-      pusher-js:
-        specifier: ^8.4.0
-        version: 8.6.0
-      socket.io-client:
-        specifier: ^4.8.1
-        version: 4.8.3(supports-color@8.1.1)
       svelte:
         specifier: ^5.55.7
         version: 5.57.0(@typescript-eslint/types@8.69.0)
@@ -253,12 +241,6 @@ importers:
       jsdom:
         specifier: ^30.0.0
         version: 30.0.1
-      pusher-js:
-        specifier: ^8.4.0
-        version: 8.6.0
-      socket.io-client:
-        specifier: ^4.8.1
-        version: 4.8.3(supports-color@8.1.1)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
