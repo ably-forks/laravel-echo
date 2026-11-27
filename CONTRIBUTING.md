@@ -93,7 +93,7 @@ CI also runs two suites against Ably's live sandbox. They create their own sandb
 - `pnpm --filter @ably/laravel-echo run test:sandbox` runs the live-sandbox tests.
 - `pnpm --filter @ably/laravel-echo run test:browser-build` runs `packages/laravel-echo/tests/ably` against the browser build of `@ably/pubsub-device`, including the live-sandbox files. To run it locally without the sandbox, run the other files one at a time, because `vp test` treats `--exclude` as a file filter: for example `cd packages/laravel-echo && pnpm exec vp test --run --project browser-build tests/ably/auth-headers.test.ts`. The live-sandbox files are listed in `sandboxFiles` in `packages/laravel-echo/vite.config.ts`.
 
-Never rely on `prepublish*` or `postpublish` scripts: setups with `ignore-scripts=true` skip them. Build explicitly with `pnpm build`, and check what a package contains with `pnpm pack`. Releases follow [RELEASE.md](RELEASE.md).
+Never rely on `prepublish*` or `postpublish` scripts: setups with `ignore-scripts=true` skip them. Build explicitly with `pnpm build`, then check what the packages contain with `node scripts/check-release-tarballs.mjs`, which packs all four and checks each tarball. Releases follow [RELEASE.md](RELEASE.md).
 
 ## Upstream re-syncs and fork deltas (this fork)
 
