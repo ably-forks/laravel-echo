@@ -61,11 +61,11 @@ Both are inherited from `@ably/pubsub-device`, not an Echo API change.
 
 ### Echo options and defaults
 
-An app that passes its 1.0.x options needs no new option: everything added in 1.1 has a working default. Echo's own options:
+An app that passes its 1.0.x options needs no new option: every option added in 1.1 has a working default. `broadcaster` is not new and still has none. Echo's own options:
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `broadcaster` | `'pusher'` | Set `'ably'`. |
+| `broadcaster` | none (required) | Required; set `'ably'`. Omitting it throws `Broadcaster undefined undefined is not supported.` |
 | `authEndpoint` | `'/broadcasting/auth'` | Relative URLs resolve against the page URL. |
 | `auth.headers` | `{}` | Extra headers for auth requests. |
 | `csrfToken` | `null` | Read in this order: `window.Laravel.csrfToken`, this option, the `<meta name="csrf-token">` tag. Sent as `X-CSRF-TOKEN`. |
