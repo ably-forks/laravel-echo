@@ -23,6 +23,20 @@ import { toArray } from "../util";
 const channels: Record<string, ChannelData<BroadcastDriver>> = {};
 let activeEchoInstance: Echo<BroadcastDriver> | null = null;
 
+/**
+ * fork (P-09): the runes are compiled for the client, whose $effect throws effect_orphan inside svelte/server's
+ * render(). On the server they neither subscribe nor run effects; on the client they subscribe at init, as upstream.
+ */
+const isServer = (): boolean => typeof window === "undefined";
+
+const clientEffect = (fn: () => void | (() => void)): void => {
+    if (isServer()) {
+        return;
+    }
+
+    $effect(fn);
+};
+
 const clearChannelCache = (): void => {
     Object.keys(channels).forEach((channelId) => {
         delete channels[channelId];
@@ -224,8 +238,10 @@ export function useEcho<
     let initialized = false;
     let channel = resolveChannel(channelName, visibility);
     let events = toArray(resolveInput(event));
-    let subscription: Connection<TDriver> =
-        resolveChannelSubscription<TDriver>(channel);
+    // fork (P-09): no subscription during server rendering, so channel() returns null there
+    let subscription = (
+        isServer() ? null : resolveChannelSubscription<TDriver>(channel)
+    ) as Connection<TDriver>;
 
     const eventCallback = (payload: TPayload) => {
         resolveCallback(callback)(payload);
@@ -260,7 +276,7 @@ export function useEcho<
         leaveChannel(channel, leaveAll, subscription);
     };
 
-    $effect(() => {
+    clientEffect(() => {
         trackDependencies(dependencies);
         channel = resolveChannel(channelName, visibility);
         events = toArray(resolveInput(event));
@@ -356,7 +372,7 @@ export const useEchoNotification = <
         listening = false;
     };
 
-    $effect(() => {
+    clientEffect(() => {
         trackDependencies(dependencies);
         events = toArray(resolveInput(event))
             .map((e) => {
@@ -430,14 +446,16 @@ export function useChannel<
     visibility: TVisibility = "private" as TVisibility,
 ) {
     let channel = resolveChannel(channelName, visibility);
-    let subscription: Connection<TDriver> =
-        resolveChannelSubscription<TDriver>(channel);
+    // fork (P-09): no subscription during server rendering, so channel() returns null there
+    let subscription = (
+        isServer() ? null : resolveChannelSubscription<TDriver>(channel)
+    ) as Connection<TDriver>;
 
     const tearDown = (leaveAll: boolean = false) => {
         leaveChannel(channel, leaveAll, subscription);
     };
 
-    $effect(() => {
+    clientEffect(() => {
         channel = resolveChannel(channelName, visibility);
         subscription = resolveChannelSubscription<TDriver>(channel);
 
@@ -503,7 +521,7 @@ const useConnectionChange = (
     callback: (status: ConnectionStatus) => void,
     invokeOnMount: boolean = true,
 ): void => {
-    $effect(() => {
+    clientEffect(() => {
         if (invokeOnMount) {
             callback(echo().connectionStatus());
         }
@@ -516,7 +534,10 @@ const useConnectionChange = (
 };
 
 export const useConnectionStatus = (): (() => ConnectionStatus) => {
-    let status = $state<ConnectionStatus>(echo().connectionStatus());
+    // fork (P-09): "disconnected" during server rendering, without creating Echo there
+    let status = $state<ConnectionStatus>(
+        isServer() ? "disconnected" : echo().connectionStatus(),
+    );
 
     useConnectionChange((newStatus) => {
         status = newStatus;
@@ -526,7 +547,10 @@ export const useConnectionStatus = (): (() => ConnectionStatus) => {
 };
 
 export const useSocketId = (): (() => string | undefined) => {
-    let socketId = $state<string | undefined>(echo().socketId());
+    // fork (P-09): undefined during server rendering, without creating Echo there
+    let socketId = $state<string | undefined>(
+        isServer() ? undefined : echo().socketId(),
+    );
 
     useConnectionChange(() => {
         socketId = echo().socketId();
