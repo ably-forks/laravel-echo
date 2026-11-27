@@ -3,7 +3,8 @@
  * fork (P-09, option B; F-206): server-side rendering with vue/server-renderer, in Node without a DOM. The
  * composables must not create an Echo instance (so no Ably connection) nor subscribe, whether or not Echo is
  * configured. Without a `window` global, any code path that used it would throw a ReferenceError here.
- * tests/ssr-hydration.test.ts covers the client side.
+ * tests/ssr-hydration.test.ts covers the client side. A client without `window` and outside a server render (a
+ * custom renderer, as NativeScript-Vue uses) still subscribes, as upstream's composables do.
  */
 import {
     afterEach,
@@ -13,7 +14,7 @@ import {
     it,
     vi,
 } from "vite-plus/test";
-import { createSSRApp, defineComponent, h } from "vue";
+import { createRenderer, createSSRApp, defineComponent, h } from "vue";
 import { renderToString } from "vue/server-renderer";
 
 const { echoInstances } = vi.hoisted(() => ({
@@ -21,12 +22,19 @@ const { echoInstances } = vi.hoisted(() => ({
 }));
 
 vi.mock("@ably/laravel-echo", () => {
+    const channel = () => ({
+        listen: vi.fn(),
+        stopListening: vi.fn(),
+        notification: vi.fn(),
+        stopListeningForNotification: vi.fn(),
+    });
+
     const Echo = vi.fn(function (options: Record<string, unknown>) {
         const instance = {
             options,
-            private: vi.fn(),
-            channel: vi.fn(),
-            join: vi.fn(),
+            private: vi.fn(() => channel()),
+            channel: vi.fn(() => channel()),
+            join: vi.fn(() => channel()),
             leave: vi.fn(),
             leaveChannel: vi.fn(),
             leaveAllChannels: vi.fn(),
@@ -131,5 +139,67 @@ describe("server-side rendering (P-09, option B)", () => {
         // no instance means no connector, so no Ably connection is opened during the server render
         expect(Echo).not.toHaveBeenCalled();
         expect(echoInstances).toHaveLength(0);
+    });
+
+    it("still subscribes in a client without window and without a server render", async () => {
+        const module = await getModule();
+
+        module.configureEcho({});
+
+        // a minimal custom renderer, as non-DOM Vue runtimes (NativeScript-Vue and the like) provide
+        type Node = { children: Node[]; text?: string };
+        const { createApp } = createRenderer<Node, Node>({
+            createElement: () => ({ children: [] }),
+            createText: (text) => ({ children: [], text }),
+            createComment: (text) => ({ children: [], text }),
+            setText: (node, text) => {
+                node.text = text;
+            },
+            setElementText: (node, text) => {
+                node.text = text;
+            },
+            insert: (child, parent) => {
+                parent.children.push(child);
+            },
+            remove: () => {},
+            parentNode: () => null,
+            nextSibling: () => null,
+            patchProp: () => {},
+        });
+
+        let status!: { value: string };
+        let socketId!: { value: string | undefined };
+
+        const App = defineComponent({
+            setup() {
+                status = module.useConnectionStatus();
+                socketId = module.useSocketId();
+                module.useEcho("orders", "OrderShipped", () => {});
+                module.useChannel("chat");
+                module.useEchoNotification("App.User.1");
+
+                return () => h("div");
+            },
+        });
+
+        createApp(App).mount({ children: [] });
+
+        expect(typeof window).toBe("undefined");
+        expect(echoInstances).toHaveLength(1);
+
+        const [instance] = echoInstances;
+
+        expect(instance.private).toHaveBeenCalledWith("orders");
+        expect(instance.private).toHaveBeenCalledWith("chat");
+        expect(instance.private).toHaveBeenCalledWith("App.User.1");
+        expect(
+            instance.private.mock.results[0].value.listen,
+        ).toHaveBeenCalledWith("OrderShipped", expect.any(Function));
+        expect(
+            instance.private.mock.results[2].value.notification,
+        ).toHaveBeenCalledTimes(1);
+        expect(instance.onConnectionChange).toHaveBeenCalledTimes(2);
+        expect(status.value).toBe("connected");
+        expect(socketId.value).toBe("socket");
     });
 });

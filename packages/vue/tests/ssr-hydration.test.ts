@@ -1,7 +1,8 @@
 /**
- * fork (P-09, option B; F-206): the client side of server-side rendering. The markup is rendered with the window
- * global removed, as on a server, and then hydrated in the browser (jsdom): hydration subscribes exactly once, as
- * a client-only mount does. tests/ssr.test.ts renders in Node without a DOM.
+ * fork (P-09, option B; F-206): the client side of server-side rendering, in the browser (jsdom). The composables
+ * detect the server render by Vue's SSR context, not by a missing `window`: renderToString creates no Echo
+ * instance here although `window` exists, and hydration then subscribes exactly once, as a client-only mount does.
+ * tests/ssr.test.ts renders in Node without a DOM.
  */
 import {
     afterEach,
@@ -57,7 +58,6 @@ describe("hydrating server-rendered markup (P-09, option B)", () => {
     });
 
     afterEach(() => {
-        vi.unstubAllGlobals();
         vi.clearAllMocks();
     });
 
@@ -77,9 +77,9 @@ describe("hydrating server-rendered markup (P-09, option B)", () => {
 
         module.configureEcho({});
 
-        vi.stubGlobal("window", undefined);
+        expect(typeof window).toBe("object");
+
         const html = await renderToString(createSSRApp(App));
-        vi.unstubAllGlobals();
 
         expect(html).toBe("<div>orders</div>");
         expect(echoInstances).toHaveLength(0);

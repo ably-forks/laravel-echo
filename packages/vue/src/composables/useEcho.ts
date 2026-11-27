@@ -2,7 +2,15 @@ import {
     type BroadcastDriver,
     type ConnectionStatus,
 } from "@ably/laravel-echo";
-import { onMounted, onUnmounted, ref, watch, type Ref } from "vue";
+import {
+    inject,
+    onMounted,
+    onUnmounted,
+    ref,
+    ssrContextKey,
+    watch,
+    type Ref,
+} from "vue";
 import { channelRegistryId, echo } from "../config";
 import type {
     BroadcastNotification,
@@ -21,10 +29,12 @@ import { toArray } from "../util";
 const channels: Record<string, ChannelData<BroadcastDriver>> = {};
 
 /**
- * fork (P-09, option B; F-206): during server-side rendering (no `window`) the composables create no Echo instance
- * and subscribe to nothing; channel() returns null there. In the browser they behave exactly as upstream's.
+ * fork (P-09, option B; F-206): during server-side rendering the composables create no Echo instance and subscribe
+ * to nothing; channel() returns null there. Every client, with or without `window` (the browser, custom renderers,
+ * workers), behaves exactly as upstream's. The server renderer provides the SSR context to the app; call this in
+ * setup, where inject() works.
  */
-const isServer = (): boolean => typeof window === "undefined";
+const isServerRendering = (): boolean => inject(ssrContextKey, null) !== null;
 
 const resolveChannelSubscription = <T extends BroadcastDriver>(
     channel: Channel,
@@ -179,7 +189,7 @@ export function useEcho<
     };
 
     // fork (P-09, option B): no subscription during SSR
-    const subscription: Connection<TDriver> | null = isServer()
+    const subscription: Connection<TDriver> | null = isServerRendering()
         ? null
         : resolveChannelSubscription<TDriver>(channel);
     const events = Array.isArray(event) ? event : [event];
@@ -291,6 +301,8 @@ export const useEchoNotification = <
         .flat();
 
     const listening = ref(false);
+    // fork (P-09, option B): result.channel() is null during SSR
+    const serverRendering = isServerRendering();
 
     const cb = (notification: BroadcastNotification<TPayload>) => {
         if (!listening.value) {
@@ -303,8 +315,7 @@ export const useEchoNotification = <
     };
 
     const listen = () => {
-        // fork (P-09, option B): result.channel() is null during SSR
-        if (listening.value || isServer()) {
+        if (listening.value || serverRendering) {
             return;
         }
 
@@ -391,7 +402,7 @@ export function useChannel<
     };
 
     // fork (P-09, option B): no subscription during SSR
-    const subscription: Connection<TDriver> | null = isServer()
+    const subscription: Connection<TDriver> | null = isServerRendering()
         ? null
         : resolveChannelSubscription<TDriver>(channel);
 
@@ -482,7 +493,7 @@ const useConnectionChange = (
 
 export const useConnectionStatus = (): Ref<ConnectionStatus> => {
     // fork (P-09, option B): during SSR, report "disconnected" without creating the Echo instance
-    if (isServer()) {
+    if (isServerRendering()) {
         return ref<ConnectionStatus>("disconnected");
     }
 
@@ -498,7 +509,7 @@ export const useConnectionStatus = (): Ref<ConnectionStatus> => {
 
 export const useSocketId = (): Ref<string | undefined> => {
     // fork (P-09, option B): there is no connection during SSR
-    if (isServer()) {
+    if (isServerRendering()) {
         return ref<string | undefined>(undefined);
     }
 
