@@ -13,6 +13,8 @@ import {
 import {
     SequentialAuthTokenRequestExecuter,
     TOKEN_REQUEST_TIMEOUT_MS,
+    CONNECTION_TOKEN_REFUSED_HINT,
+    warnOnce,
 } from "./token-request";
 import type { AblyChannel } from "../ably-channel";
 import type {
@@ -166,7 +168,22 @@ export class AblyAuth {
             body: postData,
         };
         // the token itself is validated by SequentialAuthTokenRequestExecuter (R12), for both sources
-        return httpRequestAsync(postOptions, this.httpRequestTimeout());
+        try {
+            return (await httpRequestAsync(
+                postOptions,
+                this.httpRequestTimeout(),
+            )) as AblyTokenResponse; // the parsed body: SequentialAuthTokenRequestExecuter validates it
+        } catch (err) {
+            // F-190: a 403 on the connection token (no channel) is not expected, since a guest gets one too; a 403 on a
+            // channel is normal for guests and logs nothing
+            if (
+                !channelName &&
+                (err as { statusCode?: unknown } | null)?.statusCode === 403
+            ) {
+                warnOnce(CONNECTION_TOKEN_REFUSED_HINT);
+            }
+            throw err;
+        }
     };
 
     constructor(ablyConnector: AblyConnector, options: AblyOptions) {

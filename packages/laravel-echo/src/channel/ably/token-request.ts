@@ -19,6 +19,18 @@ export const PUSHER_PROTOCOL_RESPONSE_HINT =
     "This response comes from Laravel's built-in `ably` broadcaster, which `@ably/laravel-echo` does not support; " +
     'install `ably/laravel-broadcaster` v2 on the server. See "Troubleshooting" in the README.';
 
+/**
+ * A 403 on the connection token request (F-190). With no channel name, only these answer 403: Laravel's built-in `ably`
+ * broadcaster (any version, `Ably2Broadcaster` included) refuses every request without one, so it comes first;
+ * laravel-broadcaster v2 refuses a presented token it cannot re-sign; or a middleware on the route denies the request.
+ * A stale CSRF token is a 419, and a missing session or auth guard does not give a 403 here.
+ */
+export const CONNECTION_TOKEN_REFUSED_HINT =
+    "@ably/laravel-echo: the auth endpoint refused the connection token request (HTTP 403). " +
+    "The most likely cause is that the server uses Laravel's built-in `ably` broadcaster, which refuses requests without a channel name; " +
+    'install `ably/laravel-broadcaster` v2 (see "Troubleshooting" in the README). ' +
+    "Other causes: a middleware on the broadcasting auth route denied the request, or the presented token could not be re-signed.";
+
 /** The developer hints already logged: module state, so each is logged once per page, whatever the connectors. */
 export const loggedAuthHints = new Set<string>();
 

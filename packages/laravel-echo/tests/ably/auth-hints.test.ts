@@ -10,9 +10,10 @@ import {
 } from "vite-plus/test";
 import type { MockInstance } from "vite-plus/test";
 /**
- * Once-per-page developer hints on the token request (Phase 08, F-191):
- * - [provisional: P-08 (a)] the auth endpoint answers with a Pusher-protocol `{auth}` response instead of a token.
- * It goes to console.warn once per page (module state), and the request fails exactly as before.
+ * Once-per-page developer hints on the token request (Phase 08, F-190, F-191):
+ * - [provisional: P-08 (a)] the auth endpoint answers with a Pusher-protocol `{auth}` response instead of a token;
+ * - the connection token request (no channel) is refused with HTTP 403.
+ * Both go to console.warn once per page (module state), and the request fails exactly as before.
  */
 import {
     createServer,
@@ -22,29 +23,43 @@ import {
 } from "http";
 import type { AddressInfo } from "net";
 import { AblyAuth } from "../../src/channel/ably/auth";
+import type {
+    AblyConnector,
+    AblyOptions,
+} from "../../src/connector/ably-connector";
 import {
+    CONNECTION_TOKEN_REFUSED_HINT,
     PUSHER_PROTOCOL_RESPONSE_HINT,
     loggedAuthHints,
 } from "../../src/channel/ably/token-request";
 
-// the exact text, duplicated on purpose (Phase 08 §8.4)
+// the exact texts, duplicated on purpose (Phase 08 §8.4 and §8.5)
 const P08_TEXT =
     '@ably/laravel-echo: the auth endpoint returned a Pusher-protocol response (`{auth: "key:signature"}`) instead of an Ably token. ' +
     "This response comes from Laravel's built-in `ably` broadcaster, which `@ably/laravel-echo` does not support; " +
     'install `ably/laravel-broadcaster` v2 on the server. See "Troubleshooting" in the README.';
-describe("auth hints: Pusher-protocol response", () => {
+const REFUSED_TEXT =
+    "@ably/laravel-echo: the auth endpoint refused the connection token request (HTTP 403). " +
+    "The most likely cause is that the server uses Laravel's built-in `ably` broadcaster, which refuses requests without a channel name; " +
+    'install `ably/laravel-broadcaster` v2 (see "Troubleshooting" in the README). ' +
+    "Other causes: a middleware on the broadcasting auth route denied the request, or the presented token could not be re-signed.";
+
+describe("auth hints: Pusher-protocol response and connection token 403", () => {
     let server: Server;
     let baseUrl: string;
     let handler: (req: IncomingMessage, res: ServerResponse) => void;
     let warn: MockInstance;
 
     /** A fresh AblyAuth, as each new Echo connector creates (the hints are per page, not per connector). */
-    const makeAuth = (echoOptions: any = {}) =>
-        new AblyAuth({ options: {} } as any, {
-            authEndpoint: `${baseUrl}/broadcasting/auth`,
-            auth: { headers: {} },
-            ...echoOptions,
-        });
+    const makeAuth = (echoOptions: Record<string, unknown> = {}) =>
+        new AblyAuth(
+            { options: {} } as unknown as AblyConnector,
+            {
+                authEndpoint: `${baseUrl}/broadcasting/auth`,
+                auth: { headers: {} },
+                ...echoOptions,
+            } as unknown as AblyOptions,
+        );
     const respond = (status: number, body: unknown) => {
         handler = (_req, res) => {
             res.statusCode = status;
@@ -73,9 +88,56 @@ describe("auth hints: Pusher-protocol response", () => {
         warn.mockRestore();
     });
 
-    test("the hint text is exact", () => {
+    test("the hint texts are exact", () => {
         expect(PUSHER_PROTOCOL_RESPONSE_HINT).toBe(P08_TEXT);
+        expect(CONNECTION_TOKEN_REFUSED_HINT).toBe(REFUSED_TEXT);
     });
+
+    test("a 403 on the connection token request logs the hint once, even for two failures; the error is unchanged", async () => {
+        respond(403, { message: "This action is unauthorized." });
+        const first: any = await makeAuth()
+            .authRequestExecuter.request(null)
+            .catch((e) => e);
+        const second: any = await makeAuth() // another connector on the same page
+            .authRequestExecuter.request(null)
+            .catch((e) => e);
+        for (const err of [first, second]) {
+            expect(err).toMatchObject({ statusCode: 403, code: 40300 });
+            expect(err.message).toContain("HTTP 403");
+        }
+        expect(warnings()).toEqual([REFUSED_TEXT]);
+    });
+
+    test("an empty channel name is the connection token request too", async () => {
+        respond(403, {});
+        await makeAuth()
+            .requestToken("", null)
+            .catch(() => undefined);
+        expect(warnings()).toEqual([REFUSED_TEXT]);
+    });
+
+    test.each(["private:a", "presence:a"])(
+        "a 403 on a %s channel request logs no hint (normal for guests)",
+        async (channel) => {
+            respond(403, { message: "no" });
+            const err: any = await makeAuth()
+                .authRequestExecuter.request(channel)
+                .catch((e) => e);
+            expect(err).toMatchObject({ statusCode: 403, code: 40300 });
+            expect(warn).not.toHaveBeenCalled();
+        },
+    );
+
+    test.each([401, 419, 500])(
+        "HTTP %i on the connection token request logs no hint",
+        async (status) => {
+            respond(status, { message: "no" });
+            await makeAuth()
+                .authRequestExecuter.request(null)
+                .catch(() => undefined);
+            expect(warn).not.toHaveBeenCalled();
+        },
+    );
 
     test("[provisional: P-08 (a)] a {auth} 200 response logs the hint once; the request still fails as before", async () => {
         respond(200, { auth: "k:s" });

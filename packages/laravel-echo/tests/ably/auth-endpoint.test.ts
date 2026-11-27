@@ -208,6 +208,9 @@ describe("authEndpoint end to end", () => {
         async (m, expectedState, causeCode) => {
             mode = m;
             vi.spyOn(console, "error").mockImplementation(() => undefined);
+            const warn = vi
+                .spyOn(console, "warn")
+                .mockImplementation(() => undefined);
             const echo = makeEcho();
             const stateChange: any = await new Promise((resolve) =>
                 echo.connector.ably.connection.on((c: any) => {
@@ -217,8 +220,16 @@ describe("authEndpoint end to end", () => {
             );
             expect(stateChange.current).toBe(expectedState);
             expect(stateChange.reason?.cause?.code).toBe(causeCode);
+            // F-190: only the 403 logs the connection-token hint (the possible causes), once
+            const refusedHints = warn.mock.calls.filter(([message]) =>
+                String(message).includes(
+                    "refused the connection token request (HTTP 403)",
+                ),
+            );
+            expect(refusedHints).toHaveLength(causeCode === 40300 ? 1 : 0);
             echo.disconnect();
             (console.error as Mock).mockRestore();
+            warn.mockRestore();
         },
     );
 });
