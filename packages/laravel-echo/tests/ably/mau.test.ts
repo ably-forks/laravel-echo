@@ -217,7 +217,7 @@ describe("MAU account (real MAU-enforced sandbox app)", () => {
         expect(errorSpy).toHaveBeenCalledTimes(1);
         const message = String(errorSpy.mock.calls[0][0]);
         expect(message).toContain("40161");
-        expect(message).toContain("ABLY_MAU_ACCOUNT=true");
+        expect(message).toContain("laravel-broadcaster v2");
     });
 
     test("guest id to user login recovers without error()", async () => {
@@ -330,7 +330,7 @@ describe("MAU account (real MAU-enforced sandbox app)", () => {
         expect(newClient.connection.errorReason?.code).toBe(40161);
         dumpHintDiagnostics(hintCalls());
         expect(hintCalls()).toHaveLength(1);
-        expect(String(hintCalls()[0][0])).toContain("ABLY_MAU_ACCOUNT=true");
+        expect(String(hintCalls()[0][0])).toContain("laravel-broadcaster v2");
     });
 
     describe("renewed token with another identity", () => {
@@ -408,7 +408,7 @@ describe("MAU account (real MAU-enforced sandbox app)", () => {
             dumpHintDiagnostics(hintCalls());
             expect(hintCalls()).toHaveLength(1);
             expect(String(hintCalls()[0][0])).toContain(
-                "ABLY_MAU_ACCOUNT=true",
+                "laravel-broadcaster v2",
             );
         });
     });
