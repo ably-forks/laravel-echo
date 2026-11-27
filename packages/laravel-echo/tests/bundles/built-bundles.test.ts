@@ -75,6 +75,10 @@ describe('built bundles', () => {
         const upstream = vm.runInContext(`new Echo.default(${options})`, ctx); // upstream's form
         expect(fork.connector.ably.connection.state).toBe('initialized');
         expect(upstream.connector.ably.connection.state).toBe('initialized');
+        // upstream's drivers too (VC-01): both forms construct with the null broadcaster
+        const nullOptions = `{ broadcaster: 'null', withoutInterceptors: true }`;
+        expect(vm.runInContext(`new Echo(${nullOptions}).connectionStatus()`, ctx)).toBe('connected');
+        expect(vm.runInContext(`new Echo.default(${nullOptions}).connectionStatus()`, ctx)).toBe('connected');
         expect(vm.runInContext('new Echo.EventFormatter("App.Events").format("OrderShipped")', ctx)).toBe(
             'App\\Events\\OrderShipped'
         );

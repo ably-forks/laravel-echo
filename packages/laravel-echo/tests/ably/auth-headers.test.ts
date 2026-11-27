@@ -87,6 +87,33 @@ describe("auth headers (ably connector)", () => {
         expect(opts.auth.headers).toEqual({ Authorization: "Basic xyz" });
     });
 
+    test("an explicit caller Authorization header plus bearerToken: the bearer wins, as in upstream (VC-02)", () => {
+        const opts = make({
+            auth: { headers: { Authorization: "Basic xyz", "X-A": "1" } },
+            userAuthentication: { headers: { Authorization: "Basic xyz" } },
+            bearerToken: "A",
+        });
+        const echo = new Echo(opts);
+
+        expect(echo.connector.options.auth.headers).toEqual({ Authorization: "Bearer A", "X-A": "1" });
+        expect(echo.connector.options.userAuthentication.headers.Authorization).toBe("Bearer A");
+        // the caller's objects are untouched
+        expect(opts.auth.headers).toEqual({ Authorization: "Basic xyz", "X-A": "1" });
+        expect(opts.userAuthentication.headers).toEqual({ Authorization: "Basic xyz" });
+
+        // the same precedence as upstream's Connector.setOptions (here through the null connector, own options object)
+        const upstream = new Echo({
+            broadcaster: "null",
+            withoutInterceptors: true,
+            auth: { headers: { Authorization: "Basic xyz" } },
+            userAuthentication: { endpoint: "/broadcasting/user-auth", headers: { Authorization: "Basic xyz" } },
+            bearerToken: "A",
+        });
+        expect(upstream.connector.options.auth.headers.Authorization).toBe(
+            echo.connector.options.auth.headers.Authorization,
+        );
+    });
+
     // ported from the 1.x test
     test("with no auth option the per-instance defaults still apply and are not shared", () => {
         const a = new Echo(make({ bearerToken: "A" }));
