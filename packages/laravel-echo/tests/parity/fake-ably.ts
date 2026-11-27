@@ -187,12 +187,27 @@ export const makeJwt = (
 
 /**
  * A fake ably client that also has a connection emitter (with `connect`) and an `auth` (clientId, authorize), for
- * the identity-switch tests. `makeFakeAbly` itself is unchanged.
+ * the identity-switch and connection-status tests. `makeFakeAbly` itself is unchanged.
+ *
+ * The connection starts `initialized`, with no `key` or `id` (set them as a test needs). `connection.transition()`
+ * sets `state` and then emits `(current, { previous, current, reason })`, as ably does. `client.connect()` moves
+ * to `connecting` synchronously, so a `connecting` emitted from inside a `failed` listener is nested, as with
+ * ably-js (F-172).
  */
 export const makeFakeAblyClient = (clientId?: string | null) => {
     const connection: any = new FakeEmitter();
+    connection.state = "initialized";
+    connection.key = undefined;
+    connection.id = undefined;
+    connection.transition = (current: string, reason?: any) => {
+        const previous = connection.state;
+        connection.state = current;
+        connection.emit(current, { previous, current, reason });
+    };
     const client: any = makeFakeAbly();
-    client.connect = vi.fn(); // Echo's onClientIdChanged calls client.connect()
+    client.options = {};
+    // Echo's onClientIdChanged calls client.connect()
+    client.connect = vi.fn(() => connection.transition("connecting"));
     client.connection = connection;
     client.auth = {
         clientId,

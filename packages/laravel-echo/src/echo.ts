@@ -52,25 +52,46 @@ export type ChannelVisibility = "public" | "private" | "presence";
 /**
  * This class is the primary API for interacting with broadcasting.
  */
-export default class Echo<T extends keyof Broadcaster> {
+export default class Echo<T extends keyof Broadcaster = "ably"> {
     /**
      * The broadcasting connector.
      */
     connector: Broadcaster[Exclude<T, "function">]["connector"];
 
     /**
-     * The Echo options.
+     * The Echo options. `broadcaster` is always set here (the caller's, or the `"ably"` default), so readers keep
+     * upstream's non-optional type even though EchoOptions accepts options without it (fork, P-02, P07-01).
+     * `& { broadcaster: {} }` is NonNullable applied per driver, which keeps `broadcaster` a discriminant.
      */
-    options: EchoOptions<T>;
+    options: EchoOptions<T> & { broadcaster: {} };
+
+    /**
+     * The Echo.onConnectionChange() callbacks (fork-only; provisional: P-03, option a).
+     */
+    private connectionListeners?: Set<(status: ConnectionStatus) => void>;
+
+    /**
+     * Unsubscribes Echo's own listener from the current connector.
+     */
+    private connectorUnsubscribe?: () => void;
 
     /**
      * Create a new class instance.
      *
      * `broadcaster` accepts custom connector constructors alongside T; intersecting
      * them with the "function" key itself would produce an impossible type.
+     *
+     * Fork (P-02, provisional: P-02): `broadcaster` is optional and defaults to `"ably"`, the native Ably connector.
+     * Only that case copies the options, so the caller's object is never mutated; with an explicit broadcaster
+     * `this.options` is the caller's object, as upstream. `??`: an explicit `""` still throws in connect().
      */
-    constructor(options: EchoOptions<T> & { broadcaster: T | Constructor }) {
-        this.options = options;
+    constructor(options: EchoOptions<T> & { broadcaster?: T | Constructor }) {
+        const broadcaster = options.broadcaster ?? "ably";
+        this.options = (
+            broadcaster === options.broadcaster
+                ? options
+                : { ...options, broadcaster }
+        ) as this["options"];
         this.connect();
 
         if (!this.options.withoutInterceptors) {
@@ -89,6 +110,10 @@ export default class Echo<T extends keyof Broadcaster> {
      * Create a new connection.
      */
     connect(): void {
+        // fork (P-03): the registry's listener leaves the connector being replaced
+        this.connectorUnsubscribe?.();
+        this.connectorUnsubscribe = undefined;
+
         if (this.connector instanceof AblyConnector) {
             this.connector.releaseClient(); // Echo.connect() called again replaces the connector
         }
@@ -117,6 +142,12 @@ export default class Echo<T extends keyof Broadcaster> {
             throw new Error(
                 `Broadcaster ${typeof this.options.broadcaster} ${String(this.options.broadcaster)} is not supported.`,
             );
+        }
+
+        // fork (P-03): re-bind the registry to the new connector and report its status once
+        if (this.connectionListeners?.size) {
+            this.bindConnectorListener();
+            this.emitConnectionStatus(this.connector.connectionStatus());
         }
     }
 
@@ -243,6 +274,52 @@ export default class Echo<T extends keyof Broadcaster> {
     }
 
     /**
+     * Subscribe to connection status changes; returns the unsubscribe function. Unlike
+     * `echo.connector.onConnectionChange()`, the subscription survives Echo.connect() replacing the connector: the
+     * callbacks move to the new connector and get its status once. Works with every connector (fork-only;
+     * provisional: P-03, option a).
+     */
+    onConnectionChange(
+        callback: (status: ConnectionStatus) => void,
+    ): () => void {
+        (this.connectionListeners ??= new Set()).add(callback);
+        this.bindConnectorListener();
+        return () => {
+            this.connectionListeners?.delete(callback);
+            if (!this.connectionListeners?.size) {
+                this.connectorUnsubscribe?.();
+                this.connectorUnsubscribe = undefined;
+            }
+        };
+    }
+
+    /**
+     * Subscribe the registry to the current connector, once, while it has callbacks.
+     */
+    private bindConnectorListener(): void {
+        if (this.connectorUnsubscribe || !this.connectionListeners?.size) {
+            return;
+        }
+        this.connectorUnsubscribe = this.connector.onConnectionChange(
+            (status: ConnectionStatus) => this.emitConnectionStatus(status),
+        );
+    }
+
+    /**
+     * Call every registry callback; a throwing callback is logged and does not stop the others.
+     */
+    private emitConnectionStatus(status: ConnectionStatus): void {
+        this.connectionListeners?.forEach((callback) => {
+            try {
+                callback(status);
+            } catch (e) {
+                // oxlint-disable-next-line no-console -- report the callback's error without breaking the others
+                console.error(e);
+            }
+        });
+    }
+
+    /**
      * Register 3rd party request interceptors. These are used to automatically
      * send a connections socket id to a Laravel app with a X-Socket-Id header.
      */
@@ -325,8 +402,11 @@ export default class Echo<T extends keyof Broadcaster> {
         document.addEventListener(
             "turbo:before-fetch-request",
             (event: Record<any, any>) => {
-                event.detail.fetchOptions.headers["X-Socket-Id"] =
-                    this.socketId();
+                // fork (F-252): like the other interceptors, no `X-Socket-Id: undefined` before the connection is up
+                if (this.socketId()) {
+                    event.detail.fetchOptions.headers["X-Socket-Id"] =
+                        this.socketId();
+                }
             },
         );
     }
@@ -414,9 +494,9 @@ export type BroadcastDriver = Exclude<keyof Broadcaster, "function">;
 
 type GenericOptions<TBroadcaster extends keyof Broadcaster> = {
     /**
-     * The broadcast connector.
+     * The broadcast connector. Optional in this fork: it defaults to `"ably"` (P-02).
      */
-    broadcaster: TBroadcaster extends "function"
+    broadcaster?: TBroadcaster extends "function"
         ? Constructor<InstanceType<Broadcaster[TBroadcaster]["connector"]>>
         : TBroadcaster;
 

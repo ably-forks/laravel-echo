@@ -893,13 +893,13 @@ describe("channelsReattachedByAuth: the connector skips its re-attach once after
         const before = ["disconnected", "suspended"].map(
             (e) => (connection.events[e] || []).length,
         );
-        expect(before).toEqual([1, 1]);
+        expect(before).toEqual([2, 2]); // the re-attach latch's and the connection status listener (Phase 06)
         echo.connect(); // releases the supplied client's listeners and binds them again
         expect(
             ["disconnected", "suspended"].map(
                 (e) => (connection.events[e] || []).length,
             ),
-        ).toEqual([1, 1]);
+        ).toEqual([2, 2]);
         connector.releaseClient();
     });
 

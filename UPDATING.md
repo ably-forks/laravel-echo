@@ -210,6 +210,8 @@ The Echo API and its options (listed above), the channel names (`public:`, `priv
 
 Planned: Echo v2 syncs with upstream laravel/echo 2.x and adds React, Vue and Svelte packages. It will work only with laravel-broadcaster v2, which always issues guest client IDs, so upgrade both together. See https://github.com/ably-forks/laravel-echo/issues/58 and https://github.com/ably/laravel-broadcaster/issues/75.
 
+Connection status in v2: `echo.connectionStatus()` and `echo.onConnectionChange(callback)` (which returns an unsubscribe function). `Echo.onConnectionChange` is fork-only and is the recommended API: unlike `echo.connector.onConnectionChange`, it keeps working after `echo.connect()` replaces the connector.
+
 ### Rolling back
 
 Pin the previous release and restore the 1.0.x install and initialization (`window.Ably = Ably`): `npm install @ably/laravel-echo@1.0.6 ably@1`. On an MAU-billed Ably account 1.0.x is rejected (40168), so only roll back if your account is not MAU-billed.

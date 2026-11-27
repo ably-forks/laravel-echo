@@ -137,6 +137,31 @@ describe("P4: Echo-only options are kept out of the Ably client options", () => 
         expect(typeof options.requestTokenFn).toBe("function");
         echo.disconnect();
     });
+
+    test("F-342: a caller-supplied agents object is not mutated, and its agents still reach the client", () => {
+        const createClient = vi.mocked(AblyDevice.createClient);
+        createClient.mockClear();
+        const agents = { "my-app": "1.2.3" };
+        const callerOptions = { ...baseOptions, agents };
+        const first = new Echo(callerOptions);
+        const second = new Echo(callerOptions);
+        first.connect();
+
+        expect(agents).toEqual({ "my-app": "1.2.3" });
+        expect(callerOptions.agents).toBe(agents);
+        expect(createClient).toHaveBeenCalledTimes(3);
+        createClient.mock.calls.forEach(([passed]) =>
+            expect((passed as { agents?: unknown }).agents).toEqual({
+                "my-app": "1.2.3",
+                "laravel-echo": AblyConnector.LIB_VERSION,
+            }),
+        );
+        expect(first.connector.options.agents).not.toBe(
+            second.connector.options.agents,
+        );
+        first.disconnect();
+        second.disconnect();
+    });
 });
 
 describe("R5: environment / realtimeHost / restHost are mapped to endpoint", () => {
@@ -468,8 +493,9 @@ describe("P7: connect() called again", () => {
         echo.connect();
         echo.connect();
         expect(client.close).not.toHaveBeenCalled();
-        expect(client.connection.events["failed"]).toHaveLength(1);
-        expect(client.connection.events["connected"]).toHaveLength(1);
+        // one re-attach latch listener and one connection status listener (Phase 06) per event
+        expect(client.connection.events["failed"]).toHaveLength(2);
+        expect(client.connection.events["connected"]).toHaveLength(2);
         // the remaining pair belongs to the current connector, so recovery still works
         echo.channel("p7");
         const ch = echo.connector.channels["public:p7"].channel as unknown as {

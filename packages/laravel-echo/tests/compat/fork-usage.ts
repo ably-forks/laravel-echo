@@ -10,6 +10,7 @@ import Echo, {
     Connector,
     EventFormatter,
     type AblyOptions,
+    type BroadcastDriver,
     type Broadcaster,
     type ChannelVisibility,
     type ConnectionStatus,
@@ -42,6 +43,29 @@ const inferred = new Echo({
     autoConnect: false,
 });
 
+// broadcaster is optional and defaults to "ably" (fork-only, P-02): inferred as Echo<"ably">, with the Ably connector
+type Equals<A, B> =
+    (<V>() => V extends A ? 1 : 2) extends <V>() => V extends B ? 1 : 2
+        ? true
+        : false;
+const byDefault = new Echo({
+    authEndpoint: "/broadcasting/auth",
+    requestTokenFn,
+    autoConnect: false,
+});
+const inferredAsAbly: Equals<typeof byDefault, Echo<"ably">> = true;
+const defaultTypeArgument: Equals<Echo, Echo<"ably">> = true;
+const defaultConnector: AblyConnector = byDefault.connector;
+const optionsWithoutBroadcaster: EchoOptions<"ably"> = {
+    authEndpoint: "/broadcasting/auth",
+};
+const fromOptions: Echo<"ably"> = new Echo(optionsWithoutBroadcaster);
+// readers keep upstream's type: echo.options.broadcaster is never undefined (P07-01; it is always set at runtime)
+const readDriver: BroadcastDriver = echo.options.broadcaster;
+const readDefaulted: "ably" = byDefault.options.broadcaster;
+const nullEcho = new Echo({ broadcaster: "null" });
+const readNull: "null" = nullEcho.options.broadcaster;
+
 const connector: AblyConnector = echo.connector;
 const sameConnector: AblyConnector = inferred.connector;
 const state: string = connector.ably.connection.state;
@@ -70,11 +94,26 @@ visibilities.forEach((visibility) => echo.leaveChannel("orders", visibility));
 echo.leaveChannel("private:chat");
 const fullName: string = echo.connectorChannelName("chat", "private");
 const status: ConnectionStatus = echo.connectionStatus();
+// Echo.onConnectionChange (fork-only, P-03): survives Echo.connect(); returns the unsubscribe function
+const unsubscribe: () => void = echo.onConnectionChange(
+    (next: ConnectionStatus) => void next,
+);
+unsubscribe();
+const offConnector: () => void = connector.onConnectionChange(() => {});
+const socketId: string | undefined = echo.socketId();
+const connectorSocketId: string | undefined = connector.socketId();
 // encrypted private channels do not exist with the Ably broadcaster: typed `never` (it throws; this file never runs)
 const encrypted: never = echo.encryptedPrivate("secret");
 new EventFormatter("App.Events").format("OrderShipped");
 
 void [
+    readDriver,
+    readDefaulted,
+    readNull,
+    inferredAsAbly,
+    defaultTypeArgument,
+    defaultConnector,
+    fromOptions,
     sameConnector,
     state,
     privateChannel,
@@ -83,5 +122,8 @@ void [
     asUpstreamConnector,
     fullName,
     status,
+    offConnector,
+    socketId,
+    connectorSocketId,
     encrypted,
 ];
