@@ -57,7 +57,8 @@ const leaveChannel = (channel: Channel, leaveAll: boolean): void => {
     if (leaveAll) {
         echo().leave(channel.name);
     } else {
-        echo().leaveChannel(channel.id);
+        // fork (provisional: P-04): the core builds the connector's full name (Ably: "private:x"; others: "private-x")
+        echo().leaveChannel(channel.name, channel.visibility);
     }
 
     delete channels[channel.id];
@@ -154,9 +155,9 @@ export function useEcho<
     const channel: Channel = useMemo(
         () => ({
             name: channelName,
-            id: ["private", "presence"].includes(visibility)
-                ? `${visibility}-${channelName}`
-                : channelName,
+            // fork (provisional: P-04): one key format for every visibility, so a public channel named
+            // "private-x" and the private channel "x" no longer share a registry entry
+            id: `${visibility}:${channelName}`,
             visibility,
         }),
         [channelName, visibility],
@@ -396,9 +397,9 @@ export function useChannel<
     const channel: Channel = useMemo(
         () => ({
             name: channelName,
-            id: ["private", "presence"].includes(visibility)
-                ? `${visibility}-${channelName}`
-                : channelName,
+            // fork (provisional: P-04): one key format for every visibility, so a public channel named
+            // "private-x" and the private channel "x" no longer share a registry entry
+            id: `${visibility}:${channelName}`,
             visibility,
         }),
         [channelName, visibility],
