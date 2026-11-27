@@ -42,6 +42,24 @@ const inferred = new Echo({
     autoConnect: false,
 });
 
+// broadcaster is optional and defaults to "ably" (fork-only, P-02): inferred as Echo<"ably">, with the Ably connector
+type Equals<A, B> =
+    (<V>() => V extends A ? 1 : 2) extends <V>() => V extends B ? 1 : 2
+        ? true
+        : false;
+const byDefault = new Echo({
+    authEndpoint: "/broadcasting/auth",
+    requestTokenFn,
+    autoConnect: false,
+});
+const inferredAsAbly: Equals<typeof byDefault, Echo<"ably">> = true;
+const defaultTypeArgument: Equals<Echo, Echo<"ably">> = true;
+const defaultConnector: AblyConnector = byDefault.connector;
+const optionsWithoutBroadcaster: EchoOptions<"ably"> = {
+    authEndpoint: "/broadcasting/auth",
+};
+const fromOptions: Echo<"ably"> = new Echo(optionsWithoutBroadcaster);
+
 const connector: AblyConnector = echo.connector;
 const sameConnector: AblyConnector = inferred.connector;
 const state: string = connector.ably.connection.state;
@@ -83,6 +101,10 @@ const encrypted: never = echo.encryptedPrivate("secret");
 new EventFormatter("App.Events").format("OrderShipped");
 
 void [
+    inferredAsAbly,
+    defaultTypeArgument,
+    defaultConnector,
+    fromOptions,
     sameConnector,
     state,
     privateChannel,

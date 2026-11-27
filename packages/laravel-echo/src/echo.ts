@@ -52,7 +52,7 @@ export type ChannelVisibility = "public" | "private" | "presence";
 /**
  * This class is the primary API for interacting with broadcasting.
  */
-export default class Echo<T extends keyof Broadcaster> {
+export default class Echo<T extends keyof Broadcaster = "ably"> {
     /**
      * The broadcasting connector.
      */
@@ -78,9 +78,18 @@ export default class Echo<T extends keyof Broadcaster> {
      *
      * `broadcaster` accepts custom connector constructors alongside T; intersecting
      * them with the "function" key itself would produce an impossible type.
+     *
+     * Fork (P-02, provisional: P-02): `broadcaster` is optional and defaults to `"ably"`, the native Ably connector.
+     * Only that case copies the options, so the caller's object is never mutated; with an explicit broadcaster
+     * `this.options` is the caller's object, as upstream. `??`: an explicit `""` still throws in connect().
      */
-    constructor(options: EchoOptions<T> & { broadcaster: T | Constructor }) {
-        this.options = options;
+    constructor(options: EchoOptions<T> & { broadcaster?: T | Constructor }) {
+        const broadcaster = options.broadcaster ?? "ably";
+        this.options = (
+            broadcaster === options.broadcaster
+                ? options
+                : { ...options, broadcaster }
+        ) as EchoOptions<T>;
         this.connect();
 
         if (!this.options.withoutInterceptors) {
@@ -483,9 +492,9 @@ export type BroadcastDriver = Exclude<keyof Broadcaster, "function">;
 
 type GenericOptions<TBroadcaster extends keyof Broadcaster> = {
     /**
-     * The broadcast connector.
+     * The broadcast connector. Optional in this fork: it defaults to `"ably"` (P-02).
      */
-    broadcaster: TBroadcaster extends "function"
+    broadcaster?: TBroadcaster extends "function"
         ? Constructor<InstanceType<Broadcaster[TBroadcaster]["connector"]>>
         : TBroadcaster;
 
