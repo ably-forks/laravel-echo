@@ -1,5 +1,136 @@
 # Upgrade / Migration Guide
 
+<a id="1x--200"></a>
+
+## 1.x → 2.0.0
+
+`@ably/laravel-echo` 2.0.0 is a major release. It is synced with upstream `laravel/echo` 2.x (v2.6.3 and later), keeps upstream's public API, and adds React, Vue and Svelte packages: `@ably/laravel-echo-react`, `@ably/laravel-echo-vue` and `@ably/laravel-echo-svelte`. It works only with [laravel-broadcaster](https://github.com/ably/laravel-broadcaster) 2.0.0 or later, which always gives guests a client ID.
+
+Most apps that use the `ably` broadcaster change only the install line. The Echo API, the `ably` channel names (`public:`, `private:`, `presence:`) and the auth endpoint contract are unchanged.
+
+### Upgrade order
+
+1. **Upgrade both packages together.** Upgrade laravel-broadcaster to 2.0.0 and `@ably/laravel-echo` to 2.0.0, and deploy them in the same release. Mixed versions (Echo 2.x with laravel-broadcaster 1.x, or the reverse) are not supported.
+    - Apps that stay on laravel-broadcaster 1.x stay on `@ably/laravel-echo` 1.1.x (see [Staying on 1.x](https://github.com/ably/laravel-broadcaster/blob/main/UPDATING.md#staying-on-1x)). laravel-broadcaster 2.x keeps the PHP 8.1 or later and Laravel 8 to 13 range of 1.x.
+    - On PHP 7.2 to 8.0 or Laravel 6 or 7, use laravel-broadcaster 1.0.x with `@ably/laravel-echo` 1.0.x.
+2. **Client:** run `npm install @ably/laravel-echo@^2` (or `pnpm add`, `yarn add`), and rebuild your assets.
+3. **Server:** run `composer require ably/laravel-broadcaster:^2.0`. Remove the MAU option from your server config: the `mau_account` line in `config/broadcasting.php` and its `.env` variable. laravel-broadcaster 2.x always issues guest client IDs and ignores the option. See [laravel-broadcaster's upgrade guide](https://github.com/ably/laravel-broadcaster/blob/main/UPDATING.md#11--20).
+4. **Check the breaking changes below**, in particular if you use TypeScript, a custom connector, the socket ID, or a broadcaster other than `ably`.
+
+### Breaking changes
+
+| # | Change | What to do |
+| --- | --- | --- |
+| 1 | Echo 2.0.0 works only with laravel-broadcaster 2.0.0 or later, and the reverse. | Upgrade both together (see [Upgrade order](#upgrade-order)). |
+| 2 | A custom `broadcaster` must be a constructor (a class, or a plain `function` used with `new`). An arrow function or another non-constructable function now throws `Broadcaster function … is not supported.` | Pass your connector class, as upstream Echo 2.x requires. |
+| 3 | TypeScript: `Echo` is generic, `Echo<T = "ably">`, with typed options per broadcaster; `Connector` is generic; channel callbacks are `CallableFunction` and channel methods return `this`; `socketId()` returns `string \| undefined`; `whisper(event, data)` takes an object (`Record<any, any>`). New exported types: `Broadcaster`, `BroadcastDriver`, `EchoOptions`, `AblyOptions`, `ConnectionStatus` and `ChannelVisibility`. | Fix the type errors your compiler reports, for example pass an object to `whisper()`. See [TypeScript](#typescript). |
+| 4 | Packaging: the package is `"type": "module"` with an `exports` map, so deep imports such as `@ably/laravel-echo/dist/...` no longer resolve. Types are at `dist/echo.d.ts`; `typings/` is no longer shipped. The CommonJS build is `dist/echo.common.cjs`, and `require("@ably/laravel-echo")` works. The IIFE build is `dist/echo.iife.js`, also exported as `@ably/laravel-echo/iife`. The React, Vue and Svelte packages follow the same pattern: Vue and Svelte use `dist/index.common.cjs`; React uses `dist/index.common.cjs` for `require`, and `dist/index.common.js` for `main` and the `react-native` condition. The build target is ES2022. | Import from the package root (or `@ably/laravel-echo/iife`). Use a bundler that understands ES2022 syntax, for example Vite, webpack 5 with a current Babel or SWC, or esbuild, and Node.js 22 or later to install and build. |
+| 5 | Node.js 22 or later is required to install and build, as in 1.1. Working on this repository needs Node.js 22.18, 24.11 or 26 or later, and pnpm 12 (see [CONTRIBUTING.md](CONTRIBUTING.md)). | Nothing, if you already use Node.js 22. |
+| 6 | `pusher-js` and `socket.io-client` are optional peer dependencies of `@ably/laravel-echo`, as upstream. The React, Vue and Svelte packages don't import or inject `Pusher` (upstream's do). | With `pusher` or `reverb`: install `pusher-js` and pass it as `Pusher` in the options, or set `window.Pusher`. With `socket.io`: pass the `io` function of `socket.io-client` as `client`, or set `window.io` (as upstream). See [Other broadcasters](#pusher-reverb-and-socketio). |
+| 7 | `broadcaster` is optional and defaults to `"ably"` (specific to this fork; upstream requires it). `encryptedPrivate()` throws for broadcasters that don't support encrypted channels; with `ably` it throws `Encrypted private channels are not supported with the Ably broadcaster`, as in 1.x. | Nothing: 1.x configs with `broadcaster: "ably"` keep working, and you may drop the option. |
+| 8 | Custom connector classes must implement `connectionStatus()` and `onConnectionChange()`, as upstream's `Connector` requires. | Add both methods to your connector. |
+| 9 | `ably` means the native Ably connector. In upstream `laravel-echo`, `ably` is a Pusher-protocol connection to Ably's Pusher adapter. | If you used upstream's `ably`, stay on upstream `laravel-echo` with `broadcaster: "pusher"` and `wsHost: "realtime-pusher.ably.io"`. |
+| 10 | New packages `@ably/laravel-echo-react`, `@ably/laravel-echo-vue` and `@ably/laravel-echo-svelte`, ports of upstream's `@laravel/echo-react`, `-vue` and `-svelte`. They have a peer dependency on `@ably/laravel-echo` and don't bundle it or `@ably/pubsub-device`. Their hooks leave a channel by its name and visibility. | Replace `@laravel/echo-react` (or `-vue`, `-svelte`) with the Ably package, and install `@ably/laravel-echo` next to it. See their READMEs. |
+| 11 | Every connection has a client ID: laravel-broadcaster 2.x gives every guest one. The socket ID, and so the `X-Socket-Id` header, carries a guest's client ID too. `toOthers()` still excludes only the sending connection. | Change code that tested for a `null` guest client ID or socket ID. |
+| 12 | The repository is a pnpm monorepo built with Vite+, tested with Vitest and checked with oxlint and oxfmt. | Contributors only: see [CONTRIBUTING.md](CONTRIBUTING.md). |
+| 13 | `socketId()` returns `undefined` until the connection is up (1.1.1 returned a placeholder string), and no `X-Socket-Id` header is sent before that, by any of the axios, jQuery, Vue Resource and Turbo interceptors. | Test the socket ID for a falsy value. See [Socket ID](#socket-id-before-the-connection-is-up). |
+| 14 | New: `connectionStatus()`, `onConnectionChange()` (specific to this fork) and, in the framework packages, `useConnectionStatus` and `useSocketId`. | Optional. See [Connection status](#connection-status). |
+| 15 | Security fix: with the `ably` broadcaster, Echo copies `auth.headers` for each connector. A bearer token or CSRF header no longer leaks to another Echo instance, for example the previous user's bearer token after a logout and a new Echo instance, and Echo no longer changes your options object. | Nothing. |
+| 16 | Laravel's built-in `ably` broadcaster is not supported. | Use laravel-broadcaster 2.x on the server. See ["Not supported: Laravel's built-in `ably` broadcaster"](https://github.com/ably-forks/laravel-echo/blob/2.x/packages/laravel-echo/README.md#not-supported-laravels-built-in-ably-broadcaster) in the README. |
+
+<a id="echo-options-in-200"></a>
+
+### Echo options in 2.0.0
+
+Echo's own options with the `ably` broadcaster. Every other option is passed to Ably as a [client option](https://ably.com/docs/api/realtime-sdk#client-options) (for example `echoMessages`, `queueMessages`, `disconnectedRetryTimeout`, `suspendedRetryTimeout`, `tls`). Echo sets `echoMessages: false` itself, and an `echoMessages` you pass overrides it. Ably's own auth options (`authUrl`, `authCallback`, `key`, …) should not be used, because Echo gets its tokens from your Laravel server.
+
+| Option | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `broadcaster` | `"ably"` or another driver name or class | `"ably"` | Optional (specific to this fork). |
+| `authEndpoint` | `string` | `"/broadcasting/auth"` | Relative URLs resolve against the page URL. |
+| `auth.headers` | `Record<string, string>` | `{}` | Extra headers for token requests. |
+| `csrfToken` | `string \| null` | `null` | Read in this order: `window.Laravel.csrfToken`, this option, the `<meta name="csrf-token">` tag. Sent as `X-CSRF-TOKEN`. |
+| `bearerToken` | `string \| null` | `null` | Sent as `Authorization: Bearer …`. |
+| `namespace` | `string \| false` | `"App.Events"` | Prefix of event names; `false` for none. |
+| `requestTokenFn` | `(channelName: string \| null, existingToken: string \| null) => Promise<{ token: string; info?: unknown }>` | none | Replaces the request to `authEndpoint`. See [`requestTokenFn`](#requesttokenfn). |
+| `client` | `PubSubClient` | none | Your own Ably client, used as is: Echo does not switch its identity. |
+| `token` | `string` | none | An initial token (JWT), used before the first token request. Every new client created by `echo.connect()` gets it again: after a login or logout, pass a fresh token or omit it. |
+| `autoConnect` | `boolean` | `true` | An Ably client option. With `false`, the connection waits for `echo.connector.ably.connect()`, and `connectionStatus()` is `"disconnected"` until then. |
+| `endpoint` | `string` | not set (Ably's default) | Ably's endpoint. `environment`, `realtimeHost` and `restHost` are mapped to it, with a warning. |
+| `httpRequestTimeout` | `number` (ms) | `10000` | Also applies to the request to `authEndpoint`. |
+| `withoutInterceptors` | `boolean` | `false` | Set `true` to skip the `X-Socket-Id` request interceptors. |
+
+### Socket ID before the connection is up
+
+In 1.1.1 and earlier, `socketId()` returned a placeholder without a connection key until the connection was up, and Echo sent it as `X-Socket-Id`, which could make `toOthers()` fail on the server. In 2.0.0 it returns `undefined` until the connection is up, as upstream's connectors do, and no `X-Socket-Id` header is sent before that. Test it for a falsy value (`if (!echo.socketId())`).
+
+### Connection status
+
+`echo.connectionStatus()` returns `"connected"`, `"connecting"`, `"reconnecting"`, `"disconnected"` or `"failed"`, and `echo.onConnectionChange(callback)` reports each change and returns an unsubscribe function. The callback is not called when you subscribe, only when the status (or, with Ably, the socket ID) changes, and once after `echo.connect()`. The README lists [how Ably's connection states map](https://github.com/ably-forks/laravel-echo/blob/2.x/packages/laravel-echo/README.md#connection-status) to these values.
+
+`echo.onConnectionChange()` is specific to this fork and is the recommended API: unlike `echo.connector.onConnectionChange()`, it keeps working after `echo.connect()` replaces the connector.
+
+During Echo's own reconnect for a client ID change (login, logout, user switch), Ably briefly reports `failed` (40102). Echo reports it as `"reconnecting"`. An Ably listener of your own that listens to every state change (`echo.connector.ably.connection.on(callback)`) and reads `echo.connectionStatus()` synchronously at that moment sees `"failed"`. `onConnectionChange()` callbacks get the right status.
+
+<a id="pusher-reverb-and-socketio"></a>
+
+### Pusher, Reverb and Socket.IO
+
+`@ably/laravel-echo` keeps upstream's `reverb`, `pusher`, `socket.io`, `mercure` and `null` broadcasters, unchanged, and does not include their client libraries:
+
+- **Pusher and Reverb:** install `pusher-js` and pass it as `Pusher`, or set `window.Pusher`. In the React, Vue and Svelte packages this differs from upstream, whose `configureEcho()` imported `pusher-js` and passed it for you:
+
+    ```js
+    import Pusher from "pusher-js";
+    import { configureEcho } from "@ably/laravel-echo-react";
+
+    configureEcho({ broadcaster: "reverb", Pusher });
+    ```
+
+    Without it, the first `echo()` call after `configureEcho()`, which every hook makes, throws an error that names both ways.
+
+- **Socket.IO:** pass the `io` function of `socket.io-client` as `client`, or set `window.io`, in the core and in the framework packages alike. This is the same as upstream; without it Echo throws `Socket.io client not found`.
+
+### `broadcaster` is optional
+
+`new Echo({})` and `configureEcho({})` use the native Ably connector. `null` or a missing `broadcaster` both mean `"ably"`. With an explicit `broadcaster`, `echo.options` is your options object, as upstream; with the default, it is a copy with `broadcaster: "ably"` added.
+
+<a id="typescript"></a>
+
+### TypeScript
+
+- `echo.options.broadcaster` keeps upstream's non-optional type. Assigning an options object without `broadcaster` to `echo.options` is a type error, as it is upstream. The type `EchoOptions<"ably">["broadcaster"]` includes `undefined`, because the option is optional.
+- **`skipLibCheck`.** Laravel's and Vite's default `tsconfig.json` sets `skipLibCheck: true`, which needs nothing else. With `skipLibCheck: false`, install `pusher-js` (its types are referenced, as upstream) and `@types/node`, and add `"node"` to `compilerOptions.types`: Ably's SDK types reference Node's `Buffer`.
+
+<a id="requesttokenfn"></a>
+
+### `requestTokenFn`
+
+`requestTokenFn(channelName, existingToken)` replaces the request to `authEndpoint`:
+
+- `channelName` is `null` for the connection token, and a channel name such as `private:orders` for a channel;
+- `existingToken` is `null` until Echo has a token;
+- it must resolve with your server's token response, `{ token, info? }` (`info` is the presence member data);
+- each call is bounded to 30 s. Don't wrap it in try/catch: Echo handles its errors.
+
+A function typed `(channelName: string, existingToken: string)`, as in the 1.x README, still compiles.
+
+### MAU-billed accounts and 40161
+
+laravel-broadcaster 2.x gives every guest a client ID, so guests connect on MAU-billed Ably accounts without any setting. A connection without a client ID, for example with a token from your own endpoint, still fails with 40161, and Echo 2.0.0 logs this hint once:
+
+> Your Ably account requires an identified client on every connection (MAU billing), but this connection has no clientId. Use laravel-broadcaster v2, which always issues guest client ids, or make sure your auth endpoint returns a token with a clientId.
+
+The hints for 40168 and 40167 are unchanged.
+
+### Unchanged from 1.1
+
+Login, user switches and logout without a page reload, other open tabs, CSRF tokens, `error()` after a switch and the known limitations work as described for 1.1 below, except for the MAU setting, which laravel-broadcaster 2.x no longer needs.
+
+### Rolling back to 1.1
+
+Roll back both packages together: `@ably/laravel-echo` 1.1.x with laravel-broadcaster 1.x (see [Staying on 1.x](https://github.com/ably/laravel-broadcaster/blob/main/UPDATING.md#staying-on-1x)). Restore the MAU option on the server if your Ably account is MAU-billed, as described in the 1.1 section below.
+
 <a id="10x--110"></a>
 
 ## 1.0.x → 1.1
@@ -61,11 +192,11 @@ Both are inherited from `@ably/pubsub-device`, not an Echo API change.
 
 ### Echo options and defaults
 
-An app that passes its 1.0.x options needs no new option: everything added in 1.1 has a working default. Echo's own options:
+An app that passes its 1.0.x options needs no new option: every option added in 1.1 has a working default. `broadcaster` is not new and still has none. Echo's own options:
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `broadcaster` | `'pusher'` | Set `'ably'`. |
+| `broadcaster` | none (required) | Required; set `'ably'`. Omitting it throws `Broadcaster undefined undefined is not supported.` |
 | `authEndpoint` | `'/broadcasting/auth'` | Relative URLs resolve against the page URL. |
 | `auth.headers` | `{}` | Extra headers for auth requests. |
 | `csrfToken` | `null` | Read in this order: `window.Laravel.csrfToken`, this option, the `<meta name="csrf-token">` tag. Sent as `X-CSRF-TOKEN`. |
@@ -190,11 +321,11 @@ Every device connection on an MAU-billed account must carry a client ID, so a gu
    Guests then get a broadcaster-issued guest client ID, and login, user switch and logout work as described above. The `guest:` prefix (`ABLY_GUEST_ID_PREFIX`) is cosmetic and not reserved. Each guest id counts as a monthly active user (with the built-in guest ids, a logout starts a fresh id on routes with a session; ids from a resolver are your app's job).
 2. Otherwise, only connect Echo for signed-in users.
 
-With `ABLY_MAU_ACCOUNT` off on an MAU-billed account, guests fail with 40161 and Echo logs this hint to the console, once:
+With `ABLY_MAU_ACCOUNT` off on an MAU-billed account, guests fail with 40161 and Echo 1.1.x logs this hint to the console, once (Echo 2.0.0 logs a different hint, see [MAU-billed accounts and 40161](#mau-billed-accounts-and-40161)):
 
 > Your Ably account requires an identified client on every connection (MAU billing), but this guest connected without a clientId. In laravel-broadcaster set ABLY_MAU_ACCOUNT=true (config broadcasting.connections.ably.mau_account) so guests receive a clientId, or only connect Echo for signed-in users. See "Guest users on MAU-billed Ably accounts" in the README.
 
-(The README has a short section with this name; the details are here.) Echo logs a hint, once per code, for three MAU error codes: 40161 (a guest without a client ID), 40168 (an incompatible or older Ably SDK build: make sure a single, up-to-date `@ably/pubsub-device` is installed) and 40167 (a server-side client whose token lacks what MAU accounts require; a token-issuing issue, not a browser one).
+(The 1.1.x README has a short section with this name; the details are here.) Echo logs a hint, once per code, for three MAU error codes: 40161 (a guest without a client ID), 40168 (an incompatible or older Ably SDK build: make sure a single, up-to-date `@ably/pubsub-device` is installed) and 40167 (a server-side client whose token lacks what MAU accounts require; a token-issuing issue, not a browser one).
 
 ### Known limitations
 
@@ -205,12 +336,6 @@ With `ABLY_MAU_ACCOUNT` off on an MAU-billed account, guests fail with 40161 and
 ### Unchanged
 
 The Echo API and its options (listed above), the channel names (`public:`, `private:`, `presence:`), `socketId()` and the `requestTokenFn` and auth endpoint contract.
-
-### Looking ahead: v2
-
-Planned: Echo v2 syncs with upstream laravel/echo 2.x and adds React, Vue and Svelte packages. It will work only with laravel-broadcaster v2, which always issues guest client IDs, so upgrade both together. See https://github.com/ably-forks/laravel-echo/issues/58 and https://github.com/ably/laravel-broadcaster/issues/75.
-
-Connection status in v2: `echo.connectionStatus()` and `echo.onConnectionChange(callback)` (which returns an unsubscribe function). `Echo.onConnectionChange` is fork-only and is the recommended API: unlike `echo.connector.onConnectionChange`, it keeps working after `echo.connect()` replaces the connector.
 
 ### Rolling back
 
