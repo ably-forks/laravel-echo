@@ -34,14 +34,10 @@ const config: UserConfig = (() => {
     const common: Partial<UserConfig["build"]> = {
         rollupOptions: {
             external: (id: string) =>
-                id === "react" ||
-                id.startsWith("react/") ||
-                id === "pusher-js" ||
-                isAblyExternal(id),
+                id === "react" || id.startsWith("react/") || isAblyExternal(id),
             output: {
                 globals: {
                     react: "React",
-                    "pusher-js": "Pusher",
                     "@ably/laravel-echo": "Echo",
                     "@ably/pubsub-device": "AblyPubSub",
                 },

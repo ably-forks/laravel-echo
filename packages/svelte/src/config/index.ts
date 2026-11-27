@@ -3,7 +3,6 @@ import Echo, {
     type Broadcaster,
     type EchoOptions,
 } from "@ably/laravel-echo";
-import Pusher from "pusher-js";
 import type { ConfigDefaults } from "../types";
 
 /**
@@ -13,6 +12,38 @@ type EchoConfig = ConstructorParameters<typeof Echo<keyof Broadcaster>>[0];
 
 let echoInstance: Echo<keyof Broadcaster> | null = null;
 let echoConfig: EchoConfig | null = null;
+
+/**
+ * fork (P-07): unlike upstream, the adapters neither import nor inject pusher-js, so the Pusher and Reverb
+ * broadcasters use the app's own copy. Without one, fail with a hint that names both ways to provide it, instead
+ * of the core's generic "Pusher client not found" (the checks mirror PusherConnector.connect()).
+ */
+const assertPusherAvailable = (config: EchoConfig): void => {
+    const { broadcaster } = config;
+
+    if (broadcaster !== "pusher" && broadcaster !== "reverb") {
+        return;
+    }
+
+    const windowPusher: unknown =
+        typeof window === "undefined"
+            ? undefined
+            : (window as unknown as { Pusher?: unknown }).Pusher;
+
+    if (
+        config.Pusher ||
+        typeof config.client !== "undefined" ||
+        typeof windowPusher !== "undefined"
+    ) {
+        return;
+    }
+
+    throw new Error(
+        `The "${broadcaster}" broadcaster needs pusher-js, which @ably/laravel-echo-svelte does not bundle. ` +
+            `Pass it in the options, configureEcho({ broadcaster: "${broadcaster}", Pusher }) with ` +
+            `import Pusher from "pusher-js", or set window.Pusher = Pusher before Echo is used.`,
+    );
+};
 
 const getEchoInstance = <T extends keyof Broadcaster>(): Echo<T> => {
     if (echoInstance) {
@@ -25,7 +56,7 @@ const getEchoInstance = <T extends keyof Broadcaster>(): Echo<T> => {
         );
     }
 
-    echoConfig.Pusher ??= Pusher;
+    assertPusherAvailable(echoConfig);
 
     echoInstance = new Echo<keyof Broadcaster>(echoConfig);
 

@@ -31,31 +31,13 @@
         "@types/node": "^24.13.3",
         "jsdom": "^30.0.0",
         "@ably/laravel-echo": "workspace:^",
-        "pusher-js": "^8.4.0",
-        "socket.io-client": "^4.8.1",
         "svelte": "^5.55.7",
         "typescript": "catalog:",
         "vite-plus": "catalog:"
     },
     "peerDependencies": {
         "@ably/laravel-echo": "^2.0.0-rc.0",
-        "pusher-js": "*",
-        "socket.io-client": "*",
         "svelte": "^5.55.7"
-    },
-    "peerDependenciesMeta": {
-        "pusher-js": {
-            "optional": true
-        },
-        "socket.io-client": {
-            "optional": true
-        }
-    },
-    "typesVersions": {
-        "*": {
-            "socket.io-client": [],
-            "pusher-js": []
-        }
     },
     "engines": {
         "node": ">=22"

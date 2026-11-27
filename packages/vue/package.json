@@ -32,31 +32,13 @@
         "@vue/test-utils": "^2.4.11",
         "jsdom": "^30.0.0",
         "@ably/laravel-echo": "workspace:^",
-        "pusher-js": "^8.4.0",
-        "socket.io-client": "^4.8.1",
         "typescript": "catalog:",
         "vite-plus": "catalog:",
         "vue": "^3.5.41"
     },
     "peerDependencies": {
         "@ably/laravel-echo": "^2.0.0-rc.0",
-        "pusher-js": "*",
-        "socket.io-client": "*",
         "vue": "^3.0.0"
-    },
-    "peerDependenciesMeta": {
-        "pusher-js": {
-            "optional": true
-        },
-        "socket.io-client": {
-            "optional": true
-        }
-    },
-    "typesVersions": {
-        "*": {
-            "socket.io-client": [],
-            "pusher-js": []
-        }
     },
     "engines": {
         "node": ">=22"

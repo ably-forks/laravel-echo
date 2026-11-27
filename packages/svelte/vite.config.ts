@@ -89,7 +89,7 @@ const globals = (id: string): string => {
         return "AblyPubSub";
     }
 
-    return id === "pusher-js" ? "Pusher" : "Svelte";
+    return "Svelte";
 };
 
 const config: UserConfig = (() => {
@@ -98,7 +98,6 @@ const config: UserConfig = (() => {
             external: (id) =>
                 id === "svelte" ||
                 id.startsWith("svelte/") ||
-                id === "pusher-js" ||
                 isAblyExternal(id),
             output: { globals },
         },
@@ -123,10 +122,7 @@ const config: UserConfig = (() => {
                     ...common.rollupOptions,
                     // fork (V1-B): compiled runes import svelte/internal/*, which the page's global `Svelte`
                     // does not expose, so the IIFE bundles those internals and keeps only `svelte` external
-                    external: (id) =>
-                        id === "svelte" ||
-                        id === "pusher-js" ||
-                        isAblyExternal(id),
+                    external: (id) => id === "svelte" || isAblyExternal(id),
                 },
             },
         };
