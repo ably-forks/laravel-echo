@@ -391,8 +391,11 @@ export default class Echo<T extends keyof Broadcaster> {
         document.addEventListener(
             "turbo:before-fetch-request",
             (event: Record<any, any>) => {
-                event.detail.fetchOptions.headers["X-Socket-Id"] =
-                    this.socketId();
+                // fork (F-252): like the other interceptors, no `X-Socket-Id: undefined` before the connection is up
+                if (this.socketId()) {
+                    event.detail.fetchOptions.headers["X-Socket-Id"] =
+                        this.socketId();
+                }
             },
         );
     }
