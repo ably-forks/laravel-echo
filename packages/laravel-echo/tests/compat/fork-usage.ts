@@ -70,6 +70,14 @@ visibilities.forEach((visibility) => echo.leaveChannel("orders", visibility));
 echo.leaveChannel("private:chat");
 const fullName: string = echo.connectorChannelName("chat", "private");
 const status: ConnectionStatus = echo.connectionStatus();
+// Echo.onConnectionChange (fork-only, P-03): survives Echo.connect(); returns the unsubscribe function
+const unsubscribe: () => void = echo.onConnectionChange(
+    (next: ConnectionStatus) => void next,
+);
+unsubscribe();
+const offConnector: () => void = connector.onConnectionChange(() => {});
+const socketId: string | undefined = echo.socketId();
+const connectorSocketId: string | undefined = connector.socketId();
 // encrypted private channels do not exist with the Ably broadcaster: typed `never` (it throws; this file never runs)
 const encrypted: never = echo.encryptedPrivate("secret");
 new EventFormatter("App.Events").format("OrderShipped");
@@ -83,5 +91,8 @@ void [
     asUpstreamConnector,
     fullName,
     status,
+    offConnector,
+    socketId,
+    connectorSocketId,
     encrypted,
 ];
