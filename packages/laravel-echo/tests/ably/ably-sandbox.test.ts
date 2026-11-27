@@ -1,9 +1,16 @@
-import { vi, describe, test, expect, beforeAll, afterAll } from "vite-plus/test";
-import { setup, tearDown } from './setup/sandbox';
-import { createHttpClient } from '@ably/pubsub-server';
+import {
+    vi,
+    describe,
+    test,
+    expect,
+    beforeAll,
+    afterAll,
+} from "vite-plus/test";
+import { setup, tearDown } from "./setup/sandbox";
+import { createHttpClient } from "@ably/pubsub-server";
 
 vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
-describe('AblySandbox', () => {
+describe("AblySandbox", () => {
     let testApp: Awaited<ReturnType<typeof setup>>;
 
     beforeAll(async () => {
@@ -14,17 +21,17 @@ describe('AblySandbox', () => {
         return await tearDown(testApp);
     });
 
-    test('init with key string', () => {
+    test("init with key string", () => {
         const apiKey = testApp.keys[0].keyStr;
-        expect(typeof apiKey).toBe('string');
+        expect(typeof apiKey).toBe("string");
         expect(apiKey).toBeTruthy();
     });
 
-    test('rest time should work', async () => {
+    test("rest time should work", async () => {
         const apiKey = testApp.keys[0].keyStr;
         const restClient = createHttpClient(apiKey);
         expect.assertions(1);
         const time = await restClient.time();
-        expect(typeof time).toBe('number');
+        expect(typeof time).toBe("number");
     });
 });

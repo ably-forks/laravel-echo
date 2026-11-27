@@ -151,7 +151,9 @@ export default class Echo<T extends keyof Broadcaster> {
      */
     leaveChannel(channel: string, visibility?: ChannelVisibility): void {
         this.connector.leaveChannel(
-            visibility ? this.connectorChannelName(channel, visibility) : channel,
+            visibility
+                ? this.connectorChannelName(channel, visibility)
+                : channel,
         );
     }
 

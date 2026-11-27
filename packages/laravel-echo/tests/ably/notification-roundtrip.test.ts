@@ -10,11 +10,21 @@ import { makeFakeAblyClient } from "../parity/fake-ably";
 const EVENT = "Illuminate\\Notifications\\Events\\BroadcastNotificationCreated";
 
 const setup = () => {
-    const echo = new Echo({ broadcaster: "ably", client: makeFakeAblyClient(), withoutInterceptors: true });
+    const echo = new Echo({
+        broadcaster: "ably",
+        client: makeFakeAblyClient(),
+        withoutInterceptors: true,
+    });
     const channel = echo.private("App.Models.User.1");
     // any: the fake ably channel (tests/parity/fake-ably.ts) and its message emitter
     const fake: any = channel.channel;
-    const deliver = (data: unknown) => fake.messages.emit(EVENT, { name: EVENT, data, id: "m1", timestamp: 1 });
+    const deliver = (data: unknown) =>
+        fake.messages.emit(EVENT, {
+            name: EVENT,
+            data,
+            id: "m1",
+            timestamp: 1,
+        });
     return { channel, fake, deliver };
 };
 
@@ -24,12 +34,22 @@ describe("notification() round trip (F-057)", () => {
         const cb = vi.fn();
 
         expect(channel.notification(cb)).toBe(channel);
-        expect(fake.subscribe).toHaveBeenCalledWith(EVENT, expect.any(Function));
+        expect(fake.subscribe).toHaveBeenCalledWith(
+            EVENT,
+            expect.any(Function),
+        );
 
         deliver({ id: "n1", type: "App\\Notifications\\Shipped" });
         expect(cb).toHaveBeenCalledTimes(1);
-        expect(cb.mock.calls[0][0]).toEqual({ id: "n1", type: "App\\Notifications\\Shipped" });
-        expect(cb.mock.calls[0][1]).toEqual({ name: EVENT, id: "m1", timestamp: 1 }); // the message metadata, no data
+        expect(cb.mock.calls[0][0]).toEqual({
+            id: "n1",
+            type: "App\\Notifications\\Shipped",
+        });
+        expect(cb.mock.calls[0][1]).toEqual({
+            name: EVENT,
+            id: "m1",
+            timestamp: 1,
+        }); // the message metadata, no data
     });
 
     test("stopListeningForNotification(cb) removes exactly that callback", () => {
@@ -42,7 +62,10 @@ describe("notification() round trip (F-057)", () => {
         deliver({ id: "n2" });
 
         expect(removed).not.toHaveBeenCalled();
-        expect(kept).toHaveBeenCalledExactlyOnceWith({ id: "n2" }, expect.anything());
+        expect(kept).toHaveBeenCalledExactlyOnceWith(
+            { id: "n2" },
+            expect.anything(),
+        );
     });
 
     test("a callback registered again after removal is called once per notification", () => {
@@ -54,14 +77,20 @@ describe("notification() round trip (F-057)", () => {
         channel.notification(cb);
         deliver({ id: "n3" });
 
-        expect(cb).toHaveBeenCalledExactlyOnceWith({ id: "n3" }, expect.anything());
+        expect(cb).toHaveBeenCalledExactlyOnceWith(
+            { id: "n3" },
+            expect.anything(),
+        );
     });
 
     test("listen() on the same event is not removed by stopListeningForNotification(other)", () => {
         const { channel, deliver } = setup();
         const viaListen = vi.fn();
         const other = vi.fn();
-        channel.listen(".Illuminate\\Notifications\\Events\\BroadcastNotificationCreated", viaListen);
+        channel.listen(
+            ".Illuminate\\Notifications\\Events\\BroadcastNotificationCreated",
+            viaListen,
+        );
         channel.notification(other);
 
         channel.stopListeningForNotification(other);

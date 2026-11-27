@@ -1,17 +1,30 @@
-import { httpError } from './utils';
-import type { AblyTokenResponse } from '../../connector/ably-connector';
+import { httpError } from "./utils";
+import type { AblyTokenResponse } from "../../connector/ably-connector";
 
 /** A token request: `authEndpoint`'s default, or the app's `requestTokenFn` (`channelName` is null for the connection). */
-export type RequestTokenFn = (channelName: string | null, existingToken: string | null) => Promise<AblyTokenResponse>;
+export type RequestTokenFn = (
+    channelName: string | null,
+    existingToken: string | null,
+) => Promise<AblyTokenResponse>;
 
 /** Upper bound for one token request, so a hung requestTokenFn cannot block every later auth request. */
 export const TOKEN_REQUEST_TIMEOUT_MS = 30000;
 
-const withTimeout = <T>(promise: Promise<T>, ms: number, source: string): Promise<T> => {
+const withTimeout = <T>(
+    promise: Promise<T>,
+    ms: number,
+    source: string,
+): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
-            reject(httpError(`${source} did not complete within ${ms}ms`, 500, 50003));
+            reject(
+                httpError(
+                    `${source} did not complete within ${ms}ms`,
+                    500,
+                    50003,
+                ),
+            );
         }, ms);
     });
     return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
@@ -27,7 +40,10 @@ export class SequentialAuthTokenRequestExecuter {
     constructor(
         token: string | null = null,
         requestTokenFn: RequestTokenFn,
-        { source = 'requestTokenFn', timeoutMs = TOKEN_REQUEST_TIMEOUT_MS } = {}
+        {
+            source = "requestTokenFn",
+            timeoutMs = TOKEN_REQUEST_TIMEOUT_MS,
+        } = {},
     ) {
         this.cachedToken = token;
         this.source = source;
@@ -37,22 +53,31 @@ export class SequentialAuthTokenRequestExecuter {
     }
 
     execute = (
-        tokenRequestFn: (existingToken: string | null) => Promise<AblyTokenResponse>
+        tokenRequestFn: (
+            existingToken: string | null,
+        ) => Promise<AblyTokenResponse>,
     ): Promise<{ token: string; info: unknown }> =>
         new Promise((resolve, reject) => {
             // the task settles this promise itself and never rejects, so run()'s own promise is deliberately not awaited
             void this.queue.run(async () => {
                 try {
                     const response = await withTimeout(
-                        Promise.resolve().then(() => tokenRequestFn(this.cachedToken)),
+                        Promise.resolve().then(() =>
+                            tokenRequestFn(this.cachedToken),
+                        ),
                         this.timeoutMs,
-                        this.source
+                        this.source,
                     );
                     // a requestTokenFn may resolve with anything: checked below, whatever its declared type
-                    const { token, info } = (response ?? {}) as Partial<AblyTokenResponse>;
+                    const { token, info } = (response ??
+                        {}) as Partial<AblyTokenResponse>;
                     // R12/T7: validate before caching, so a bad result never overwrites the cached token
-                    if (typeof token !== 'string' || token.trim() === '') {
-                        throw httpError(`${this.source} returned a response without a token`, 500, 50000);
+                    if (typeof token !== "string" || token.trim() === "") {
+                        throw httpError(
+                            `${this.source} returned a response without a token`,
+                            500,
+                            50000,
+                        );
                     }
                     this.cachedToken = token;
                     resolve({ token, info });
@@ -62,7 +87,9 @@ export class SequentialAuthTokenRequestExecuter {
             });
         });
 
-    request = (channelName: string | null): Promise<{ token: string; info: unknown }> =>
+    request = (
+        channelName: string | null,
+    ): Promise<{ token: string; info: unknown }> =>
         this.execute((token) => this.requestTokenFn(channelName, token));
 }
 

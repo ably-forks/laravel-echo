@@ -15,7 +15,12 @@ const requestTokenFn = async () => ({ token: "never-used" });
 
 describe("class fields in dist/echo.js (F-048)", () => {
     test("the fields connect() assigns survive the subclass constructor", () => {
-        const echo = new Echo({ broadcaster: "ably", autoConnect: false, withoutInterceptors: true, requestTokenFn });
+        const echo = new Echo({
+            broadcaster: "ably",
+            autoConnect: false,
+            withoutInterceptors: true,
+            requestTokenFn,
+        });
         const connector = echo.connector;
 
         expect(connector.ably).toBeDefined();
@@ -33,7 +38,12 @@ describe("class fields in dist/echo.js (F-048)", () => {
     });
 
     test("connect() called again keeps them", () => {
-        const echo = new Echo({ broadcaster: "ably", autoConnect: false, withoutInterceptors: true, requestTokenFn });
+        const echo = new Echo({
+            broadcaster: "ably",
+            autoConnect: false,
+            withoutInterceptors: true,
+            requestTokenFn,
+        });
         const first = echo.connector.ably;
 
         echo.connect();

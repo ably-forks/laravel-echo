@@ -1,11 +1,18 @@
-import { httpRequestAsync} from '../../../src/channel/ably/utils';
-export { toBase64UrlEncoded } from '../../../src/channel/ably/utils';
+import { httpRequestAsync } from "../../../src/channel/ably/utils";
+export { toBase64UrlEncoded } from "../../../src/channel/ably/utils";
 
 /** The resolve/reject pair of the promise a callback-style test returns. */
-export type Settle = { resolve: () => void; reject: (reason?: unknown) => void };
+export type Settle = {
+    resolve: () => void;
+    reject: (reason?: unknown) => void;
+};
 
 // Runs assertions inside an event callback: a failure rejects the test's promise; the final assertion resolves it.
-const safeAssert = (assertions: Function, settle: Settle, finalAssertion = false) => {
+const safeAssert = (
+    assertions: Function,
+    settle: Settle,
+    finalAssertion = false,
+) => {
     try {
         assertions();
         if (finalAssertion) {
@@ -22,14 +29,18 @@ export const execute = (fn: Function, times: number) => {
     }
 };
 
-export const httpPostAsync = async (url: string, postData: any, timeoutMs?: number) => {
+export const httpPostAsync = async (
+    url: string,
+    postData: any,
+    timeoutMs?: number,
+) => {
     postData = JSON.stringify(postData);
     let postOptions = {
         uri: url,
-        method: 'POST',
+        method: "POST",
         headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
+            Accept: "application/json",
+            "Content-Type": "application/json",
         },
         body: postData,
     };
@@ -39,7 +50,7 @@ export const httpPostAsync = async (url: string, postData: any, timeoutMs?: numb
 export const httpDeleteAsync = async (url: string, headers: any) => {
     let deleteOptions = {
         uri: url,
-        method: 'DELETE',
+        method: "DELETE",
         headers,
     };
     return await httpRequestAsync(deleteOptions);

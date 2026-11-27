@@ -1,19 +1,23 @@
-import type { TokenDetails } from '../../types/ably';
+import type { TokenDetails } from "../../types/ably";
 // Single install: Echo always uses its own copy of @ably/pubsub-device (a dependency). The ESM/CJS builds keep this
 // import external, so the app's bundler resolves it; the IIFE build bundles it.
-import * as BundledAbly from '@ably/pubsub-device';
+import * as BundledAbly from "@ably/pubsub-device";
 
 /**
  * Invokes a user-supplied callback/listener so that an exception it throws (or a promise it rejects) is reported
  * and never fed back into Echo's own promise chains. ably 1.x behaved the same way: its EventEmitter logged
  * "Unexpected listener exception" and carried on.
  */
-export const safeInvoke = (fn: CallableFunction | undefined | null, ...args: unknown[]): void => {
+export const safeInvoke = (
+    fn: CallableFunction | undefined | null,
+    ...args: unknown[]
+): void => {
     if (!fn) return;
-    const report = (e: unknown) => console.error('laravel-echo: exception in user callback', e);
+    const report = (e: unknown) =>
+        console.error("laravel-echo: exception in user callback", e);
     try {
         const result = fn(...args);
-        if (result && typeof result.then === 'function') {
+        if (result && typeof result.then === "function") {
             result.then(undefined, report);
         }
     } catch (e) {
@@ -32,9 +36,10 @@ export const isSameError = (a: unknown, b: unknown): boolean => {
     return x.code !== undefined && x.code === y.code && x.message === y.message;
 };
 
-export const isNullOrUndefined = (obj: unknown): obj is null | undefined => obj == null || obj === undefined;
+export const isNullOrUndefined = (obj: unknown): obj is null | undefined =>
+    obj == null || obj === undefined;
 export const isEmptyString = (stringToCheck: string, ignoreSpaces = true) =>
-    (ignoreSpaces ? stringToCheck.trim() : stringToCheck) === '';
+    (ignoreSpaces ? stringToCheck.trim() : stringToCheck) === "";
 export const isNullOrUndefinedOrEmpty = (obj: string | null | undefined) =>
     obj == null || obj === undefined || isEmptyString(obj);
 
@@ -44,12 +49,12 @@ export const isNullOrUndefinedOrEmpty = (obj: string | null | undefined) =>
 // any: the decoded JWT JSON, read by claim name
 export const parseJwt = (jwtToken: string): { header: any; payload: any } => {
     // Get Token Header
-    const base64HeaderUrl = jwtToken.split('.')[0];
-    const base64Header = base64HeaderUrl.replace('-', '+').replace('_', '/');
+    const base64HeaderUrl = jwtToken.split(".")[0];
+    const base64Header = base64HeaderUrl.replace("-", "+").replace("_", "/");
     const header = JSON.parse(fromBase64UrlEncoded(base64Header));
     // Get Token payload
-    const base64Url = jwtToken.split('.')[1];
-    const base64 = base64Url.replace('-', '+').replace('_', '/');
+    const base64Url = jwtToken.split(".")[1];
+    const base64 = base64Url.replace("-", "+").replace("_", "/");
     const payload = JSON.parse(fromBase64UrlEncoded(base64));
     return { header, payload };
 };
@@ -61,10 +66,10 @@ export const toTokenDetails = (jwtToken: string): TokenDetails => {
         payload = parseJwt(jwtToken).payload;
     } catch (e) {
         // a coded error instead of an opaque SyntaxError/TypeError reaching error() listeners / ably's authCallback
-        throw httpError('Auth token is not a valid JWT', 500, 50000, e);
+        throw httpError("Auth token is not a valid JWT", 500, 50000, e);
     }
     return {
-        clientId: payload['x-ably-clientId'],
+        clientId: payload["x-ably-clientId"],
         expires: payload.exp * 1000, // Convert Seconds to ms
         issued: payload.iat * 1000,
         token: jwtToken,
@@ -75,10 +80,16 @@ export const toTokenDetails = (jwtToken: string): TokenDetails => {
  * Node's Buffer, read from globalThis so that no Node type reaches the published declarations. Only used outside a
  * browser (`window` is undefined there).
  */
-type NodeBuffer = { from(input: string, encoding?: string): { toString(encoding?: string): string } };
-const nodeBuffer = (): NodeBuffer => (globalThis as { Buffer?: NodeBuffer }).Buffer as NodeBuffer;
+type NodeBuffer = {
+    from(
+        input: string,
+        encoding?: string,
+    ): { toString(encoding?: string): string };
+};
+const nodeBuffer = (): NodeBuffer =>
+    (globalThis as { Buffer?: NodeBuffer }).Buffer as NodeBuffer;
 
-const isBrowser = typeof window === 'object';
+const isBrowser = typeof window === "object";
 
 /**
  * Helper method to decode base64 url encoded string
@@ -87,15 +98,18 @@ const isBrowser = typeof window === 'object';
  * @returns decoded text string
  */
 export const fromBase64UrlEncoded = (base64: string): string => {
-    const base64Encoded = base64.replace(/-/g, '+').replace(/_/g, '/');
-    const padding = base64.length % 4 === 0 ? '' : '='.repeat(4 - (base64.length % 4));
+    const base64Encoded = base64.replace(/-/g, "+").replace(/_/g, "/");
+    const padding =
+        base64.length % 4 === 0 ? "" : "=".repeat(4 - (base64.length % 4));
     const base64WithPadding = base64Encoded + padding;
 
     if (isBrowser) {
         // P8: atob yields bytes (Latin-1 chars); decode them as UTF-8
-        return new TextDecoder().decode(Uint8Array.from(atob(base64WithPadding), (c) => c.charCodeAt(0)));
+        return new TextDecoder().decode(
+            Uint8Array.from(atob(base64WithPadding), (c) => c.charCodeAt(0)),
+        );
     }
-    return nodeBuffer().from(base64WithPadding, 'base64').toString();
+    return nodeBuffer().from(base64WithPadding, "base64").toString();
 };
 
 /**
@@ -105,26 +119,34 @@ export const fromBase64UrlEncoded = (base64: string): string => {
  * @returns base64 url encoded string
  */
 export const toBase64UrlEncoded = (text: string): string => {
-    let encoded = ''
+    let encoded = "";
     if (isBrowser) {
         // P8: btoa only accepts Latin-1; encode the UTF-8 bytes instead. Build the binary string in chunks: passing
         // every byte as an argument can exceed the engine's argument limit for large inputs.
         const bytes = new TextEncoder().encode(text);
-        let binary = '';
+        let binary = "";
         for (let i = 0; i < bytes.length; i += 0x8000) {
-            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000) as unknown as number[]);
+            binary += String.fromCharCode.apply(
+                null,
+                bytes.subarray(i, i + 0x8000) as unknown as number[],
+            );
         }
         encoded = btoa(binary);
     } else {
-        encoded = nodeBuffer().from(text).toString('base64');
+        encoded = nodeBuffer().from(text).toString("base64");
     }
-    return encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return encoded.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 };
 
-const isAbsoluteUrl = (url: string) => (url && url.indexOf('http://') === 0) || url.indexOf('https://') === 0;
+const isAbsoluteUrl = (url: string) =>
+    (url && url.indexOf("http://") === 0) || url.indexOf("https://") === 0;
 
 export const fullUrl = (url: string) => {
-    if (!isAbsoluteUrl(url) && typeof window != 'undefined' && window?.location?.href) {
+    if (
+        !isAbsoluteUrl(url) &&
+        typeof window != "undefined" &&
+        window?.location?.href
+    ) {
         // P9: resolve against the page URL, like the browser does (keeps the port, handles paths without a leading /)
         return new URL(url, window.location.href).href;
     }
@@ -138,14 +160,21 @@ export const fullUrl = (url: string) => {
  * The window closes on the next `connected`, a `failed` other than 40102, releaseClient() or after 30 s.
  */
 const IDENTITY_SWITCH_TIMEOUT_MS = 30_000;
-const switchWindows = new WeakMap<object, { suppressed: Set<string>; timer: ReturnType<typeof setTimeout> }>();
+const switchWindows = new WeakMap<
+    object,
+    { suppressed: Set<string>; timer: ReturnType<typeof setTimeout> }
+>();
 
 /** Lets Node exit while a window is open; browsers return a number, which has no unref(). */
-const unref = (timer: ReturnType<typeof setTimeout>) => (timer as { unref?: () => void } | undefined)?.unref?.();
+const unref = (timer: ReturnType<typeof setTimeout>) =>
+    (timer as { unref?: () => void } | undefined)?.unref?.();
 
 export const beginIdentitySwitch = (client: object) => {
     endIdentitySwitch(client);
-    const timer = setTimeout(() => endIdentitySwitch(client), IDENTITY_SWITCH_TIMEOUT_MS);
+    const timer = setTimeout(
+        () => endIdentitySwitch(client),
+        IDENTITY_SWITCH_TIMEOUT_MS,
+    );
     unref(timer);
     switchWindows.set(client, { suppressed: new Set(), timer });
 };
@@ -165,11 +194,17 @@ export const endIdentitySwitch = (client: object) => {
  * the channel next attaches, or for at most 30 s, its first 40160 is not reported to error() listeners. The
  * re-authorize result (attached, or the broadcaster's 403) is reported as usual.
  */
-const renewalReattachWindows = new WeakMap<object, { done: Set<string>; timer: ReturnType<typeof setTimeout> }>();
+const renewalReattachWindows = new WeakMap<
+    object,
+    { done: Set<string>; timer: ReturnType<typeof setTimeout> }
+>();
 
 export const beginRenewalReattach = (client: object) => {
     endRenewalReattach(client);
-    const timer = setTimeout(() => endRenewalReattach(client), IDENTITY_SWITCH_TIMEOUT_MS);
+    const timer = setTimeout(
+        () => endRenewalReattach(client),
+        IDENTITY_SWITCH_TIMEOUT_MS,
+    );
     unref(timer);
     renewalReattachWindows.set(client, { done: new Set(), timer });
 };
@@ -188,15 +223,22 @@ export const settleRenewalReattach = (client: object, channelName: string) => {
 };
 
 const isGuardedChannel = (channelName: string) =>
-    channelName.startsWith('private:') || channelName.startsWith('presence:');
+    channelName.startsWith("private:") || channelName.startsWith("presence:");
 
 /**
  * true = swallow: the first 40102 per channel inside an Echo-initiated switch window, or the first 40160 per private
  * or presence channel of the re-attach after a renewal switch.
  */
-export const consumeSwitchError = (client: object, channelName: string, err: unknown): boolean => {
+export const consumeSwitchError = (
+    client: object,
+    channelName: string,
+    err: unknown,
+): boolean => {
     // an ErrorInfo, or a channel state change carrying one
-    const coded = err as { code?: unknown; reason?: { code?: unknown } } | null | undefined;
+    const coded = err as
+        | { code?: unknown; reason?: { code?: unknown } }
+        | null
+        | undefined;
     const code = coded?.code ?? coded?.reason?.code;
     if (code === 40160 && isGuardedChannel(channelName)) {
         const r = client ? renewalReattachWindows.get(client) : undefined;
@@ -228,13 +270,16 @@ let ignoredGlobalsWarned = false;
  * whether the globals exist; their values are never used.
  */
 export const warnIfAblyGlobalsIgnored = (): void => {
-    if (ignoredGlobalsWarned || (typeof Ably === 'undefined' && typeof AblyPubSub === 'undefined')) {
+    if (
+        ignoredGlobalsWarned ||
+        (typeof Ably === "undefined" && typeof AblyPubSub === "undefined")
+    ) {
         return;
     }
     ignoredGlobalsWarned = true;
     console.warn(
-        '@ably/laravel-echo: the global `Ably` / `AblyPubSub` is ignored; Echo uses its own @ably/pubsub-device. ' +
-            'You can remove `window.Ably = ...` (and the Ably CDN script) unless your own code uses it.'
+        "@ably/laravel-echo: the global `Ably` / `AblyPubSub` is ignored; Echo uses its own @ably/pubsub-device. " +
+            "You can remove `window.Ably = ...` (and the Ably CDN script) unless your own code uses it.",
     );
 };
 
@@ -242,10 +287,21 @@ export const warnIfAblyGlobalsIgnored = (): void => {
  * Builds an error for Echo's auth path (R6). Uses the resolved library's `ErrorInfo` when available, so `instanceof
  * Ably.ErrorInfo` and `toString()` are consistent in every runtime; falls back to a plain `Error`.
  */
-export const httpError = (message: string, statusCode: number, code: number, cause?: unknown): Error => {
+export const httpError = (
+    message: string,
+    statusCode: number,
+    code: number,
+    cause?: unknown,
+): Error => {
     const ErrorInfo = resolveAblyLib()?.ErrorInfo;
-    const error: Error & { statusCode?: number; code?: number; cause?: unknown } =
-        typeof ErrorInfo === 'function' ? new ErrorInfo(message, code, statusCode) : new Error(message);
+    const error: Error & {
+        statusCode?: number;
+        code?: number;
+        cause?: unknown;
+    } =
+        typeof ErrorInfo === "function"
+            ? new ErrorInfo(message, code, statusCode)
+            : new Error(message);
     error.statusCode = statusCode;
     error.code = code;
     if (cause !== undefined) {
@@ -277,10 +333,11 @@ export const httpRequestAsync = async (
         headers?: Record<string, any>;
         body?: string;
     },
-    timeoutMs = HTTP_REQUEST_TIMEOUT_MS
-): Promise<any> => { // any: the parsed JSON body
+    timeoutMs = HTTP_REQUEST_TIMEOUT_MS,
+): Promise<any> => {
+    // any: the parsed JSON body
     const headers = { ...options.headers };
-    deleteHeader(headers, 'Content-Length'); // computed by fetch; any casing (Node fetch rejects/stalls on a wrong value)
+    deleteHeader(headers, "Content-Length"); // computed by fetch; any casing (Node fetch rejects/stalls on a wrong value)
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
@@ -290,23 +347,39 @@ export const httpRequestAsync = async (
             method: options.method.toUpperCase(),
             headers,
             body: options.body,
-            credentials: Object.prototype.hasOwnProperty.call(headers, 'authorization') ? 'include' : 'same-origin',
+            credentials: Object.prototype.hasOwnProperty.call(
+                headers,
+                "authorization",
+            )
+                ? "include"
+                : "same-origin",
             signal: controller.signal,
         });
         text = await response.text();
     } catch (err) {
         if (controller.signal.aborted) {
-            throw httpError(`Request to ${options.uri} timed out after ${timeoutMs}ms`, 500, 50003, err);
+            throw httpError(
+                `Request to ${options.uri} timed out after ${timeoutMs}ms`,
+                500,
+                50003,
+                err,
+            );
         }
-        const reason = (err as { message?: unknown } | null | undefined)?.message ?? err;
-        throw httpError(`Request to ${options.uri} failed: ${reason}`, 500, 50000, err);
+        const reason =
+            (err as { message?: unknown } | null | undefined)?.message ?? err;
+        throw httpError(
+            `Request to ${options.uri} failed: ${reason}`,
+            500,
+            50000,
+            err,
+        );
     } finally {
         clearTimeout(timer);
     }
 
     let body: any = null; // any: the parsed JSON body
     let parseError: unknown;
-    if (text !== '') {
+    if (text !== "") {
         try {
             body = JSON.parse(text);
         } catch (err) {
@@ -317,15 +390,22 @@ export const httpRequestAsync = async (
     if (!response.ok) {
         const errorDetails = body?.error ?? body;
         const m = errorDetails?.message;
-        const message = (typeof m === 'string' && m) || text.slice(0, 200) || response.statusText;
-        throw httpError(`HTTP ${response.status}: ${message}`, response.status, response.status * 100);
+        const message =
+            (typeof m === "string" && m) ||
+            text.slice(0, 200) ||
+            response.statusText;
+        throw httpError(
+            `HTTP ${response.status}: ${message}`,
+            response.status,
+            response.status * 100,
+        );
     }
     if (parseError) {
         throw httpError(
             `Expected a JSON response from ${options.uri} (HTTP ${response.status}), got: ${text.slice(0, 100)}`,
             500,
             50000,
-            parseError
+            parseError,
         );
     }
     return body;

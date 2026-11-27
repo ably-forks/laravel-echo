@@ -3,11 +3,14 @@ import { vi, describe, test, expect } from "vite-plus/test";
  * SequentialAuthTokenRequestExecuter / TaskQueue: the promise bridge every channel auth and every connection
  * token renewal (authCallback) goes through.
  */
-import { SequentialAuthTokenRequestExecuter, type RequestTokenFn } from '../../src/channel/ably/token-request';
-import { settle } from './fake-ably';
+import {
+    SequentialAuthTokenRequestExecuter,
+    type RequestTokenFn,
+} from "../../src/channel/ably/token-request";
+import { settle } from "./fake-ably";
 
-describe('SequentialAuthTokenRequestExecuter', () => {
-    test('runs requests one at a time and passes the previous token to the next request', async () => {
+describe("SequentialAuthTokenRequestExecuter", () => {
+    test("runs requests one at a time and passes the previous token to the next request", async () => {
         const seen: any[] = [];
         let active = 0;
         let maxActive = 0;
@@ -19,68 +22,84 @@ describe('SequentialAuthTokenRequestExecuter', () => {
             active--;
             return { token: `t-${channel}`, info: { channel } };
         });
-        const ex = new SequentialAuthTokenRequestExecuter('t0', fn);
-        const results = await Promise.all([ex.request('a'), ex.request('b'), ex.request(null)]);
+        const ex = new SequentialAuthTokenRequestExecuter("t0", fn);
+        const results = await Promise.all([
+            ex.request("a"),
+            ex.request("b"),
+            ex.request(null),
+        ]);
         expect(maxActive).toBe(1);
         expect(seen).toEqual([
-            ['a', 't0'],
-            ['b', 't-a'],
-            [null, 't-b'],
+            ["a", "t0"],
+            ["b", "t-a"],
+            [null, "t-b"],
         ]);
-        expect(results.map((r) => r.token)).toEqual(['t-a', 't-b', 't-null']);
+        expect(results.map((r) => r.token)).toEqual(["t-a", "t-b", "t-null"]);
     });
 
-    test('requestTokenFn throwing synchronously rejects that request and does not block the queue', async () => {
+    test("requestTokenFn throwing synchronously rejects that request and does not block the queue", async () => {
         const fn = vi
             .fn()
             .mockImplementationOnce(() => {
-                throw new Error('sync throw');
+                throw new Error("sync throw");
             })
-            .mockImplementationOnce(async () => ({ token: 't2' }));
+            .mockImplementationOnce(async () => ({ token: "t2" }));
         const ex = new SequentialAuthTokenRequestExecuter(null, fn);
-        await expect(ex.request('a')).rejects.toThrow('sync throw');
-        await expect(ex.request('b')).resolves.toEqual({ token: 't2', info: undefined });
+        await expect(ex.request("a")).rejects.toThrow("sync throw");
+        await expect(ex.request("b")).resolves.toEqual({
+            token: "t2",
+            info: undefined,
+        });
     });
 
-    test('requestTokenFn returning a plain (non-promise) value works', async () => {
+    test("requestTokenFn returning a plain (non-promise) value works", async () => {
         // deliberately not a promise: a JS caller can pass one, despite the declared type
-        const ex = new SequentialAuthTokenRequestExecuter(null, (() => ({ token: 'plain', info: 1 })) as unknown as RequestTokenFn);
-        await expect(ex.request('a')).resolves.toEqual({ token: 'plain', info: 1 });
+        const ex = new SequentialAuthTokenRequestExecuter(null, (() => ({
+            token: "plain",
+            info: 1,
+        })) as unknown as RequestTokenFn);
+        await expect(ex.request("a")).resolves.toEqual({
+            token: "plain",
+            info: 1,
+        });
     });
 
-    test('a rejected request does not block later queued requests', async () => {
+    test("a rejected request does not block later queued requests", async () => {
         const fn = vi
             .fn()
-            .mockRejectedValueOnce(new Error('first failed'))
-            .mockResolvedValueOnce({ token: 't2' });
-        const ex = new SequentialAuthTokenRequestExecuter('t0', fn);
-        const p1 = ex.request('a');
-        const p2 = ex.request('b');
-        await expect(p1).rejects.toThrow('first failed');
-        await expect(p2).resolves.toMatchObject({ token: 't2' });
-        expect(fn.mock.calls[1]).toEqual(['b', 't0']); // cached token kept after a failure
+            .mockRejectedValueOnce(new Error("first failed"))
+            .mockResolvedValueOnce({ token: "t2" });
+        const ex = new SequentialAuthTokenRequestExecuter("t0", fn);
+        const p1 = ex.request("a");
+        const p2 = ex.request("b");
+        await expect(p1).rejects.toThrow("first failed");
+        await expect(p2).resolves.toMatchObject({ token: "t2" });
+        expect(fn.mock.calls[1]).toEqual(["b", "t0"]); // cached token kept after a failure
     });
-    test('requestTokenFn resolving without a token string rejects, and does not overwrite the cached token', async () => {
+    test("requestTokenFn resolving without a token string rejects, and does not overwrite the cached token", async () => {
         // T7: a custom requestTokenFn result must be validated before caching; otherwise the executer caches `undefined`
         // and callers later fail in parseJwt with an opaque TypeError.
-        const fn = vi.fn().mockResolvedValueOnce({}).mockResolvedValueOnce({ token: 't2' });
-        const ex = new SequentialAuthTokenRequestExecuter('t0', fn);
-        await expect(ex.request('a')).rejects.toThrow(/token/);
-        expect(ex.cachedToken).toBe('t0');
+        const fn = vi
+            .fn()
+            .mockResolvedValueOnce({})
+            .mockResolvedValueOnce({ token: "t2" });
+        const ex = new SequentialAuthTokenRequestExecuter("t0", fn);
+        await expect(ex.request("a")).rejects.toThrow(/token/);
+        expect(ex.cachedToken).toBe("t0");
     });
-    test('a requestTokenFn that never settles does not block every later token request forever', async () => {
+    test("a requestTokenFn that never settles does not block every later token request forever", async () => {
         vi.useFakeTimers();
         try {
             const fn = vi
                 .fn()
                 .mockImplementationOnce(() => new Promise(() => undefined)) // hung custom requestTokenFn
-                .mockResolvedValueOnce({ token: 't2' });
+                .mockResolvedValueOnce({ token: "t2" });
             const ex = new SequentialAuthTokenRequestExecuter(null, fn);
-            ex.request('a').catch(() => undefined);
+            ex.request("a").catch(() => undefined);
             let settled = false;
-            ex.request('b').then(
+            ex.request("b").then(
                 () => (settled = true),
-                () => (settled = true)
+                () => (settled = true),
             );
             for (let i = 0; i < 5; i++) {
                 vi.advanceTimersByTime(60_000);
@@ -92,17 +111,19 @@ describe('SequentialAuthTokenRequestExecuter', () => {
         }
     });
 
-    test('no unhandled rejection from the internal queue when requests fail', async () => {
+    test("no unhandled rejection from the internal queue when requests fail", async () => {
         const rejections: any[] = [];
         const h = (r: unknown) => rejections.push(r);
-        process.on('unhandledRejection', h);
+        process.on("unhandledRejection", h);
         try {
-            const ex = new SequentialAuthTokenRequestExecuter(null, () => Promise.reject(new Error('x')));
-            await expect(ex.request('a')).rejects.toThrow('x');
+            const ex = new SequentialAuthTokenRequestExecuter(null, () =>
+                Promise.reject(new Error("x")),
+            );
+            await expect(ex.request("a")).rejects.toThrow("x");
             await settle();
             expect(rejections).toEqual([]);
         } finally {
-            process.off('unhandledRejection', h);
+            process.off("unhandledRejection", h);
         }
     });
 });

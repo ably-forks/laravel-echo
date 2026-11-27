@@ -1,21 +1,37 @@
-import { Connector, type EchoOptionsWithDefaults } from './connector';
+import { Connector, type EchoOptionsWithDefaults } from "./connector";
 
-import { AblyChannel, AblyPrivateChannel, AblyPresenceChannel, AblyAuth } from './../channel';
-import type { ClientOptions, ConnectionStateChange, PubSubClient } from '../types/ably';
-import type { ConnectionStatus, EchoOptions } from '../echo';
-import { toBase64UrlEncoded, resolveAblyLib, warnIfAblyGlobalsIgnored } from '../channel/ably/utils';
+import {
+    AblyChannel,
+    AblyPrivateChannel,
+    AblyPresenceChannel,
+    AblyAuth,
+} from "./../channel";
+import type {
+    ClientOptions,
+    ConnectionStateChange,
+    PubSubClient,
+} from "../types/ably";
+import type { ConnectionStatus, EchoOptions } from "../echo";
+import {
+    toBase64UrlEncoded,
+    resolveAblyLib,
+    warnIfAblyGlobalsIgnored,
+} from "../channel/ably/utils";
 
 /**
  * E5: console hints for the error codes Ably uses on MAU-billed accounts, logged once per code.
  */
 const MAU_HINTS: Record<number, string> = {
-    40161: 'Your Ably account requires an identified client on every connection (MAU billing), but this guest connected without a clientId. ' +
-        'In laravel-broadcaster set ABLY_MAU_ACCOUNT=true (config broadcasting.connections.ably.mau_account) so guests receive a clientId, ' +
+    40161:
+        "Your Ably account requires an identified client on every connection (MAU billing), but this guest connected without a clientId. " +
+        "In laravel-broadcaster set ABLY_MAU_ACCOUNT=true (config broadcasting.connections.ably.mau_account) so guests receive a clientId, " +
         'or only connect Echo for signed-in users. See "Guest users on MAU-billed Ably accounts" in the README.',
-    40168: 'Your Ably account is MAU-billed and only accepts the current @ably/pubsub-device (v3) SDK, but an incompatible or older SDK build connected. ' +
-        'Make sure a single, up-to-date @ably/pubsub-device is installed and that no other Ably SDK creates this connection.',
-    40167: 'A server-side Ably client needs the server claim on its token to connect to a MAU-billed account. This is usually a server-side ' +
-        'configuration issue (laravel-broadcaster / token issuing), not a browser issue.',
+    40168:
+        "Your Ably account is MAU-billed and only accepts the current @ably/pubsub-device (v3) SDK, but an incompatible or older SDK build connected. " +
+        "Make sure a single, up-to-date @ably/pubsub-device is installed and that no other Ably SDK creates this connection.",
+    40167:
+        "A server-side Ably client needs the server claim on its token to connect to a MAU-billed account. This is usually a server-side " +
+        "configuration issue (laravel-broadcaster / token issuing), not a browser issue.",
 };
 
 /**
@@ -36,7 +52,10 @@ export type AblyOptions = EchoOptionsWithDefaults<"ably"> &
          * Method syntax on purpose: a function typed `(channelName: string, existingToken: string)`, as in the
          * README, is still accepted.
          */
-        requestTokenFn?(channelName: string | null, existingToken: string | null): Promise<AblyTokenResponse>;
+        requestTokenFn?(
+            channelName: string | null,
+            existingToken: string | null,
+        ): Promise<AblyTokenResponse>;
         /** An initial token (JWT), used before the first token request. */
         token?: string;
         /** Fetch timeout for `authEndpoint` requests, in ms (default 10000). */
@@ -46,8 +65,12 @@ export type AblyOptions = EchoOptionsWithDefaults<"ably"> &
 /**
  * This class creates a connector to Ably.
  */
-export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateChannel, AblyPresenceChannel> {
-
+export class AblyConnector extends Connector<
+    "ably",
+    AblyChannel,
+    AblyPrivateChannel,
+    AblyPresenceChannel
+> {
     /**
      * The laravel-echo library version.
      */
@@ -60,19 +83,19 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
      * it too.
      */
     static ECHO_ONLY_KEYS = [
-        'broadcaster',
-        'authEndpoint',
-        'auth',
-        'userAuthentication',
-        'namespace',
-        'csrfToken',
-        'bearerToken',
-        'host',
-        'requestTokenFn',
-        'client',
-        'withoutInterceptors',
+        "broadcaster",
+        "authEndpoint",
+        "auth",
+        "userAuthentication",
+        "namespace",
+        "csrfToken",
+        "bearerToken",
+        "host",
+        "requestTokenFn",
+        "client",
+        "withoutInterceptors",
     ];
-    
+
     /**
      * Connector options. Set by Connector.setOptions() from the base constructor.
      *
@@ -129,11 +152,16 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
      */
     protected setOptions(options: EchoOptions<"ably">): void {
         const auth = options.auth ?? Connector._defaultOptions.auth;
-        const userAuthentication = options.userAuthentication ?? Connector._defaultOptions.userAuthentication;
+        const userAuthentication =
+            options.userAuthentication ??
+            Connector._defaultOptions.userAuthentication;
         super.setOptions({
             ...options,
             auth: { ...auth, headers: { ...auth.headers } },
-            userAuthentication: { ...userAuthentication, headers: { ...userAuthentication.headers } },
+            userAuthentication: {
+                ...userAuthentication,
+                headers: { ...userAuthentication.headers },
+            },
         });
     }
 
@@ -144,7 +172,7 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
         if (this.ably) {
             this.releaseClient(); // P7: connect() called again
         }
-        if (typeof this.options.client !== 'undefined') {
+        if (typeof this.options.client !== "undefined") {
             // P3: a user-supplied client gets no AblyAuth, so the pre-attach authorize (and the 40160 re-authorize of
             // private and presence channels) is not installed; its own auth must grant the channel capabilities.
             this.ably = this.options.client;
@@ -153,12 +181,15 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
             if (!this.options.agents) {
                 this.options.agents = {};
             }
-            this.options.agents['laravel-echo'] = AblyConnector.LIB_VERSION;
+            this.options.agents["laravel-echo"] = AblyConnector.LIB_VERSION;
             this.mapLegacyHostOptions();
             // single install: Echo's own @ably/pubsub-device, never a global (a user-supplied options.client above is
             // the only way to use another copy)
             warnIfAblyGlobalsIgnored();
-            this.ably = resolveAblyLib().createClient({ ...this.ablyAuth.options, ...this.clientOptions() });
+            this.ably = resolveAblyLib().createClient({
+                ...this.ablyAuth.options,
+                ...this.clientOptions(),
+            });
             this.ablyAuth.enableAuthorizeBeforeChannelAttach();
             this.ablyAuth.allowReconnectOnUserLogin();
         }
@@ -174,10 +205,19 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
         Object.keys(this.channels).forEach((name) => this.leaveChannel(name));
         if (this.ably && this.recoveryListeners) {
             // a supplied options.client may be reused: don't leave a listener pair on it per connect()
-            this.ably.connection.off('failed', this.recoveryListeners.failed);
-            this.ably.connection.off('connected', this.recoveryListeners.connected);
-            this.ably.connection.off('disconnected', this.recoveryListeners.interrupted);
-            this.ably.connection.off('suspended', this.recoveryListeners.interrupted);
+            this.ably.connection.off("failed", this.recoveryListeners.failed);
+            this.ably.connection.off(
+                "connected",
+                this.recoveryListeners.connected,
+            );
+            this.ably.connection.off(
+                "disconnected",
+                this.recoveryListeners.interrupted,
+            );
+            this.ably.connection.off(
+                "suspended",
+                this.recoveryListeners.interrupted,
+            );
             this.recoveryListeners = null;
         }
         this.ablyAuth?.releaseClientIdSwitchListeners(); // before close(), while this.ably is still the old client
@@ -192,7 +232,9 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
      */
     clientOptions(): ClientOptions {
         const clientOptions: Record<string, unknown> = { ...this.options };
-        AblyConnector.ECHO_ONLY_KEYS.forEach((key) => delete clientOptions[key]);
+        AblyConnector.ECHO_ONLY_KEYS.forEach(
+            (key) => delete clientOptions[key],
+        );
         return clientOptions;
     }
 
@@ -208,17 +250,29 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
         }
         if (this.options.endpoint == null) {
             if (restHost && realtimeHost && restHost !== realtimeHost) {
-                console.warn('@ably/laravel-echo: restHost and realtimeHost differ; using realtimeHost as endpoint.');
+                console.warn(
+                    "@ably/laravel-echo: restHost and realtimeHost differ; using realtimeHost as endpoint.",
+                );
             }
             const host = realtimeHost ?? restHost;
-            if (host && !host.includes('.') && !host.includes('::') && host !== 'localhost') {
+            if (
+                host &&
+                !host.includes(".") &&
+                !host.includes("::") &&
+                host !== "localhost"
+            ) {
                 // '::' = IPv6
                 console.warn(
-                    `@ably/laravel-echo: '${host}' has no dot, so @ably/pubsub-device treats it as a routing-policy id, not a hostname.`
+                    `@ably/laravel-echo: '${host}' has no dot, so @ably/pubsub-device treats it as a routing-policy id, not a hostname.`,
                 );
             }
             this.options.endpoint =
-                host ?? (environment === 'production' ? undefined : environment === 'sandbox' ? 'nonprod:sandbox' : environment);
+                host ??
+                (environment === "production"
+                    ? undefined
+                    : environment === "sandbox"
+                      ? "nonprod:sandbox"
+                      : environment);
         }
         // delete so they never reach the client (ably@2 would throw 40106 alongside `endpoint`)
         delete this.options.environment;
@@ -226,8 +280,8 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
         delete this.options.restHost;
         console.warn(
             `@ably/laravel-echo: environment/realtimeHost/restHost are not supported by @ably/pubsub-device; use 'endpoint' (now '${
-                this.options.endpoint ?? 'default'
-            }').`
+                this.options.endpoint ?? "default"
+            }').`,
         );
     }
 
@@ -239,7 +293,7 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
      */
     reattachChannelsAfterConnectionFailure(): void {
         // a supplied options.client may already be failed: no later state change would tell us
-        let connectionFailed = this.ably.connection.state === 'failed';
+        let connectionFailed = this.ably.connection.state === "failed";
         const failed = (stateChange?: ConnectionStateChange) => {
             connectionFailed = true;
             this.channelsReattachedByAuth = false; // that re-attach did not survive this failure
@@ -248,9 +302,16 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
             const reason = stateChange?.reason;
             const code = reason?.code;
             const hint = code !== undefined ? MAU_HINTS[code] : undefined;
-            if (reason && code !== undefined && hint && !this.mauHintsLogged.has(code)) {
+            if (
+                reason &&
+                code !== undefined &&
+                hint &&
+                !this.mauHintsLogged.has(code)
+            ) {
                 this.mauHintsLogged.add(code);
-                console.error(`@ably/laravel-echo: the Ably connection failed (${code}: ${reason.message}). ${hint}`);
+                console.error(
+                    `@ably/laravel-echo: the Ably connection failed (${code}: ${reason.message}). ${hint}`,
+                );
             }
         };
         const connected = () => {
@@ -264,8 +325,10 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
             }
             for (const echoChannel of Object.values(this.channels)) {
                 const state = echoChannel.channel.state;
-                if (state !== 'attached' && state !== 'attaching') {
-                    echoChannel.channel.attach().catch(echoChannel._alertErrorListeners);
+                if (state !== "attached" && state !== "attaching") {
+                    echoChannel.channel
+                        .attach()
+                        .catch(echoChannel._alertErrorListeners);
                 }
             }
         };
@@ -274,17 +337,21 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
         const interrupted = () => {
             this.channelsReattachedByAuth = false;
         };
-        this.ably.connection.on('failed', failed);
-        this.ably.connection.on('connected', connected);
-        this.ably.connection.on('disconnected', interrupted);
-        this.ably.connection.on('suspended', interrupted);
+        this.ably.connection.on("failed", failed);
+        this.ably.connection.on("connected", connected);
+        this.ably.connection.on("disconnected", interrupted);
+        this.ably.connection.on("suspended", interrupted);
         this.recoveryListeners = { failed, connected, interrupted };
     }
 
     /**
      * Listen for an event on a channel instance.
      */
-    listen(name: string, event: string, callback: CallableFunction): AblyChannel {
+    listen(
+        name: string,
+        event: string,
+        callback: CallableFunction,
+    ): AblyChannel {
         return this.channel(name).listen(event, callback);
     }
 
@@ -294,7 +361,11 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
     channel(name: string): AblyChannel {
         const prefixedName = `public:${name}`; // adding public as a ably namespace prefix
         if (!this.channels[prefixedName]) {
-            this.channels[prefixedName] = new AblyChannel(this.ably, prefixedName, this.options);
+            this.channels[prefixedName] = new AblyChannel(
+                this.ably,
+                prefixedName,
+                this.options,
+            );
         }
 
         return this.channels[prefixedName];
@@ -306,7 +377,12 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
     privateChannel(name: string): AblyPrivateChannel {
         const prefixedName = `private:${name}`; // adding private as a ably namespace prefix
         if (!this.channels[prefixedName]) {
-            this.channels[prefixedName] = new AblyPrivateChannel(this.ably, prefixedName, this.options, this.ablyAuth);
+            this.channels[prefixedName] = new AblyPrivateChannel(
+                this.ably,
+                prefixedName,
+                this.options,
+                this.ablyAuth,
+            );
         }
 
         return this.channels[prefixedName] as AblyPrivateChannel;
@@ -318,7 +394,12 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
     presenceChannel(name: string): AblyPresenceChannel {
         const prefixedName = `presence:${name}`; // adding presence as a ably namespace prefix
         if (!this.channels[prefixedName]) {
-            this.channels[prefixedName] = new AblyPresenceChannel(this.ably, prefixedName, this.options, this.ablyAuth);
+            this.channels[prefixedName] = new AblyPresenceChannel(
+                this.ably,
+                prefixedName,
+                this.options,
+                this.ablyAuth,
+            );
         }
 
         return this.channels[prefixedName] as AblyPresenceChannel;
@@ -328,14 +409,20 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
      * Encrypted private channels are a Pusher feature with no Ably equivalent (review P6).
      */
     encryptedPrivateChannel(): never {
-        throw new Error('Encrypted private channels are not supported with the Ably broadcaster');
+        throw new Error(
+            "Encrypted private channels are not supported with the Ably broadcaster",
+        );
     }
 
     /**
      * Leave the given channel, as well as its private and presence variants.
      */
     leave(name: string): void {
-        let channels = [`public:${name}`, `private:${name}`, `presence:${name}`];
+        let channels = [
+            `public:${name}`,
+            `private:${name}`,
+            `presence:${name}`,
+        ];
 
         channels.forEach((name: string, index: number) => {
             this.leaveChannel(name);
@@ -346,9 +433,13 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
      * Leave the given channel.
      */
     leaveChannel(name: string): void {
-        if (name.indexOf('public:') !== 0 && name.indexOf('private:') !== 0 && name.indexOf('presence:') !== 0) {
+        if (
+            name.indexOf("public:") !== 0 &&
+            name.indexOf("private:") !== 0 &&
+            name.indexOf("presence:") !== 0
+        ) {
             throw new Error(
-                `Error leaving ${name}, name should be prefixed with either "public:", "private:" or "presence:"`
+                `Error leaving ${name}, name should be prefixed with either "public:", "private:" or "presence:"`,
             );
         }
         if (this.channels[name]) {
@@ -364,9 +455,9 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
      */
     socketId(): string {
         let socketIdObject = {
-            connectionKey : this.ably.connection.key,
-            clientId : this.ably.auth.clientId ?? null,
-        }
+            connectionKey: this.ably.connection.key,
+            clientId: this.ably.auth.clientId ?? null,
+        };
         return toBase64UrlEncoded(JSON.stringify(socketIdObject));
     }
 
@@ -376,20 +467,22 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
      */
     connectionStatus(): ConnectionStatus {
         const s = this.ably?.connection.state;
-        return s === 'connected'
-            ? 'connected'
-            : s === 'failed'
-              ? 'failed'
-              : s === 'connecting' || s === 'initialized'
-                ? 'connecting'
-                : 'disconnected';
+        return s === "connected"
+            ? "connected"
+            : s === "failed"
+              ? "failed"
+              : s === "connecting" || s === "initialized"
+                ? "connecting"
+                : "disconnected";
     }
 
     /**
      * Subscribe to connection status changes; returns the unsubscribe function.
      * [provisional: replaced by Phase 06 / P-01] Temporary stub, implemented in Phase 06.
      */
-    onConnectionChange(callback: (status: ConnectionStatus) => void): () => void {
+    onConnectionChange(
+        callback: (status: ConnectionStatus) => void,
+    ): () => void {
         const listener = () => callback(this.connectionStatus());
         this.ably.connection.on(listener);
         return () => this.ably.connection.off(listener);

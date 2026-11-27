@@ -1,25 +1,37 @@
-import { vi, describe, test, expect, beforeEach, afterEach } from "vite-plus/test";
+import {
+    vi,
+    describe,
+    test,
+    expect,
+    beforeEach,
+    afterEach,
+} from "vite-plus/test";
 import type { MockInstance } from "vite-plus/test";
 /**
  * Single install: Echo always uses its own @ably/pubsub-device and never reads a global `Ably` / `AblyPubSub`. When
  * such a global exists (for example the 1.0.x README's `window.Ably = require('ably')`), it logs one console.warn.
  * A user-supplied `options.client` is still used as is, and gets no warning. No network: autoConnect is false.
  */
-import { FakeEmitter, makeFakeAbly } from '../parity/fake-ably';
+import { FakeEmitter, makeFakeAbly } from "../parity/fake-ably";
 
-const baseOptions = { broadcaster: 'ably', autoConnect: false, requestTokenFn: async () => ({ token: 'x' }) };
-const IGNORED = /global `Ably` \/ `AblyPubSub` is ignored; Echo uses its own @ably\/pubsub-device/;
+const baseOptions = {
+    broadcaster: "ably",
+    autoConnect: false,
+    requestTokenFn: async () => ({ token: "x" }),
+};
+const IGNORED =
+    /global `Ably` \/ `AblyPubSub` is ignored; Echo uses its own @ably\/pubsub-device/;
 
 // a fresh module registry per test, so the once-per-page warning starts unset
 const loadEcho = async (): Promise<any> => {
     vi.resetModules();
-    return (await import('../../src/echo')).default;
+    return (await import("../../src/echo")).default;
 };
 
 let warn: MockInstance;
 
 beforeEach(() => {
-    warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 });
 
 afterEach(() => {
@@ -28,16 +40,17 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-const ignoredWarnings = () => warn.mock.calls.filter(([message]) => IGNORED.test(String(message)));
+const ignoredWarnings = () =>
+    warn.mock.calls.filter(([message]) => IGNORED.test(String(message)));
 
-describe('single install', () => {
-    test('a legacy ably v1/v2 global is ignored and warned about once, across instances and reconnects', async () => {
+describe("single install", () => {
+    test("a legacy ably v1/v2 global is ignored and warned about once, across instances and reconnects", async () => {
         const legacy = { Realtime: vi.fn(), Rest: vi.fn() };
         (globalThis as any).Ably = legacy;
         const Echo = await loadEcho();
 
         const first = new Echo({ ...baseOptions });
-        expect(typeof first.connector.ably.connection.on).toBe('function'); // Echo's own v3 client
+        expect(typeof first.connector.ably.connection.on).toBe("function"); // Echo's own v3 client
         first.connect();
         const second = new Echo({ ...baseOptions });
 
@@ -47,7 +60,7 @@ describe('single install', () => {
         second.disconnect();
     });
 
-    test('the CDN global AblyPubSub is ignored and warned about too', async () => {
+    test("the CDN global AblyPubSub is ignored and warned about too", async () => {
         const createClient = vi.fn();
         (globalThis as any).AblyPubSub = { createClient };
         const echo = new (await loadEcho())({ ...baseOptions });
@@ -56,16 +69,21 @@ describe('single install', () => {
         echo.disconnect();
     });
 
-    test('no warning without an Ably global', async () => {
+    test("no warning without an Ably global", async () => {
         const echo = new (await loadEcho())({ ...baseOptions });
         expect(ignoredWarnings()).toHaveLength(0);
         echo.disconnect();
     });
 
-    test('options.client is still used as is, and gets no warning even with an Ably global present', async () => {
+    test("options.client is still used as is, and gets no warning even with an Ably global present", async () => {
         (globalThis as any).Ably = { Realtime: vi.fn() };
-        const client: any = { ...makeFakeAbly(), connection: new FakeEmitter(), close: vi.fn(), auth: {} };
-        const echo = new (await loadEcho())({ broadcaster: 'ably', client });
+        const client: any = {
+            ...makeFakeAbly(),
+            connection: new FakeEmitter(),
+            close: vi.fn(),
+            auth: {},
+        };
+        const echo = new (await loadEcho())({ broadcaster: "ably", client });
         expect(echo.connector.ably).toBe(client);
         expect(ignoredWarnings()).toHaveLength(0);
     });
