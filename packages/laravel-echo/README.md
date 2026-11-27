@@ -1,137 +1,251 @@
+# Laravel Echo for Ably (`@ably/laravel-echo`)
+
 ## Introduction
 
-This repository is a fork of https://github.com/laravel/echo. It adheres to public interface methods from base repository. It will be synced regularly with the base repository to make sure all the code is up to date.
-Ably-specific implementation is added to support native [ably-js](https://github.com/ably/ably-js) via the [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) package.
+This package is Ably's fork of [Laravel Echo](https://github.com/laravel/echo). It is synced with upstream `laravel/echo` 2.x and keeps its public API, so the [Laravel broadcasting documentation](https://laravel.com/docs/broadcasting#client-side-installation) applies. It adds a native Ably connector, the `ably` broadcaster, built on Ably's [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) SDK.
 
-> **Upgrading from 1.0.x?** See [UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/HEAD/UPDATING.md#10x--11).
+For React, Vue and Svelte, use [`@ably/laravel-echo-react`](https://github.com/ably-forks/laravel-echo/blob/2.x/packages/react/README.md), [`@ably/laravel-echo-vue`](https://github.com/ably-forks/laravel-echo/blob/2.x/packages/vue/README.md) or [`@ably/laravel-echo-svelte`](https://github.com/ably-forks/laravel-echo/blob/2.x/packages/svelte/README.md) together with this package.
+
+> **Upgrading from 1.x?** See [UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/2.x/UPDATING.md#1x--200).
 
 ## Requirements
 
-1. Node.js version >= 22 to install and build, required by `@ably/pubsub-device` v3 (browsers are unaffected)
+- **Server:** [`ably/laravel-broadcaster`](https://github.com/ably/laravel-broadcaster) 2.0.0 or later. Echo 2.x works only with laravel-broadcaster 2.x, and the reverse, so upgrade both together. laravel-broadcaster 2.x supports PHP 8.1 or later and Laravel 8 to 13, the same range as 1.x.
+    - Apps that stay on laravel-broadcaster 1.x stay on `@ably/laravel-echo` 1.1.x (see [Staying on 1.x](https://github.com/ably/laravel-broadcaster/blob/main/UPDATING.md#staying-on-1x)).
+    - On PHP 7.2 to 8.0 or Laravel 6 or 7, use laravel-broadcaster 1.0.x with `@ably/laravel-echo` 1.0.x.
+    - Laravel's built-in `ably` broadcaster is not supported: see [below](#not-supported-laravels-built-in-ably-broadcaster).
+- **Node.js 22 or later** to install and build your app. This is the `engines` field of Echo and of `@ably/pubsub-device` v3. It affects build machines and CI, not browsers.
+- **A bundler that understands ES2022 syntax**, for example Vite, webpack 5 with a current Babel or SWC, or esbuild.
 
 ## Installation
 
-Install `@ably/laravel-echo` using npm. It depends directly on Ably's [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) v3, which npm installs with it, so you don't need to install `ably` or `@ably/pubsub-device` yourself.
-
 ```bash
-npm install @ably/laravel-echo@^1.1
+npm install @ably/laravel-echo
 ```
 
-Once Echo is installed, you are ready to create a fresh Echo instance in your application's JavaScript. A great place to do this is at the bottom of the `resources/js/bootstrap.js` file that is included with the Laravel framework. By default, an example Echo configuration is already included in this file; however, the default configuration in the `bootstrap.js` file is intended for Pusher. You may copy the configuration below to transition your configuration to Ably.
+(`pnpm add @ably/laravel-echo` and `yarn add @ably/laravel-echo` work too.)
+
+`@ably/pubsub-device` is a dependency of this package and is installed with it. You don't need to install `ably` or `@ably/pubsub-device` yourself, and Echo never reads a global `Ably`.
+
+## Setup
+
+Create the Echo instance in your application's JavaScript, for example in `resources/js/bootstrap.js` or `resources/js/echo.js`. If that file holds a Pusher or Reverb configuration, replace it with:
 
 ```js
 import Echo from "@ably/laravel-echo";
 
+window.Echo = new Echo({});
+```
+
+`broadcaster` is optional in this fork and defaults to `"ably"`, the native Ably connector (upstream requires it). `new Echo({ broadcaster: "ably" })` works the same.
+
+Echo requests tokens from `/broadcasting/auth` by default. To use another URL, set `authEndpoint`; see [customizing the authorization endpoint](https://laravel.com/docs/broadcasting#customizing-the-authorization-endpoint):
+
+```js
 window.Echo = new Echo({
-    broadcaster: "ably",
+    authEndpoint: "/broadcasting/auth", // relative or absolute URL of your Laravel server
 });
+```
+
+Every option that is not an Echo option is passed to Ably as a [client option](https://ably.com/docs/api/realtime-sdk#client-options), for example:
+
+```js
+window.Echo = new Echo({
+    // Ably client options
+    echoMessages: true, // Echo sets it to false itself; this overrides it
+    queueMessages: true, // default: true
+    disconnectedRetryTimeout: 15000, // retry after 15 s in the disconnected state
+    suspendedRetryTimeout: 30000, // retry after 30 s in the suspended state
+});
+```
+
+Don't use Ably's own auth options (`authUrl`, `authCallback`, `key`, …): Echo already gets its tokens from your Laravel server. The full list of Echo options is in [UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/2.x/UPDATING.md#echo-options-in-200).
+
+Then build your assets, for example with `npm run dev`.
+
+**Login and logout without a page reload.** Echo switches to the new user, or to a guest, without a page reload. As part of logout, call `window.Echo.connect()` (then subscribe to your channels again) or `window.Echo.disconnect()`: otherwise the page keeps the old user's channel access until its token expires. See [UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/2.x/UPDATING.md#login-user-switch-and-logout-in-the-same-page) for login, user switches, other open tabs and your own Ably client.
+
+## Connection status
+
+`connectionStatus()` returns the status of the connection as one of `"connected"`, `"connecting"`, `"reconnecting"`, `"disconnected"` or `"failed"`, as in upstream Echo:
+
+```js
+const status = window.Echo.connectionStatus();
+```
+
+The Ably connector maps Ably's [connection states](https://ably.com/docs/connect/states) to it:
+
+| Ably connection state | `connectionStatus()`                                                     |
+| --------------------- | ------------------------------------------------------------------------ |
+| `initialized`         | `"connecting"`, or `"disconnected"` if `autoConnect` is `false`          |
+| `connecting`          | `"connecting"`; `"reconnecting"` once this connection has been connected |
+| `connected`           | `"connected"`                                                            |
+| `disconnected`        | `"connecting"`; `"reconnecting"` once this connection has been connected |
+| `suspended`           | `"disconnected"` (Ably keeps retrying, by default every 30 s)            |
+| `closing`, `closed`   | `"disconnected"`                                                         |
+| `failed`              | `"failed"`                                                               |
+
+When the user changes (login, logout, user switch), Ably briefly reports `failed` (40102) while Echo reconnects with the new client ID. Echo reports that as `"reconnecting"` (or `"connecting"` before the first connection), for at most 1 s if the connection stays `failed`.
+
+To be told about changes, use `onConnectionChange()`. It returns a function that unsubscribes. The callback is not called when you subscribe, only on a change:
+
+```js
+const unsubscribe = window.Echo.onConnectionChange((status) => {
+    console.log(`Echo is ${status}`);
+});
+
+// later
+unsubscribe();
+```
+
+`window.Echo.onConnectionChange()` is specific to this fork and is the recommended API. It works with every broadcaster and survives `window.Echo.connect()`: the callbacks move to the new connection and get its status once. Upstream's `window.Echo.connector.onConnectionChange()` also works, but stops at `window.Echo.connect()`, which replaces the connector.
+
+For the raw Ably state, use the Ably client:
+
+```js
+console.log(window.Echo.connector.ably.connection.state);
 
 window.Echo.connector.ably.connection.on((stateChange) => {
     if (stateChange.current === "connected") {
-        console.log("connected to ably server");
+        console.log("connected to Ably");
     }
 });
 ```
 
-- Take a look at [laravel broadcasting auth-endpoint doc](https://laravel.com/docs/broadcasting#customizing-the-authorization-endpoint) for customizing authEndpoint.
+A catch-all Ably listener like this one runs before Echo updates its own status. If it reads `connectionStatus()` during the brief `failed` (40102) of a user switch, it sees `"failed"`. `onConnectionChange()` callbacks get the right status.
 
-```
-    broadcaster: 'ably',
-    authEndpoint: '/broadcasting/auth' // relative or absolute url to laravel-server
-```
+## Guest client IDs and the socket ID
 
-- You can set additional ably-js [js-clientOptions](https://ably.com/docs/api/realtime-sdk?lang=javascript#client-options) when creating an `Echo` instance. Some of those are =>
+laravel-broadcaster 2.x gives every guest a client ID (see [Guest client ids](https://github.com/ably/laravel-broadcaster/blob/main/UPDATING.md#guest-client-ids)), so every Ably connection has one.
 
-```
-    broadcaster: 'ably',
-    // ably specific client-options
-    echoMessages: true, // self-echo for published message is set to false internally.
-    queueMessages: true, // default: true, maintains queue for messages to be sent.
-    disconnectedRetryTimeout: 15000, // reconnect after 15 seconds when client goes disconnected state
-    suspendedRetryTimeout: 30000, // reconnect after 30 seconds when client goes suspended state
-```
+`socketId()` returns the socket ID that Echo sends to your server as the `X-Socket-Id` header (with axios, jQuery, Vue Resource and Turbo). For Ably it encodes the connection key and the client ID, guests included. It is `undefined` until the connection is up, and no `X-Socket-Id` header is sent before that. `broadcast(...)->toOthers()` still excludes only the sending connection.
 
-- [Auth specific clientOptions](https://sdk.ably.com/builds/ably/specification/main/features/#AO1) should not be used, since laravel `authEndpoint` is already responsible for token authentication and external auth mechanism is not needed.
+## Authorizing channels with your own request (Sanctum)
 
-Once you have uncommented and adjusted the Echo configuration according to your needs, you may compile your application's assets:
-
-```shell
-npm run dev
-```
-
-- Echo 1.1 handles login and user switches without a page reload, and recovers from a logout at the next token renewal. As part of logout, call `Echo.connect()` (then subscribe to your channels again) or `Echo.disconnect()`: otherwise the page keeps the old user's channel access until its token expires. See [UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/HEAD/UPDATING.md#login-user-switch-and-logout-in-the-same-page) for login, user switches, other open tabs, your own Ably client and MAU-billed accounts.
-
-## Guest users on MAU-billed Ably accounts
-
-> **Note:** On MAU-billed Ably accounts, guests need a guest client ID from the broadcaster: use laravel-broadcaster 1.1 or later, set `ABLY_MAU_ACCOUNT=true`, and add `'mau_account' => env('ABLY_MAU_ACCOUNT', false)` to `config/broadcasting.php`. Without this, guest connections fail with error 40161.
-> See [Guest users on MAU-billed Ably accounts in UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/HEAD/UPDATING.md#guest-users-on-mau-billed-ably-accounts) for the config lines and options.
-
-## Working with laravel sanctum/ support channel auth using custom implementation
-
-- There is an explicit section for [Authorizing Private/Presence Broadcast Channels](https://laravel.com/docs/sanctum#authorizing-private-broadcast-channels).
-- Equivalent of this is to provide `requestTokenFn` as an argument while creating an Echo instance
+Laravel's [Sanctum documentation](https://laravel.com/docs/sanctum#authorizing-private-broadcast-channels) authorizes channels through an API route. With Ably, pass `requestTokenFn` instead of a custom `authorizer`:
 
 ```js
-    echo = new Echo({
-            broadcaster: 'ably',
-            tls: true,
-            requestTokenFn: async (channelName: string, existingToken: string) => {
-                let postData = { channel_name: channelName, token: existingToken };
-                const res = await axios.post("/api/broadcasting/auth", postData);
-                return res.data;
-            },
+import axios from "axios";
+import Echo from "@ably/laravel-echo";
+
+window.Echo = new Echo({
+    requestTokenFn: async (channelName, existingToken) => {
+        const res = await axios.post("/api/broadcasting/auth", {
+            channel_name: channelName,
+            token: existingToken,
+        });
+        return res.data; // { token, info? }
+    },
+});
+```
+
+- `channelName` is `null` for the connection token, and `existingToken` is `null` until Echo has a token.
+- The function must resolve with your server's token response, `{ token, info? }`.
+- Don't wrap it in try/catch: Echo handles its errors. Each call is bounded to 30 s.
+
+## Channel names on Ably
+
+The Ably connector prefixes channel names with their visibility:
+
+```js
+const publicChannel = window.Echo.channel("channel1");
+console.log(publicChannel.name); // public:channel1
+
+const privateChannel = window.Echo.private("channel2");
+console.log(privateChannel.name); // private:channel2
+
+const presenceChannel = window.Echo.join("channel3");
+console.log(presenceChannel.name); // presence:channel3
+```
+
+- Use these names to [watch the channels in Ably's dev console](https://ably.com/docs/tools).
+- Use them to leave a channel: `window.Echo.leaveChannel(privateChannel.name)`.
+- Or pass the visibility instead (specific to this fork): `window.Echo.leaveChannel("channel2", "private")`.
+
+## Whisper acknowledgements
+
+`whisper()` on a private or presence channel takes an optional callback, called with `null` on success or with the error:
+
+```js
+privateChannel.subscribed(() => {
+    privateChannel.whisper("typing", { name: "Jonny" }, (err) => {
+        if (err) {
+            console.log("whisper failed with error " + err);
+        } else {
+            console.log("whisper succeeded");
+        }
     });
+});
 ```
 
-- Note: Do not add try/catch statement for above code, since exceptions are being handled internally.
+## Script tag (IIFE)
 
-## Observing channel messages on ably dev-console and Leaving the channel
+Without a bundler, load the IIFE build. It includes `@ably/pubsub-device`, so no other Ably script is needed:
 
-- You can get the internal channel name using
-
-```
-//public channel
-let echoPublicChannel = Echo.channel('channel1');
-let ablyPublicChannelName = echoPublicChannel.name;
-console.log(ablyPublicChannelName); // public:channel1
-
-// private channel
-let echoPrivateChannel = Echo.private('channel2');
-let ablyPrivateChannelName = echoPrivateChannel.name;
-console.log(ablyPrivateChannelName); // private:channel2
-
-// presence channel
-let echoPresenceChannel = Echo.join('channel3');
-let ablyPresenceChannelName = echoPresenceChannel.name;
-console.log(ablyPresenceChannelName); // presence:channel3
+```html
+<script src="https://cdn.jsdelivr.net/npm/@ably/laravel-echo@2/dist/echo.iife.js"></script>
+<script>
+    window.Echo = new Echo({});
+</script>
 ```
 
-- Use the same channel name for [observing channel messages on ably dev console](https://ably.com/docs/tools#developer-console).
-- Use the same channel name for leaving the channel
+The global `Echo` is the Echo class, as in 1.x. Upstream's form `new Echo.default({})` also works, and `Echo.Channel`, `Echo.Connector` and `Echo.EventFormatter` are there too. The file is also exported as `@ably/laravel-echo/iife`.
 
-```
-Echo.leaveChannel(echoPublicChannel.name);
-Echo.leaveChannel(echoPrivateChannel.name);
-Echo.leaveChannel(echoPresenceChannel.name);
-```
+## Other broadcasters
 
-## Success/failure confirmation for whisper
+This package keeps upstream's `reverb`, `pusher`, `socket.io`, `mercure` and `null` broadcasters, unchanged. As upstream, it does not include their client libraries:
 
-- You can get acknowledgement for a whisper/client-event sent on a private/presence channel by passing an extra callback argument.
-- Extra callback is a function that receives `err` object representing success/failure.
+- **Pusher and Reverb:** install `pusher-js` and pass it as `Pusher` in the options, or set `window.Pusher`.
+- **Socket.IO:** install `socket.io-client` and pass its `io` function as `client` in the options, or set `window.io`.
 
-```
-        echoPrivateChannel.subscribed(() => {
-                echoPrivateChannel.whisper('msg', 'Hello there jonny!', (err) => {
-                    if(err) {
-                        console.log('whisper failed with error ' + err);
-                    } else {
-                        console.log('whisper succeeded');
-                    }
-                });
-            });
-```
+## Upstream's `ably` broadcaster
 
-## Official Documentation
+In upstream `laravel-echo`, `broadcaster: "ably"` is a Pusher-protocol connection to Ably's Pusher adapter. In this package, `ably` is the native Ably connector, which needs `ably/laravel-broadcaster` on the server. To keep upstream's behaviour, use upstream `laravel-echo` with `broadcaster: "pusher"` and `wsHost: "realtime-pusher.ably.io"`.
 
-- More documentation for Echo can be found on the [Laravel website](https://laravel.com/docs/broadcasting).
+## Not supported: Laravel's built-in `ably` broadcaster
+
+`@ably/laravel-echo` needs [`ably/laravel-broadcaster`](https://github.com/ably/laravel-broadcaster) 2.x on the server. Laravel also ships a built-in `ably` broadcast driver (`AblyBroadcaster`, and `Ably2Broadcaster` on Laravel 13). It speaks the Pusher protocol: it returns `{"auth": "key:signature"}` instead of an Ably token, and refuses requests without a channel name. It does not work with this package.
+
+- If you use the built-in driver, use upstream `laravel-echo` with `pusher-js`, `broadcaster: "pusher"` and `wsHost: "realtime-pusher.ably.io"`.
+- To use this package, install `ably/laravel-broadcaster` 2.x. It replaces the built-in driver for every connection with `'driver' => 'ably'`. See [Laravel's built-in `ably` driver](https://github.com/ably/laravel-broadcaster/blob/main/UPDATING.md#laravel-built-in-ably-driver) in its UPDATING.md.
+
+## Troubleshooting
+
+Echo logs the hints below to the browser console: the auth endpoint hints once per page, the 40161 hint once per connector.
+
+### The connection token request gets a 403
+
+The hint starts with `@ably/laravel-echo: the auth endpoint refused the connection token request (HTTP 403).` The connection token request has no channel name, and laravel-broadcaster 2.x gives guests a token too, so a 403 there has one of these causes:
+
+1. **Laravel's built-in `ably` broadcaster handles the request** (the most likely cause). It refuses every request without a channel name. Install `ably/laravel-broadcaster` 2.x and check that it is active (below).
+2. **A middleware on the broadcasting auth route denied the request.**
+3. **The token that Echo presented could not be re-signed**, for example a malformed token or one from another app. This is rare.
+
+A stale CSRF token gives a 419, not a 403: refresh the CSRF token, then call `window.Echo.connect()` (see [CSRF tokens and 419 errors](https://github.com/ably-forks/laravel-echo/blob/2.x/UPDATING.md#csrf-tokens-and-419-errors)).
+
+**The built-in driver can be active although `ably/laravel-broadcaster` is installed** when the package's service provider is not registered, or registered too late:
+
+- **The package is in `dont-discover`:** remove `ably/laravel-broadcaster` (or `*`) from `extra.laravel.dont-discover` in your `composer.json`.
+- **`bootstrap/cache/packages.php` is stale**, for example after `composer install --no-scripts`: run `php artisan package:discover`.
+- **The broadcaster was resolved before the package's provider booted**, for example by another package's service provider: define your channels in `routes/channels.php` or in your app's own service providers, which run after package providers.
+
+On Laravel 13.41.0 and later this fails silently on the server: Laravel falls back to its built-in Pusher-protocol driver, and Echo's connection token request gets the 403 above. To check which driver is active, run `get_class(Broadcast::connection('ably'))` in `php artisan tinker`: it must return `Ably\LaravelBroadcaster\AblyBroadcaster`.
+
+### The auth endpoint returned a Pusher-protocol response
+
+The hint starts with `@ably/laravel-echo: the auth endpoint returned a Pusher-protocol response`. Your auth endpoint answered with `{"auth": "key:signature"}`, the response of Laravel's built-in `ably` broadcaster, instead of an Ably token. Install `ably/laravel-broadcaster` 2.x and check that it is active, as described above.
+
+### 40161 on MAU-billed Ably accounts
+
+On an Ably account billed by monthly active users (MAU), every connection needs a client ID. laravel-broadcaster 2.x always issues one, also to guests. If a connection still has none, it fails with 40161 and Echo logs:
+
+> Your Ably account requires an identified client on every connection (MAU billing), but this connection has no clientId. Use laravel-broadcaster v2, which always issues guest client ids, or make sure your auth endpoint returns a token with a clientId.
+
+This happens when the token does not come from laravel-broadcaster 2.x, for example from your own `requestTokenFn` endpoint.
+
+## Further documentation
+
+- [Laravel broadcasting](https://laravel.com/docs/broadcasting)
+- [Ably documentation](https://ably.com/docs)
+- [UPDATING.md](https://github.com/ably-forks/laravel-echo/blob/2.x/UPDATING.md) and [CHANGELOG-ABLY.md](https://github.com/ably-forks/laravel-echo/blob/2.x/CHANGELOG-ABLY.md)
+- [Contributing](https://github.com/ably-forks/laravel-echo/blob/2.x/CONTRIBUTING.md)
