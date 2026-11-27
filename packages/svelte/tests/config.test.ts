@@ -56,4 +56,22 @@ describe("echo helper", () => {
         expect(instance.connector).toBeInstanceOf(CustomConnector);
         expect(instance.options.authEndpoint).toBe("/custom/auth");
     });
+
+    // fork (D-08, P-02, P-07): without a broadcaster, the native Ably connector, with nothing from pusher-js
+    it("creates the native Ably connector when no broadcaster is given", async () => {
+        const { configureEcho, echo } = await import("../src/config");
+
+        configureEcho({
+            autoConnect: false,
+            requestTokenFn: async () => ({ token: "x" }),
+        });
+
+        const instance = echo();
+
+        expect(instance.options.broadcaster).toBe("ably");
+        expect(instance.options).not.toHaveProperty("Pusher");
+        expect(instance.connectionStatus()).toBe("disconnected");
+
+        instance.disconnect();
+    });
 });

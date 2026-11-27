@@ -23,6 +23,43 @@ import { toArray } from "../util";
 const channels: Record<string, ChannelData<BroadcastDriver>> = {};
 let activeEchoInstance: Echo<BroadcastDriver> | null = null;
 
+/**
+ * fork (P-09): whether the rune runs inside svelte/server's render(). The runes ship compiled for the client, and
+ * the client runtime has no effect context there, so $effect throws effect_orphan: that is the exact signal. A
+ * browser (`window` defined) skips the probe and behaves as upstream. A client runtime without `window` (a Web
+ * Worker, a custom renderer, Node tests with $effect.root) has an effect context, so it subscribes as upstream; the
+ * probe leaves a no-op effect there. Only a rune called outside any effect without `window` reads as a server render.
+ */
+const isServerRender = (): boolean => {
+    if (typeof window !== "undefined") {
+        return false;
+    }
+
+    try {
+        $effect(() => {});
+
+        return false;
+    } catch (error) {
+        if (error instanceof Error && error.message.includes("effect_orphan")) {
+            return true;
+        }
+
+        throw error;
+    }
+};
+
+// fork (P-09): $effect, except during server rendering, where the client runtime cannot run effects
+const clientEffect = (
+    serverRender: boolean,
+    fn: () => void | (() => void),
+): void => {
+    if (serverRender) {
+        return;
+    }
+
+    $effect(fn);
+};
+
 const clearChannelCache = (): void => {
     Object.keys(channels).forEach((channelId) => {
         delete channels[channelId];
@@ -224,15 +261,19 @@ export function useEcho<
     let initialized = false;
     let channel = resolveChannel(channelName, visibility);
     let events = toArray(resolveInput(event));
-    let subscription: Connection<TDriver> =
-        resolveChannelSubscription<TDriver>(channel);
+    // fork (P-09): no subscription during server rendering, so channel() returns null there
+    const serverRender = isServerRender();
+    let subscription = (
+        serverRender ? null : resolveChannelSubscription<TDriver>(channel)
+    ) as Connection<TDriver>;
 
     const eventCallback = (payload: TPayload) => {
         resolveCallback(callback)(payload);
     };
 
     const listen = () => {
-        if (listening) {
+        // fork (P-09): during server rendering there is no channel to listen on, so a manual listen() is a no-op
+        if (listening || serverRender) {
             return;
         }
 
@@ -260,7 +301,7 @@ export function useEcho<
         leaveChannel(channel, leaveAll, subscription);
     };
 
-    $effect(() => {
+    clientEffect(serverRender, () => {
         trackDependencies(dependencies);
         channel = resolveChannel(channelName, visibility);
         events = toArray(resolveInput(event));
@@ -316,6 +357,8 @@ export const useEchoNotification = <
         "private",
     );
 
+    // fork (P-09)
+    const serverRender = isServerRender();
     let listening = false;
     let events = toArray(resolveInput(event))
         .map((e) => {
@@ -338,7 +381,8 @@ export const useEchoNotification = <
     };
 
     const listen = () => {
-        if (listening) {
+        // fork (P-09): during server rendering there is no channel to listen on, so a manual listen() is a no-op
+        if (listening || serverRender) {
             return;
         }
 
@@ -356,7 +400,7 @@ export const useEchoNotification = <
         listening = false;
     };
 
-    $effect(() => {
+    clientEffect(serverRender, () => {
         trackDependencies(dependencies);
         events = toArray(resolveInput(event))
             .map((e) => {
@@ -429,17 +473,28 @@ export function useChannel<
     channelName: ReactiveInput<string>,
     visibility: TVisibility = "private" as TVisibility,
 ) {
+    let initialized = false;
     let channel = resolveChannel(channelName, visibility);
-    let subscription: Connection<TDriver> =
-        resolveChannelSubscription<TDriver>(channel);
+    // fork (P-09): no subscription during server rendering, so channel() returns null there
+    const serverRender = isServerRender();
+    let subscription = (
+        serverRender ? null : resolveChannelSubscription<TDriver>(channel)
+    ) as Connection<TDriver>;
 
     const tearDown = (leaveAll: boolean = false) => {
         leaveChannel(channel, leaveAll, subscription);
     };
 
-    $effect(() => {
+    clientEffect(serverRender, () => {
         channel = resolveChannel(channelName, visibility);
-        subscription = resolveChannelSubscription<TDriver>(channel);
+
+        // fork (F-374): the first run keeps the subscription made at init, as useEcho does. Resolving
+        // it again counted the hook twice in the registry, so unmounting it never left the channel.
+        if (initialized) {
+            subscription = resolveChannelSubscription<TDriver>(channel);
+        }
+
+        initialized = true;
 
         return () => tearDown();
     });
@@ -502,8 +557,9 @@ export const useEchoModel = <
 const useConnectionChange = (
     callback: (status: ConnectionStatus) => void,
     invokeOnMount: boolean = true,
+    serverRender: boolean = false,
 ): void => {
-    $effect(() => {
+    clientEffect(serverRender, () => {
         if (invokeOnMount) {
             callback(echo().connectionStatus());
         }
@@ -516,21 +572,37 @@ const useConnectionChange = (
 };
 
 export const useConnectionStatus = (): (() => ConnectionStatus) => {
-    let status = $state<ConnectionStatus>(echo().connectionStatus());
+    // fork (P-09): "disconnected" during server rendering, without creating Echo there
+    const serverRender = isServerRender();
+    let status = $state<ConnectionStatus>(
+        serverRender ? "disconnected" : echo().connectionStatus(),
+    );
 
-    useConnectionChange((newStatus) => {
-        status = newStatus;
-    });
+    useConnectionChange(
+        (newStatus) => {
+            status = newStatus;
+        },
+        true,
+        serverRender,
+    );
 
     return () => status;
 };
 
 export const useSocketId = (): (() => string | undefined) => {
-    let socketId = $state<string | undefined>(echo().socketId());
+    // fork (P-09): undefined during server rendering, without creating Echo there
+    const serverRender = isServerRender();
+    let socketId = $state<string | undefined>(
+        serverRender ? undefined : echo().socketId(),
+    );
 
-    useConnectionChange(() => {
-        socketId = echo().socketId();
-    }, false);
+    useConnectionChange(
+        () => {
+            socketId = echo().socketId();
+        },
+        false,
+        serverRender,
+    );
 
     return () => socketId;
 };

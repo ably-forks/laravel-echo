@@ -50,6 +50,13 @@ vi.mock("@ably/laravel-echo", () => {
     Echo.prototype.connectionStatus = vi.fn(() => "connected");
     Echo.prototype.socketId = vi.fn(() => undefined);
     Echo.prototype.connector = { onConnectionChange: vi.fn(() => () => {}) };
+    // fork (P-03): the hooks subscribe through Echo.onConnectionChange, which forwards the connector's changes
+    Echo.prototype.onConnectionChange = vi.fn(function (
+        this: any,
+        callback: (status: string) => void,
+    ) {
+        return this.connector.onConnectionChange(callback);
+    });
 
     return { default: Echo };
 });
@@ -216,7 +223,8 @@ describe("useEcho hook", async () => {
         result.current.leaveChannel();
 
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            "private-" + channelName,
+            channelName,
+            "private",
         );
     });
 
@@ -247,7 +255,10 @@ describe("useEcho hook", async () => {
 
         result.current.leaveChannel();
 
-        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(channelName);
+        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
+            channelName,
+            "public",
+        );
     });
 
     it("can manually start listening to events", async () => {
@@ -540,7 +551,8 @@ describe("useEchoModel hook", async () => {
         expect(() => unmount()).not.toThrow();
 
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `private-${expectedChannelName}`,
+            expectedChannelName,
+            "private",
         );
     });
 
@@ -577,7 +589,8 @@ describe("useEchoModel hook", async () => {
 
         expect(() => unmount2()).not.toThrow();
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `private-${expectedChannelName}`,
+            expectedChannelName,
+            "private",
         );
     });
 
@@ -600,7 +613,8 @@ describe("useEchoModel hook", async () => {
 
         const expectedChannelName = `${model}.${identifier}`;
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `private-${expectedChannelName}`,
+            expectedChannelName,
+            "private",
         );
     });
 
@@ -742,7 +756,10 @@ describe("useEchoPublic hook", async () => {
 
         expect(() => unmount()).not.toThrow();
 
-        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(channelName);
+        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
+            channelName,
+            "public",
+        );
     });
 
     it("won't subscribe multiple times to the same channel", async () => {
@@ -765,7 +782,10 @@ describe("useEchoPublic hook", async () => {
         expect(echoInstance.leaveChannel).not.toHaveBeenCalled();
 
         expect(() => unmount2()).not.toThrow();
-        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(channelName);
+        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
+            channelName,
+            "public",
+        );
     });
 
     it("can leave a channel", async () => {
@@ -779,7 +799,10 @@ describe("useEchoPublic hook", async () => {
 
         result.current.leaveChannel();
 
-        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(channelName);
+        expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
+            channelName,
+            "public",
+        );
     });
 
     it("can leave all channel variations", async () => {
@@ -899,7 +922,8 @@ describe("useEchoPresence hook", async () => {
         expect(() => unmount()).not.toThrow();
 
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `presence-${channelName}`,
+            channelName,
+            "presence",
         );
     });
 
@@ -924,7 +948,8 @@ describe("useEchoPresence hook", async () => {
 
         expect(() => unmount2()).not.toThrow();
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `presence-${channelName}`,
+            channelName,
+            "presence",
         );
     });
 
@@ -940,7 +965,8 @@ describe("useEchoPresence hook", async () => {
         result.current.leaveChannel();
 
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `presence-${channelName}`,
+            channelName,
+            "presence",
         );
     });
 
@@ -1160,7 +1186,8 @@ describe("useEchoNotification hook", async () => {
 
         expect(channel.stopListeningForNotification).toHaveBeenCalled();
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `private-${channelName}`,
+            channelName,
+            "private",
         );
     });
 
@@ -1183,7 +1210,8 @@ describe("useEchoNotification hook", async () => {
 
         expect(() => unmount2()).not.toThrow();
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `private-${channelName}`,
+            channelName,
+            "private",
         );
     });
 
@@ -1198,7 +1226,8 @@ describe("useEchoNotification hook", async () => {
         result.current.leaveChannel();
 
         expect(echoInstance.leaveChannel).toHaveBeenCalledWith(
-            `private-${channelName}`,
+            channelName,
+            "private",
         );
     });
 
@@ -1400,7 +1429,7 @@ describe("useSocketId hook", async () => {
     });
 });
 
-describe.skip("useConnectionStatus hook", async () => {
+describe("useConnectionStatus hook", async () => {
     let echoModule: typeof import("../src/hooks/use-echo");
     let configModule: typeof import("../src/config/index");
 

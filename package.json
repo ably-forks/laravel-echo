@@ -13,7 +13,7 @@
     },
     "packageManager": "pnpm@12.3.4",
     "engines": {
-        "node": ">=22.18"
+        "node": "^22.18.0 || ^24.11.0 || >=26.0.0"
     },
     "scripts": {
         "test": "pnpm -r --parallel --no-sort --if-present run test",

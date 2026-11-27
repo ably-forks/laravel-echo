@@ -53,8 +53,7 @@ jobs:
         run: pnpm --filter @ably/laravel-echo run test:bundles
 
   adapters:
-    # The React, Vue and Svelte packages (Phase 10). Their upstream suites still assert Pusher-style channel names
-    # until Phases 11-13 port them, so this job runs the fork's shared tests; Phase 14 folds it into `pnpm test`.
+    # The React, Vue and Svelte packages: upstream's suites (ported in Phases 11-13) plus the fork's tests.
     runs-on: ubuntu-latest
 
     strategy:
@@ -84,8 +83,11 @@ jobs:
       - name: Type-check upstream @laravel/echo-react, -vue and -svelte usage against the built declarations
         run: pnpm --filter "@ably/laravel-echo-*" run test:compat
 
-      - name: Execute the shared adapter tests (native Ably default, leave by visibility incl. Mercure, connection status, reconfigure, pusher-js)
-        run: pnpm --filter "@ably/laravel-echo-*" run test --run ably-shared pusher mercure
+      - name: Type-check the adapters' sources and tests
+        run: pnpm --filter "@ably/laravel-echo-*" exec tsc --noEmit -p tsconfig.json
+
+      - name: Execute the adapter unit tests (upstream suites and the fork's tests)
+        run: pnpm --filter "@ably/laravel-echo-*" run test --run
 
       - name: Smoke-test the built adapter bundles (ESM, .cjs and IIFE exports, externals)
         run: pnpm --filter "@ably/laravel-echo-*" run test:bundles

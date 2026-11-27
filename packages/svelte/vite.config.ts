@@ -2,15 +2,16 @@ import { resolve } from "path";
 import { compileModule } from "svelte/compiler";
 import {
     defineConfig,
-    PluginOption,
+    type PluginOption,
     transformWithOxc,
-    UserConfig,
+    type UserConfig,
 } from "vite-plus";
 
 const srcDir = resolve(import.meta.dirname, "src");
 const testsDir = resolve(import.meta.dirname, "tests");
 
-const svelteRunesTsPlugin = (): PluginOption => ({
+// exported for tests/runes-plugin.test.ts (fork)
+export const svelteRunesTsPlugin = (): PluginOption => ({
     name: "svelte-runes-ts",
     enforce: "pre",
     async transform(code, id) {
@@ -45,8 +46,12 @@ const svelteRunesTsPlugin = (): PluginOption => ({
                 code: result.js.code,
                 map: result.js.map,
             };
-        } catch (_err) {
-            return null;
+        } catch (err) {
+            // fork (F-078): a module whose runes fail to compile must fail the build, not ship uncompiled `$state()`
+            // calls; files without runes never get here (see the check above)
+            throw new Error(
+                `[svelte runes] failed to compile ${id}: ${err instanceof Error ? err.message : String(err)}`,
+            );
         }
     },
 });
@@ -109,6 +114,8 @@ const config: UserConfig = (() => {
 
     if (process.env.FORMAT === "iife") {
         return {
+            // fork (F-077): the IIFE compiles the runes too, as the ESM/CJS build does
+            plugins: [svelteRunesTsPlugin()],
             build: {
                 lib: {
                     entry: resolve(import.meta.dirname, "src/index.iife.ts"),

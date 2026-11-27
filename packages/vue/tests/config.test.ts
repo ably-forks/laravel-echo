@@ -66,4 +66,47 @@ describe("echo helper", async () => {
         expect(instance.connector).toBeInstanceOf(CustomConnector);
         expect(instance.options.authEndpoint).toBe("/custom/auth");
     });
+
+    // fork (D-08, P-02, F-098): the real core with the native Ably connector; autoConnect: false and a token
+    // callback keep these cases offline
+    it("creates the native Ably connector when no broadcaster is given", async () => {
+        const { configureEcho, echo } = await import("../src/config");
+
+        configureEcho({
+            autoConnect: false,
+            requestTokenFn: async () => ({ token: "x" }),
+        });
+
+        const instance = echo();
+
+        expect(instance.options.broadcaster).toBe("ably");
+        expect(instance.options).not.toHaveProperty("Pusher");
+        expect(instance.connectionStatus()).toBe("disconnected");
+        expect(instance.socketId()).toBeUndefined();
+
+        instance.disconnect();
+    });
+
+    it("still creates a custom connector class without the Ably defaults", async () => {
+        const { configureEcho, echo } = await import("../src/config");
+
+        class CustomConnector {
+            options: unknown;
+
+            constructor(options: unknown) {
+                this.options = options;
+            }
+        }
+
+        configureEcho({
+            broadcaster: CustomConnector,
+            autoConnect: false,
+            requestTokenFn: async () => ({ token: "x" }),
+        });
+
+        const instance = echo();
+
+        expect(instance.connector).toBeInstanceOf(CustomConnector);
+        expect(instance.options.broadcaster).toBe(CustomConnector);
+    });
 });

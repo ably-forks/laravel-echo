@@ -1,13 +1,14 @@
 /**
  * The behaviour Phase 10 changes in all three adapters (fork): the native `ably` default (D-08, P-02), leave by
  * name and visibility (P-04), connection changes through Echo.onConnectionChange (P-03), the reset on
- * reconfigure (F-082) and no pusher-js (P-07). The core is mocked; tests/pusher.test.ts uses the real one.
+ * reconfigure (F-082) and no pusher-js (P-07); plus the Svelte useChannel fix (F-374). The core is mocked;
+ * tests/pusher.test.ts uses the real one.
  */
 /// <reference types="node" />
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { flushSync, tick } from "svelte";
+import { tick } from "svelte";
 import {
     afterEach,
     beforeEach,
@@ -208,19 +209,11 @@ describe("shared adapter behaviour (fork)", () => {
                     channelName: string,
                 ) => unknown;
 
-                const { value, cleanup } = await mount(
-                    () => useHook("orders") as { leaveChannel: () => void },
-                );
+                const { cleanup } = await mount(() => useHook("orders"));
 
                 cleanup();
 
-                // upstream quirk (fixed in a later phase): the Svelte useChannel resolves its subscription both at call
-                // time and in its $effect, so the registry count is 2 and one unmount does not leave the channel yet.
-                // The second release below is the leave React gets from the single unmount.
-                expect(echoInstances[0].leaveChannel).not.toHaveBeenCalled();
-
-                value.leaveChannel();
-
+                expect(echoInstances[0].leaveChannel).toHaveBeenCalledTimes(1);
                 expect(echoInstances[0].leaveChannel).toHaveBeenCalledWith(
                     "orders",
                     visibility,
@@ -374,6 +367,97 @@ describe("shared adapter behaviour (fork)", () => {
         });
     });
 
+    describe("useChannel subscribes once (F-374, upstream bug)", () => {
+        it("counts each hook once, so the last unmount leaves the channel", async () => {
+            const module = await getModule();
+
+            module.configureEcho({});
+
+            const first = await mount(() => module.useChannel("orders"));
+            const second = await mount(() => module.useChannel("orders"));
+            const instance = echoInstances[0];
+
+            expect(instance.private).toHaveBeenCalledTimes(1);
+
+            first.cleanup();
+            expect(instance.leaveChannel).not.toHaveBeenCalled();
+
+            second.cleanup();
+            expect(instance.leaveChannel).toHaveBeenCalledTimes(1);
+            expect(instance.leaveChannel).toHaveBeenCalledWith(
+                "orders",
+                "private",
+            );
+        });
+
+        it("returns the channel at init and keeps it after mount, as upstream", async () => {
+            const module = await getModule();
+
+            module.configureEcho({});
+
+            let atInit: unknown;
+
+            const { value, cleanup } = await mount(() => {
+                const hook = module.usePresenceChannel("room");
+
+                atInit = hook.channel();
+
+                return hook;
+            });
+
+            expect(atInit).toBe(echoInstances[0].join.mock.results[0].value);
+            expect(value.channel()).toBe(atInit);
+            expect(echoInstances[0].join).toHaveBeenCalledTimes(1);
+
+            cleanup();
+        });
+
+        it("leaves the previous channel when a reactive channel name changes", async () => {
+            const module = await getModule();
+
+            module.configureEcho({});
+
+            let setRoom: (room: string) => void = () => {};
+
+            const cleanup = $effect.root(() => {
+                let room = $state("a");
+
+                setRoom = (next) => {
+                    room = next;
+                };
+
+                module.usePublicChannel(() => `rooms.${room}`);
+            });
+
+            await tick();
+
+            const instance = echoInstances[0];
+
+            expect(instance.channel.mock.calls).toEqual([["rooms.a"]]);
+
+            setRoom("b");
+            await tick();
+
+            expect(instance.leaveChannel).toHaveBeenCalledTimes(1);
+            expect(instance.leaveChannel).toHaveBeenCalledWith(
+                "rooms.a",
+                "public",
+            );
+            expect(instance.channel.mock.calls).toEqual([
+                ["rooms.a"],
+                ["rooms.b"],
+            ]);
+
+            cleanup();
+
+            expect(instance.leaveChannel).toHaveBeenCalledTimes(2);
+            expect(instance.leaveChannel).toHaveBeenLastCalledWith(
+                "rooms.b",
+                "public",
+            );
+        });
+    });
+
     describe("connection changes through Echo.onConnectionChange (P-03)", () => {
         it("useConnectionStatus follows the registry across a connector swap", async () => {
             const module = await getModule();
@@ -419,11 +503,11 @@ describe("shared adapter behaviour (fork)", () => {
             ).not.toHaveBeenCalled();
 
             instance.__swapConnector("connected", "socket-a");
-            flushSync();
+            await tick();
             expect(socketId()).toBe("socket-a");
 
             instance.__swapConnector("connected", "socket-b");
-            flushSync();
+            await tick();
             expect(socketId()).toBe("socket-b");
 
             cleanup();

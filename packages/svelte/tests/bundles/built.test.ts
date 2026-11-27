@@ -3,6 +3,7 @@
  * Smoke tests of the built package (fork): run after `pnpm run build` (CI builds first). Checks the export surface
  * of the ESM, CJS (.cjs, F-333) and IIFE builds (the IIFE exports the same hooks, P-06, and uses the core IIFE's
  * global Echo), that no build bundles the core or the Ably SDK (D-03), and that the env reads are guarded (F-080).
+ * Every build ships compiled runes: ESM/CJS import the Svelte runtime, the IIFE bundles it (F-077, P10-09).
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -239,5 +240,58 @@ describe("built package", () => {
                 ctx,
             ),
         ).toBe("initialized");
+    });
+
+    it("the ESM and CJS builds ship compiled runes and import the Svelte runtime (F-077)", () => {
+        expect(read("index.js")).toMatch(
+            /from\s*["']svelte\/internal\/client["']/,
+        );
+        expect(read("index.common.cjs")).toMatch(
+            /require\(["']svelte\/internal\/client["']\)/,
+        );
+
+        for (const file of ["index.js", "index.common.cjs"]) {
+            expect(read(file)).not.toMatch(
+                /\$(state|effect|derived)(\.\w+)?\(/,
+            );
+        }
+    });
+
+    it("the IIFE ships compiled runes and bundles the Svelte internals (F-077, P10-09)", () => {
+        const iife = read(`echo-${FRAMEWORK}.iife.js`);
+
+        // no rune call survives, and no svelte/* import is left for a page global to satisfy
+        expect(iife).not.toMatch(/\$(state|effect|derived)(\.\w+)?\(/);
+        expect(iife).not.toMatch(/svelte\/internal/);
+
+        // the page provides only the core IIFE's Echo: no global Svelte is needed
+        const ctx = loadIifes((context) =>
+            vm.runInContext(`delete window.${FRAMEWORK_GLOBAL}`, context),
+        );
+
+        expect(vm.runInContext(`typeof ${FRAMEWORK_GLOBAL}`, ctx)).toBe(
+            "undefined",
+        );
+        expect(
+            Object.keys(vm.runInContext(IIFE_NAME, ctx) as object).sort(),
+        ).toEqual(runtimeExports);
+
+        // a rune outside a component reaches the bundled runtime's $effect, which rejects the missing effect
+        // context; an uncompiled rune would throw a ReferenceError ("... is not defined") instead
+        let error: unknown;
+
+        vm.runInContext(
+            `${IIFE_NAME}.configureEcho({ broadcaster: "null", withoutInterceptors: true })`,
+            ctx,
+        );
+
+        try {
+            vm.runInContext(`${IIFE_NAME}.useConnectionStatus()`, ctx);
+        } catch (caught) {
+            error = caught;
+        }
+
+        expect(String(error)).toMatch(/effect_orphan/);
+        expect(String(error)).not.toMatch(/is not defined/);
     });
 });
