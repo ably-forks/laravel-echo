@@ -86,15 +86,23 @@ const subscribeToChannel = <T extends BroadcastDriver>(
     return instance.channel(channel.name);
 };
 
-const leaveChannel = (channel: Channel, leaveAll: boolean = false): void => {
+const leaveChannel = (
+    channel: Channel,
+    leaveAll: boolean = false,
+    connection?: unknown,
+): void => {
     if (!channels[channel.id]) {
         return;
     }
 
-    // fork (F-082): after a reconfiguration the entry is gone; configureEcho() left its channel on the old instance
+    // fork (F-082): after a reconfiguration, configureEcho() has left this hook's channel with the old instance, and
+    // the registry entry is gone or belongs to a hook of the new instance
     syncChannelCache();
 
-    if (!channels[channel.id]) {
+    if (
+        !channels[channel.id] ||
+        (connection && channels[channel.id].connection !== connection)
+    ) {
         return;
     }
 
@@ -235,7 +243,7 @@ export function useEcho<
 
     const tearDown = (leaveAll: boolean = false) => {
         stopListening();
-        leaveChannel(channel, leaveAll);
+        leaveChannel(channel, leaveAll, subscription);
     };
 
     onMounted(() => {
@@ -412,7 +420,7 @@ export function useChannel<
         resolveChannelSubscription<TDriver>(channel);
 
     const tearDown = (leaveAll: boolean = false) => {
-        leaveChannel(channel, leaveAll);
+        leaveChannel(channel, leaveAll, subscription);
     };
 
     onUnmounted(() => {
