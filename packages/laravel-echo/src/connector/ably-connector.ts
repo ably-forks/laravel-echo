@@ -8,6 +8,7 @@ import {
 } from "./../channel";
 import type {
     ClientOptions,
+    ConnectionState,
     ConnectionStateChange,
     PubSubClient,
 } from "../types/ably";
@@ -33,6 +34,29 @@ const MAU_HINTS: Record<number, string> = {
         "A server-side Ably client needs the server claim on its token to connect to a MAU-billed account. This is usually a server-side " +
         "configuration issue (laravel-broadcaster / token issuing), not a browser issue.",
 };
+
+/**
+ * The connection events the status listener is bound to (Phase 06). Per event on purpose, never `connection.on(cb)`:
+ * ably calls catch-all listeners before per-event ones, and AblyAuth's `failed` listener must record the 40102 flag
+ * before the status listener reads it (F-172). `update` = a new connection key or clientId while connected (F-096).
+ */
+const STATUS_EVENTS: Array<ConnectionState | "update"> = [
+    "initialized",
+    "connecting",
+    "connected",
+    "disconnected",
+    "suspended",
+    "closing",
+    "closed",
+    "failed",
+    "update",
+];
+
+/**
+ * How long a `failed` (40102) of Echo's own clientId reconnect is reported as `reconnecting`/`connecting` when the
+ * connection stays failed (P-01).
+ */
+const SUPPRESSED_FAILED_FALLBACK_MS = 1000;
 
 /**
  * What a token request must resolve with, from `authEndpoint` or `requestTokenFn`: a signed Ably JWT, and for a
@@ -142,6 +166,38 @@ export class AblyConnector extends Connector<
         interrupted: () => void;
     } | null;
 
+    /*
+     * Connection status state (Phase 06, P-01). Every field is `declare`d and never given an initializer (E-06,
+     * F-049): connect() sets them from the base constructor, or they are created lazily.
+     */
+
+    /**
+     * Whether this client has reached `connected` at least once (`connecting`/`disconnected` then map to
+     * `reconnecting`). Reset for a new client, kept when connect() reuses a supplied options.client.
+     */
+    declare private hasConnected: boolean;
+
+    /**
+     * The onConnectionChange() callbacks. Kept when connect() is called again: they are re-bound to the new client.
+     */
+    declare private statusListeners:
+        | Set<(status: ConnectionStatus) => void>
+        | undefined;
+
+    /** The status and socket id of the last emission (dedupe). */
+    declare private lastEmitted: ConnectionStatus | undefined;
+    declare private lastSocketId: string | undefined;
+
+    /** The connection listener behind onConnectionChange(); releaseClient() removes it. */
+    declare private connectionStatusListener:
+        | ((stateChange?: ConnectionStateChange) => void)
+        | undefined;
+
+    /** Emits `failed` if a suppressed 40102 `failed` outlasts SUPPRESSED_FAILED_FALLBACK_MS. */
+    declare private failedFallbackTimer:
+        | ReturnType<typeof setTimeout>
+        | undefined;
+
     /**
      * Merge the custom options with the defaults (E-07, F-046).
      *
@@ -169,6 +225,7 @@ export class AblyConnector extends Connector<
      * Create a fresh Ably connection.
      */
     connect(): void {
+        const previous = this.ably as PubSubClient | undefined;
         if (this.ably) {
             this.releaseClient(); // P7: connect() called again
         }
@@ -194,6 +251,8 @@ export class AblyConnector extends Connector<
             this.ablyAuth.allowReconnectOnUserLogin();
         }
         this.reattachChannelsAfterConnectionFailure();
+        // last: AblyAuth's and the re-attach latch's listeners run before the status listener (F-172)
+        this.bindConnectionStatus(previous);
     }
 
     /**
@@ -220,6 +279,12 @@ export class AblyConnector extends Connector<
             );
             this.recoveryListeners = null;
         }
+        if (this.ably && this.connectionStatusListener) {
+            this.ably.connection.off(this.connectionStatusListener);
+            this.connectionStatusListener = undefined;
+        }
+        clearTimeout(this.failedFallbackTimer);
+        this.failedFallbackTimer = undefined;
         this.ablyAuth?.releaseClientIdSwitchListeners(); // before close(), while this.ably is still the old client
         if (this.ably && this.ably !== this.options.client) {
             this.ably.close();
@@ -462,30 +527,130 @@ export class AblyConnector extends Connector<
     }
 
     /**
-     * Get the current connection status.
-     * [provisional: replaced by Phase 06 / P-01] Temporary stub, implemented in Phase 06.
+     * Get the current connection status (P-01, provisional: P-01). Ably's connection state, mapped:
+     * - `initialized`: `disconnected` when autoConnect is off, otherwise `connecting`;
+     * - `connecting`, `disconnected`: `reconnecting` once this client has connected, otherwise `connecting`;
+     * - `connected`: `connected`;
+     * - `suspended`, `closing`, `closed`: `disconnected`;
+     * - `failed`: `failed`, except the transient 40102 of Echo's own clientId reconnect, reported as
+     *   `reconnecting`/`connecting` (for at most 1 s if the connection stays failed).
      */
     connectionStatus(): ConnectionStatus {
-        const s = this.ably?.connection.state;
-        return s === "connected"
-            ? "connected"
-            : s === "failed"
-              ? "failed"
-              : s === "connecting" || s === "initialized"
-                ? "connecting"
-                : "disconnected";
+        const connection = this.ably?.connection;
+        switch (connection?.state) {
+            case "connected":
+                return "connected";
+            case "initialized":
+                return this.autoConnectDisabled()
+                    ? "disconnected"
+                    : "connecting";
+            case "connecting":
+            case "disconnected":
+                return this.hasConnected ? "reconnecting" : "connecting";
+            case "failed":
+                if (this.ablyAuth?.reconnectingForClientIdChange) {
+                    return this.hasConnected ? "reconnecting" : "connecting";
+                }
+                return "failed";
+            default:
+                return "disconnected"; // suspended, closing, closed
+        }
     }
 
     /**
-     * Subscribe to connection status changes; returns the unsubscribe function.
-     * [provisional: replaced by Phase 06 / P-01] Temporary stub, implemented in Phase 06.
+     * Subscribe to connection status changes; returns the unsubscribe function. The callback is not called on
+     * subscribe, only on a change of the status or of socketId() (F-096). Survives connect() called again; to also
+     * survive Echo.connect(), which replaces the connector, use Echo.onConnectionChange().
      */
     onConnectionChange(
         callback: (status: ConnectionStatus) => void,
     ): () => void {
-        const listener = () => callback(this.connectionStatus());
-        this.ably.connection.on(listener);
-        return () => this.ably.connection.off(listener);
+        (this.statusListeners ??= new Set()).add(callback);
+        return () => {
+            this.statusListeners?.delete(callback);
+        };
+    }
+
+    /**
+     * Whether the client does not connect by itself: Echo's own `autoConnect` option for the client Echo creates
+     * (F-189), the client's own options for a supplied options.client (F-176: `client.options` is not in ably's
+     * types, but @ably/pubsub-device 3.2 keeps `autoConnect` there, verified on a real client).
+     */
+    private autoConnectDisabled(): boolean {
+        if (typeof this.options.client === "undefined") {
+            return this.options.autoConnect === false;
+        }
+        const client = this.ably as PubSubClient & { options?: ClientOptions };
+        return client?.options?.autoConnect === false;
+    }
+
+    /**
+     * Bind the status listener to the current client (from connect(), after every other connection listener). When
+     * connect() is called again, the existing onConnectionChange() callbacks get the new client's status.
+     */
+    private bindConnectionStatus(previous: PubSubClient | undefined): void {
+        const connection = this.ably.connection;
+        this.hasConnected =
+            (previous === this.ably && this.hasConnected) ||
+            connection.state === "connected";
+        const listener = (stateChange?: ConnectionStateChange) => {
+            clearTimeout(this.failedFallbackTimer); // any later event cancels the fallback
+            this.failedFallbackTimer = undefined;
+            const current = stateChange?.current;
+            if (current === "connected") {
+                this.hasConnected = true; // also when the event is stale below
+            }
+            if (current !== connection.state) {
+                return; // stale: a nested change (onClientIdChanged's connect()) already ran
+            }
+            if (
+                current === "failed" &&
+                this.ablyAuth?.reconnectingForClientIdChange
+            ) {
+                const auth = this.ablyAuth;
+                this.failedFallbackTimer = setTimeout(() => {
+                    this.failedFallbackTimer = undefined;
+                    if (connection.state === "failed") {
+                        auth.reconnectingForClientIdChange = false;
+                        this.emitConnectionStatus();
+                    }
+                }, SUPPRESSED_FAILED_FALLBACK_MS);
+            }
+            this.emitConnectionStatus();
+        };
+        this.connectionStatusListener = listener;
+        connection.on(STATUS_EVENTS, listener);
+        if (previous) {
+            this.emitConnectionStatus(true);
+        } else {
+            this.lastEmitted = this.connectionStatus();
+            this.lastSocketId = this.socketId();
+        }
+    }
+
+    /**
+     * Call the onConnectionChange() callbacks when the status or socketId() changed (or when `force`d). A throwing
+     * callback is logged and does not stop the others.
+     */
+    private emitConnectionStatus(force = false): void {
+        const status = this.connectionStatus();
+        const socketId = this.socketId();
+        if (
+            !force &&
+            status === this.lastEmitted &&
+            socketId === this.lastSocketId
+        ) {
+            return;
+        }
+        this.lastEmitted = status;
+        this.lastSocketId = socketId;
+        this.statusListeners?.forEach((callback) => {
+            try {
+                callback(status);
+            } catch (e) {
+                console.error(e);
+            }
+        });
     }
 
     /**

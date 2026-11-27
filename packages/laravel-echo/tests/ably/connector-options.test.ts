@@ -468,8 +468,9 @@ describe("P7: connect() called again", () => {
         echo.connect();
         echo.connect();
         expect(client.close).not.toHaveBeenCalled();
-        expect(client.connection.events["failed"]).toHaveLength(1);
-        expect(client.connection.events["connected"]).toHaveLength(1);
+        // one re-attach latch listener and one connection status listener (Phase 06) per event
+        expect(client.connection.events["failed"]).toHaveLength(2);
+        expect(client.connection.events["connected"]).toHaveLength(2);
         // the remaining pair belongs to the current connector, so recovery still works
         echo.channel("p7");
         const ch = echo.connector.channels["public:p7"].channel as unknown as {

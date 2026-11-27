@@ -28,7 +28,7 @@ import {
 } from "../../src/channel";
 import type { PubSubClient } from "../../src/types/ably";
 import type IifeEcho from "../../src/index.iife";
-import { FakeEmitter, makeFakeAblyClient } from "../parity/fake-ably";
+import { makeFakeAblyClient } from "../parity/fake-ably";
 
 const makeEcho = () =>
     new Echo({
@@ -555,53 +555,5 @@ describe("UC-05: the new type exports", () => {
             typeof Connector
         >();
         // runtime: Phase 04's bundles test and notes/p03-uc06-probe.txt (dist/echo.iife.js in a vm)
-    });
-});
-
-describe("AblyConnector.connectionStatus() / onConnectionChange() (temporary stubs until Phase 06)", () => {
-    const makeWithConnection = () => {
-        const client = makeFakeAblyClient();
-        client.connection = Object.assign(new FakeEmitter(), {
-            state: "initialized",
-        });
-        const echo = new Echo({
-            broadcaster: "ably",
-            client,
-            withoutInterceptors: true,
-        });
-        return { echo, connection: client.connection };
-    };
-
-    test.each([
-        ["initialized", "connecting"],
-        ["connecting", "connecting"],
-        ["connected", "connected"],
-        ["disconnected", "disconnected"],
-        ["suspended", "disconnected"],
-        ["closing", "disconnected"],
-        ["closed", "disconnected"],
-        ["failed", "failed"],
-    ] as const)("ably state %s -> %s", (state, status) => {
-        const { echo, connection } = makeWithConnection();
-        connection.state = state;
-
-        expect(echo.connector.connectionStatus()).toBe(status);
-        expect(echo.connectionStatus()).toBe(status);
-    });
-
-    test("onConnectionChange() reports each change and its unsubscribe stops it", () => {
-        const { echo, connection } = makeWithConnection();
-        const seen: ConnectionStatus[] = [];
-
-        const off = echo.connector.onConnectionChange((status) =>
-            seen.push(status),
-        );
-        connection.state = "connected";
-        connection.emit("connected", { current: "connected" });
-        off();
-        connection.state = "failed";
-        connection.emit("failed", { current: "failed" });
-
-        expect(seen).toEqual(["connected"]);
     });
 });
