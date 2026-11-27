@@ -516,9 +516,13 @@ export class AblyConnector extends Connector<
 
     /**
      * Get the socket ID for the connection.
-     * For ably, returns base64 url encoded json with keys {connectionKey, clientId}
+     * For ably, returns base64 url encoded json with keys {connectionKey, clientId}, and `undefined` until the
+     * connection has a key (F-064, F-204), as upstream's connectors do: no bogus X-Socket-Id before connecting.
      */
-    socketId(): string {
+    socketId(): string | undefined {
+        if (!this.ably?.connection?.key) {
+            return undefined;
+        }
         let socketIdObject = {
             connectionKey: this.ably.connection.key,
             clientId: this.ably.auth.clientId ?? null,

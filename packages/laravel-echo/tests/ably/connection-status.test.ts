@@ -5,6 +5,7 @@ import {
     expect,
     beforeEach,
     afterEach,
+    expectTypeOf,
 } from "vite-plus/test";
 /**
  * Phase 06 (P-01, provisional): AblyConnector.connectionStatus() / onConnectionChange(). No network: Echo creates
@@ -25,6 +26,7 @@ vi.mock("@ably/pubsub-device", async (importOriginal) => {
 import Echo, { type ConnectionStatus } from "../../src/echo";
 import { AblyConnector } from "../../src/connector/ably-connector";
 import { NullConnector } from "../../src/connector";
+import { fromBase64UrlEncoded } from "../../src/channel/ably/utils";
 import { ablyError, makeFakeAblyClient } from "../parity/fake-ably";
 
 const SWITCH = 40102;
@@ -648,5 +650,46 @@ describe("11: Echo.onConnectionChange() (P-03 registry)", () => {
         expect(emitters).toHaveLength(1); // the old connector's subscription was removed
         emitters[0]("failed");
         expect(seen).toEqual(["reconnecting", "connected", "failed"]);
+    });
+});
+
+describe("socketId() (F-064, F-204)", () => {
+    test("is undefined until the connection has a key", () => {
+        const { echo, connection } = echoWithClient();
+        expect(echo.socketId()).toBeUndefined();
+        connection.transition("connecting");
+        expect(echo.connector.socketId()).toBeUndefined();
+        connection.key = "key-1";
+        connection.transition("connected");
+        expect(typeof echo.socketId()).toBe("string");
+    });
+
+    test("is undefined, not a TypeError, without a client", () => {
+        expect(AblyConnector.prototype.socketId.call({})).toBeUndefined();
+        expect(
+            AblyConnector.prototype.socketId.call({ ably: {} }),
+        ).toBeUndefined();
+    });
+
+    test("once connected: base64url JSON {connectionKey, clientId}", () => {
+        const { echo, client, connection } = echoWithClient();
+        connectFully(connection, "abc!def-1");
+        const decode = () => JSON.parse(fromBase64UrlEncoded(echo.socketId()!));
+        expect(echo.socketId()).toMatch(/^[A-Za-z0-9_-]+$/);
+        expect(decode()).toEqual({
+            connectionKey: "abc!def-1",
+            clientId: null,
+        });
+        client.auth.clientId = "user-1";
+        expect(decode()).toEqual({
+            connectionKey: "abc!def-1",
+            clientId: "user-1",
+        });
+    });
+
+    test("the type is upstream's string | undefined", () => {
+        expectTypeOf<ReturnType<AblyConnector["socketId"]>>().toEqualTypeOf<
+            string | undefined
+        >();
     });
 });
