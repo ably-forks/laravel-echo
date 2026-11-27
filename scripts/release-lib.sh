@@ -27,13 +27,14 @@ adapter_peer_range() {
     fi
 }
 
-# Prints the body of the "## [v<version>]" entry of a CHANGELOG-ABLY.md-style file (without its heading).
+# Prints the body of the "## [v<version>]" entry of a CHANGELOG-ABLY.md-style file (without its heading and the blank
+# lines after it).
 changelog_entry() {
     local changelog=$1 version=$2
     awk -v heading="## [v$version]" '
         index($0, heading) == 1 { found = 1; next }
         found && /^## / { exit }
-        found { print }
+        found && (started || NF) { started = 1; print }
     ' "$changelog"
 }
 
@@ -51,8 +52,8 @@ release_notes() {
     base=${version%%-rc.*}
     entry=$(changelog_entry "$changelog" "$base")
     [ -n "$(printf '%s' "$entry" | tr -d '[:space:]')" ] || return 1
-    printf 'This is release candidate %s of %s, published to npm under the dist-tag `next`. The notes below are for %s.\n' "$version" "$base" "$base"
-    printf '%s\n' "$entry" | grep -v '^\[Full Changelog\]'
+    printf 'This is release candidate %s of %s, published to npm under the dist-tag `next`. The notes below are for %s.\n\n' "$version" "$base" "$base"
+    printf '%s\n' "$entry" | grep -v '^\[Full Changelog\]' | awk 'started || NF { started = 1; print }'
 }
 
 # Prints X.Y.Z or X.Y.Z-rc.N from the tag ably-echo-<version>. Fails for any other tag (for example v2.0.0).
