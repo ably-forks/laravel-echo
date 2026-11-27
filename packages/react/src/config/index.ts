@@ -74,22 +74,18 @@ export const configureEcho = <T extends keyof Broadcaster>(
         null: {
             broadcaster: "null",
         },
-        ably: {
-            broadcaster: "pusher",
-            key: import.meta.env.VITE_ABLY_PUBLIC_KEY,
-            wsHost: "realtime-pusher.ably.io",
-            wsPort: 443,
-            disableStats: true,
-            encrypted: true,
-        },
+        // fork (D-08): `ably` is the native Ably connector; authEndpoint defaults to /broadcasting/auth in the core
+        ably: { broadcaster: "ably" },
     };
 
+    // fork (provisional: P-02): without a broadcaster, the native Ably connector is used, as in the core.
     // Custom connector classes have no defaults to merge in...
-    const { broadcaster } = config;
+    const broadcaster = config.broadcaster ?? "ably";
 
     echoConfig = {
         ...(typeof broadcaster === "string" ? defaults[broadcaster] : null),
         ...config,
+        broadcaster,
     } as EchoConfig;
 
     // Reset the instance if it was already created

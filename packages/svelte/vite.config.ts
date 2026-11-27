@@ -135,7 +135,7 @@ const config: UserConfig = (() => {
     return {
         plugins: [svelteRunesTsPlugin()],
         define: guardedEnvVariables([
-            "VITE_ABLY_PUBLIC_KEY",
+            "VITE_MERCURE_HUB_URL",
             "VITE_PUSHER_APP_CLUSTER",
             "VITE_PUSHER_APP_KEY",
             "VITE_PUSHER_HOST",
