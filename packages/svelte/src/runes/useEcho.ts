@@ -445,6 +445,7 @@ export function useChannel<
     channelName: ReactiveInput<string>,
     visibility: TVisibility = "private" as TVisibility,
 ) {
+    let initialized = false;
     let channel = resolveChannel(channelName, visibility);
     // fork (P-09): no subscription during server rendering, so channel() returns null there
     let subscription = (
@@ -457,7 +458,14 @@ export function useChannel<
 
     clientEffect(() => {
         channel = resolveChannel(channelName, visibility);
-        subscription = resolveChannelSubscription<TDriver>(channel);
+
+        // fork (F-374): the first run keeps the subscription made at init, as useEcho does. Resolving
+        // it again counted the hook twice in the registry, so unmounting it never left the channel.
+        if (initialized) {
+            subscription = resolveChannelSubscription<TDriver>(channel);
+        }
+
+        initialized = true;
 
         return () => tearDown();
     });
