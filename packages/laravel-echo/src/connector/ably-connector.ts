@@ -1,7 +1,8 @@
-import { Connector } from './connector';
+import { Connector, type EchoOptionsWithDefaults } from './connector';
 
 import { AblyChannel, AblyPrivateChannel, AblyPresenceChannel, AblyAuth } from './../channel';
-import type { AblyRealtime } from '../types/ably';
+import type { AblyRealtime, ClientOptions, PubSubClient } from '../types/ably';
+import type { ConnectionStatus } from '../echo';
 import { toBase64UrlEncoded, resolveAblyLib, warnIfAblyGlobalsIgnored } from '../channel/ably/utils';
 
 /**
@@ -18,9 +19,34 @@ const MAU_HINTS: Record<number, string> = {
 };
 
 /**
+ * What a token request must resolve with, from `authEndpoint` or `requestTokenFn`: a signed Ably JWT, and for a
+ * presence channel the member data (`info`). SequentialAuthTokenRequestExecuter rejects a response without a
+ * non-empty string `token`.
+ */
+export type AblyTokenResponse = { token: string; info?: unknown };
+
+/** Echo-only options of the native Ably connector; every other key is passed to Ably as a client option. */
+export type AblyOptions = EchoOptionsWithDefaults<"ably"> &
+    Partial<ClientOptions> & {
+        /** Use this Ably client instead of creating one (Echo does not switch its identity). */
+        client?: PubSubClient;
+        /**
+         * Fetch a signed token yourself instead of calling `authEndpoint`. `channelName` is `null` for the
+         * connection token, and `existingToken` is `null` until Echo has a token. Each call is bounded to 30 s.
+         * Method syntax on purpose: a function typed `(channelName: string, existingToken: string)`, as in the
+         * README, is still accepted.
+         */
+        requestTokenFn?(channelName: string | null, existingToken: string | null): Promise<AblyTokenResponse>;
+        /** An initial token (JWT), used before the first token request. */
+        token?: string;
+        /** Fetch timeout for `authEndpoint` requests, in ms (default 10000). */
+        httpRequestTimeout?: number;
+    };
+
+/**
  * This class creates a connector to Ably.
  */
-export class AblyConnector extends Connector {
+export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateChannel, AblyPresenceChannel> {
 
     /**
      * The laravel-echo library version.
@@ -309,6 +335,31 @@ export class AblyConnector extends Connector {
             clientId : this.ably.auth.clientId ?? null,
         }
         return toBase64UrlEncoded(JSON.stringify(socketIdObject));
+    }
+
+    /**
+     * Get the current connection status.
+     * [provisional: replaced by Phase 06 / P-01] Temporary stub, implemented in Phase 06.
+     */
+    connectionStatus(): ConnectionStatus {
+        const s = this.ably?.connection.state;
+        return s === 'connected'
+            ? 'connected'
+            : s === 'failed'
+              ? 'failed'
+              : s === 'connecting' || s === 'initialized'
+                ? 'connecting'
+                : 'disconnected';
+    }
+
+    /**
+     * Subscribe to connection status changes; returns the unsubscribe function.
+     * [provisional: replaced by Phase 06 / P-01] Temporary stub, implemented in Phase 06.
+     */
+    onConnectionChange(callback: (status: ConnectionStatus) => void): () => void {
+        const listener = () => callback(this.connectionStatus());
+        this.ably.connection.on(listener);
+        return () => this.ably.connection.off(listener);
     }
 
     /**

@@ -28,6 +28,7 @@ import {
     NullConnector,
     PusherConnector,
     SocketIoConnector,
+    type AblyOptions,
     type MercureOptions,
     type PusherOptions,
 } from "./connector";
@@ -88,7 +89,7 @@ export default class Echo<T extends keyof Broadcaster> {
         }
 
         if (this.options.broadcaster === "ably") {
-            this.connector = new AblyConnector(this.options as any) as any; // typed properly in Phase 03 (step 3.1 removes the casts)
+            this.connector = new AblyConnector(this.options);
         } else if (this.options.broadcaster === "reverb") {
             this.connector = new PusherConnector<"reverb">({
                 ...this.options,
@@ -306,6 +307,8 @@ export { Channel, Connector, type PresenceChannel };
 
 export { EventFormatter } from "./util";
 
+export type { AblyOptions } from "./connector";
+
 type CustomOmit<T, K extends PropertyKey> = {
     [P in keyof T as Exclude<P, K>]: T[P];
 };
@@ -337,7 +340,7 @@ export type Broadcaster = {
         private: AblyPrivateChannel;
         encrypted: never;
         presence: AblyPresenceChannel;
-        options: GenericOptions<"ably">; // AblyOptions in Phase 03
+        options: GenericOptions<"ably"> & Partial<AblyOptions>;
     };
     "socket.io": {
         connector: SocketIoConnector;
