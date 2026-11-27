@@ -58,7 +58,7 @@ Optionally, after the first publish through OIDC, set each package to "Require t
     - sets the React, Vue and Svelte packages' peer dependency on `@ably/laravel-echo` (see "Adapter peer range" below) and checks it;
     - updates the lockfile (`pnpm install`);
     - builds (`pnpm build`) and checks the tarballs (`node scripts/check-release-tarballs.mjs`), as CI will;
-    - asks you to type `<version>` again, then commits `Release <version>`, tags `ably-echo-<version>`, pushes `2.x` and the tag, and creates the GitHub release `v<version>` from the changelog entry: a prerelease for `X.Y.Z-rc.N`, marked as the latest release otherwise.
+    - asks you to type `<version>` again, then commits `Release <version>`, tags `ably-echo-<version>`, pushes `2.x` and the tag, and creates the GitHub release titled `v<version>` for the tag `ably-echo-<version>`, with the changelog entry as its notes: a prerelease for `X.Y.Z-rc.N`, marked as the latest release otherwise.
 
     If it stops before the commit, it restores the files it changed.
 
