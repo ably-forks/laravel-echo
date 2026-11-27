@@ -4,5 +4,7 @@
         // resolves `/// <reference types="window" />` against ./typings
         "typeRoots": ["node_modules/@types", "./typings"]
     },
-    "include": ["./typings/**/*.ts", "./src/**/*.ts", "./tests/**/*.ts"]
+    "include": ["./typings/**/*.ts", "./src/**/*.ts", "./tests/**/*.ts"],
+    // tests/compat/** type-checks against the built declarations via its own tsconfig (`test:compat`)
+    "exclude": ["./tests/compat/**"]
 }
