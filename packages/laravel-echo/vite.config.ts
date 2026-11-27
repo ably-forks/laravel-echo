@@ -21,6 +21,7 @@ const sandboxFiles = [
     "tests/ably/ably-channel.test.ts",
     "tests/ably/ably-connection.test.ts",
     "tests/ably/ably-identity-switch.test.ts",
+    "tests/ably/ably-leave-channel.test.ts",
     "tests/ably/ably-presence-channel.test.ts",
     "tests/ably/ably-private-channel.test.ts",
     "tests/ably/ably-renewal-switch.test.ts",
