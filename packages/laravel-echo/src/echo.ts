@@ -174,6 +174,12 @@ export default class Echo<T extends keyof Broadcaster> {
      * Get a private encrypted channel instance by name.
      */
     encryptedPrivate(channel: string): Broadcaster[T]["encrypted"] {
+        // fork (P-10, provisional: P-10): Ably stays out of the allow-list below, but keeps its own message
+        // ("Encrypted private channels are not supported with the Ably broadcaster") instead of the generic one
+        if (this.connector instanceof AblyConnector) {
+            return this.connector.encryptedPrivateChannel();
+        }
+
         if (this.connectorSupportsEncryptedPrivateChannels(this.connector)) {
             return this.connector.encryptedPrivateChannel(channel);
         }
