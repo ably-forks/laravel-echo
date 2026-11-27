@@ -6,16 +6,25 @@ import {
 } from "../../../src/channel/ably/utils";
 import { createHttpClient, type PubSubHttpClient } from "@ably/pubsub-server";
 import * as jwt from "jsonwebtoken";
-import { randomBytes } from "crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 
 type channels = Array<string>;
 
 /**
  * MockAuthServer mimicks {@link https://github.com/ably/laravel-broadcaster/blob/main/src/AblyBroadcaster.php AblyBroadcaster.php}.
  * Aim is to keep implementation and behaviour in sync with AblyBroadcaster.php, so that it can be tested
- * without running actual PHP server. It mirrors laravel-broadcaster 1.1:
- * - `guestClientId` = `ABLY_MAU_ACCOUNT=true`: a request without a user (`clientId` null) is signed with a guest id
- *   `guest:<random>.<tag>`, stable until `rotateGuestId()` (the broadcaster issues a fresh one after logout);
+ * without running actual PHP server. It mirrors laravel-broadcaster 2.0
+ * (https://github.com/ably/laravel-broadcaster/pull/85):
+ * - guest client ids are always on: a request without a user (`clientId` null) is signed with a guest id
+ *   `<guestIdPrefix><random>.<tag>` (default prefix `guest:`). `random` is 16 random bytes and `tag` the first 16 bytes of
+ *   HMAC-SHA256(`ably-guest:` + random, keySecret), both base64url without padding (22 characters each);
+ * - one instance models one browser session: the guest id is stored in `session` on the first guest request and reused
+ *   while it is a guest id of this key under the current prefix;
+ * - `sessionless` models a stateless route (or an expired session cookie): a guest request reuses the clientId of the
+ *   presented token when that token's HS256 signature verifies against keySecret, it is unexpired and its clientId is a
+ *   guest id of this key under the current prefix; otherwise it gets a fresh guest id, which is not stored;
+ * - a request with a user clears the stored guest id (not in `sessionless` mode), so the next guest request (after a
+ *   logout) gets a fresh one;
  * - a connection renewal (`channel_name` null) with a valid token of the same clientId follows `renewalMode`:
  *   - 'reverify' (default, the fixed broadcaster): a fresh iat/exp, and the capability is the public claims plus the
  *     presented private:/presence: channels that are still allowed (see `revoke()`/`isAllowed`);
@@ -25,16 +34,20 @@ type channels = Array<string>;
  * - a presented token's claims are used only for the same clientId (identity-scoped claims);
  * - a channel that is revoked (`revoke()`, or `isAllowed` returning false) is denied with a 403 on a channel-auth
  *   request, and dropped from the capability on a renewal;
- * - private and presence channels are denied (403) when there is no user, also in guest-id mode.
+ * - private and presence channels are denied (403) when there is no user: a guest gets public channels only.
+ * `getSignedTokenWithoutGuestId` is not the broadcaster: it models a custom auth endpoint that signs a request without a
+ * user with no clientId (the null-clientId paths Echo still supports, F-182).
  * Use a `tokenExpiry` of at least 30 s when testing renewals: Ably asks a connected client to re-authorize 30 s before
  * the token expires, so a token of 30 s or less is always inside that window and renews in a loop, by design, in both
  * modes. Short-TTL suites that rely on a renewal returning the same claims set `renewalMode = 'reuse'` explicitly.
  * It copies the broadcaster's behaviour, not its exact formats or checks. Known gaps:
- * - the guest id only looks like the broadcaster's (`guest:<random>.<tag>`); the tag is random, not an HMAC;
- * - a guest id changes only when a test calls `rotateGuestId()` (the broadcaster issues a fresh one per session and
- *   after logout);
+ * - `resolveGuestClientIdUsing()` (an app's own guest id scheme) is not modelled;
+ * - a signed-in user whose broadcast identifier is null is not modelled: the broadcaster lets that user through the
+ *   private/presence checks, signs it with the guest id and keeps the stored guest id; here `clientId` null is always
+ *   "no user" (no sandbox suite depends on that case);
  * - a requested channel is granted `['*']`, also for channels the broadcaster would not authorize;
- * - a presented token's signature is not verified (only its expiry and clientId).
+ * - a presented token's signature is not verified when its claims are reused (only its expiry and clientId); it is
+ *   verified for the session-less guest id reuse above.
  */
 export class MockAuthServer {
     keyName: string;
@@ -63,20 +76,99 @@ export class MockAuthServer {
 
     publicCapability = ["subscribe", "history", "channel-metadata"]; // operations granted on `public:*`; tests may widen it
 
-    guestClientId = false; // mirrors laravel-broadcaster's ABLY_MAU_ACCOUNT / mau_account
-    guestId = MockAuthServer.newGuestId();
+    /** Prefix of the guest ids, mirrors the broadcaster's `guest_id_prefix` config (default `guest:`). */
+    guestIdPrefix = "guest:";
 
-    static newGuestId = () =>
-        `guest:${randomBytes(8).toString("hex")}.${randomBytes(4).toString("hex")}`;
+    /** Models a stateless auth route (or an expired session cookie): no guest id is stored or read from `session`. */
+    sessionless = false;
 
-    /** A fresh guest id, as the broadcaster issues after logout. */
-    rotateGuestId = () => {
-        this.guestId = MockAuthServer.newGuestId();
+    /** The browser session this instance models: the stored guest id (the broadcaster's `ably_guest_client_id`). */
+    session: { guestId: string | null } = { guestId: null };
+
+    /** The session's guest id: null until the first guest request, and after a request with a user. */
+    get guestId(): string | null {
+        return this.session.guestId;
+    }
+
+    /** A new browser session (no stored guest id). */
+    resetSession = () => {
+        this.session = { guestId: null };
     };
 
-    /** The clientId the next token is signed with: the user, else the guest id in guest-id mode, else null. */
-    signedClientId = (): string | null =>
-        this.clientId ?? (this.guestClientId ? this.guestId : null);
+    /** Stores a fresh guest id in the session. Not needed for a logout: a request with a user clears the stored id. */
+    rotateGuestId = () => {
+        this.session.guestId = this.newGuestId();
+    };
+
+    /** base64url (no padding) of the first 16 bytes of HMAC-SHA256("ably-guest:" + random, keySecret): 22 characters. */
+    guestIdTag = (random: string) =>
+        createHmac("sha256", this.keySecret)
+            .update(`ably-guest:${random}`)
+            .digest()
+            .subarray(0, 16)
+            .toString("base64url");
+
+    /** `<guestIdPrefix><random>.<tag>`: 16 random bytes, base64url without padding (22 characters), and the HMAC tag. */
+    newGuestId = () => {
+        const random = randomBytes(16).toString("base64url");
+        return `${this.guestIdPrefix}${random}.${this.guestIdTag(random)}`;
+    };
+
+    /** Whether `clientId` is a guest id of this key under the current prefix (recognised by its tag). */
+    isOwnGuestId = (clientId: unknown): clientId is string => {
+        if (
+            typeof clientId !== "string" ||
+            !clientId.startsWith(this.guestIdPrefix)
+        ) {
+            return false;
+        }
+        const match = /^([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]{22})$/.exec(
+            clientId.slice(this.guestIdPrefix.length),
+        );
+        if (!match) {
+            return false;
+        }
+        const expected = Buffer.from(this.guestIdTag(match[1]));
+        const actual = Buffer.from(match[2]);
+        return (
+            expected.length === actual.length &&
+            timingSafeEqual(expected, actual)
+        );
+    };
+
+    /** The presented token's clientId, if its HS256 signature verifies against keySecret and it is unexpired. */
+    verifiedClientId = (token: unknown, serverTime: number): unknown => {
+        if (typeof token !== "string" || token === "") {
+            return undefined;
+        }
+        try {
+            const payload = jwt.verify(token, this.keySecret, {
+                algorithms: ["HS256"],
+                clockTimestamp: Math.floor(serverTime / 1000),
+            });
+            if (
+                typeof payload !== "object" ||
+                typeof payload.exp !== "number"
+            ) {
+                return undefined;
+            }
+            return payload["x-ably-clientId"];
+        } catch {
+            return undefined; // bad signature, expired or malformed: not reused
+        }
+    };
+
+    /** The clientId of a request without a user, as the broadcaster's resolveGuestClientId() (without a resolver). */
+    resolveGuestId = (token: unknown, serverTime: number): string => {
+        if (!this.sessionless) {
+            if (!this.isOwnGuestId(this.session.guestId)) {
+                this.session.guestId = this.newGuestId();
+            }
+            return this.session.guestId as string;
+        }
+        const presented = this.verifiedClientId(token, serverTime);
+        return this.isOwnGuestId(presented) ? presented : this.newGuestId();
+    };
 
     constructor(apiKey: string, endpoint = "nonprod:sandbox") {
         const keys = apiKey.split(":");
@@ -125,7 +217,21 @@ export class MockAuthServer {
         return tokenInvalid || payload.exp * 1000 <= serverTime;
     };
 
-    getSignedToken = async (channelName: any = null, token: any = null) => {
+    /** The broadcaster's auth response: a request without a user is signed with a guest id. */
+    getSignedToken = (channelName: any = null, token: any = null) =>
+        this.signToken(channelName, token, true);
+
+    /** A custom auth endpoint (not laravel-broadcaster v2): a request without a user is signed with no clientId. */
+    getSignedTokenWithoutGuestId = (
+        channelName: any = null,
+        token: any = null,
+    ) => this.signToken(channelName, token, false);
+
+    signToken = async (channelName: any, token: any, guestIds: boolean) => {
+        if (this.clientId != null && !this.sessionless) {
+            // a signed-in user ends the guest identity: the next guest request (after a logout) gets a fresh id
+            this.session.guestId = null;
+        }
         const header = {
             typ: "JWT",
             alg: "HS256",
@@ -156,8 +262,10 @@ export class MockAuthServer {
                 40300,
             );
         }
-        const clientId = this.signedClientId();
         let serverTime = await this.ablyClient.time();
+        const clientId =
+            this.clientId ??
+            (guestIds ? this.resolveGuestId(token, serverTime) : null);
         // identity-scoped claims: reuse a presented token's claims only when it was signed for the same clientId
         if (
             !isNullOrUndefinedOrEmpty(token) &&

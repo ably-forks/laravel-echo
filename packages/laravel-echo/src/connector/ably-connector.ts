@@ -24,9 +24,8 @@ import {
  */
 const MAU_HINTS: Record<number, string> = {
     40161:
-        "Your Ably account requires an identified client on every connection (MAU billing), but this guest connected without a clientId. " +
-        "In laravel-broadcaster set ABLY_MAU_ACCOUNT=true (config broadcasting.connections.ably.mau_account) so guests receive a clientId, " +
-        'or only connect Echo for signed-in users. See "Guest users on MAU-billed Ably accounts" in the README.',
+        "Your Ably account requires an identified client on every connection (MAU billing), but this connection has no clientId. " +
+        "Use laravel-broadcaster v2, which always issues guest client ids, or make sure your auth endpoint returns a token with a clientId.",
     40168:
         "Your Ably account is MAU-billed and only accepts the current @ably/pubsub-device (v3) SDK, but an incompatible or older SDK build connected. " +
         "Make sure a single, up-to-date @ably/pubsub-device is installed and that no other Ably SDK creates this connection.",

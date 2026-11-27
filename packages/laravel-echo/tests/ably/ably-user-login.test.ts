@@ -31,7 +31,8 @@ describe("AblyUserLogin", () => {
     });
 
     beforeEach(() => {
-        mockAuthServer.clientId = null;
+        mockAuthServer.clientId = null; // no user signed in: the page is a guest with a guest client id
+        mockAuthServer.resetSession();
         echo = new Echo({
             broadcaster: "ably",
             useTls: true,
@@ -52,7 +53,7 @@ describe("AblyUserLogin", () => {
 
     test("user logs in without previous (public) channels", async () => {
         let connectionStates: Array<any> = [];
-        // Initial clientId is null
+        // No user is signed in initially: a guest
         expect(mockAuthServer.clientId).toBeNull();
         await waitForExpect(() => {
             expect(echo.connector.ably.connection.state).toBe("connected");
@@ -63,9 +64,11 @@ describe("AblyUserLogin", () => {
             connectionStates.push(stateChange.current);
         });
 
-        // Making sure client is still anonymous
+        // Making sure client is still the guest (laravel-broadcaster v2 always issues a guest client id)
         expect(mockAuthServer.clientId).toBeNull();
-        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBeNull();
+        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toMatch(
+            /^guest:/,
+        );
 
         // Set server clientId to sacOO7@github.com, user logs in for next request
         mockAuthServer.clientId = "sacOO7@github.com";
@@ -91,7 +94,7 @@ describe("AblyUserLogin", () => {
         let connectionStates: Array<any> = [];
         let publicChannelStates: Array<any> = [];
 
-        // Initial clientId is null
+        // No user is signed in initially: a guest
         expect(mockAuthServer.clientId).toBeNull();
         await waitForExpect(() => {
             expect(echo.connector.ably.connection.state).toBe("connected");
@@ -109,9 +112,11 @@ describe("AblyUserLogin", () => {
             publicChannelStates.push(stateChange.current);
         });
 
-        // Making sure client is still anonymous
+        // Making sure client is still the guest (laravel-broadcaster v2 always issues a guest client id)
         expect(mockAuthServer.clientId).toBeNull();
-        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBeNull();
+        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toMatch(
+            /^guest:/,
+        );
 
         // Set server clientId to sacOO7@github.com, user logs in for next request
         mockAuthServer.clientId = "sacOO7@github.com";
@@ -168,9 +173,10 @@ describe("AblyUserLogin", () => {
         echo.connector.ably.connection.on((stateChange) => {
             connectionStates.push(stateChange.current);
         });
-        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBeNull();
+        const guestId = echo.connector.ablyAuth!.existingToken()!.clientId;
+        expect(guestId).toMatch(/^guest:/);
 
-        // login: null -> user
+        // login: guest -> user
         mockAuthServer.clientId = "sacOO7@github.com";
         const privateChannel = echo.private("test") as AblyPrivateChannel; // Requests new token
         const loginErrorSpy = vi.fn();
@@ -198,8 +204,12 @@ describe("AblyUserLogin", () => {
             expect(newClient.connection.state).toBe("connected");
             expect(["closing", "closed"]).toContain(oldClient.connection.state);
         });
-        expect(newClient.auth.clientId).toBeFalsy();
-        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBeNull();
+        // a fresh guest id: the user's requests cleared the session's guest id
+        expect(newClient.auth.clientId).toMatch(/^guest:/);
+        expect(newClient.auth.clientId).not.toBe(guestId);
+        expect(echo.connector.ablyAuth!.existingToken()!.clientId).toBe(
+            newClient.auth.clientId,
+        );
 
         // public channel re-subscribed by the caller receives again
         const publicChannel = echo.channel("test-logout") as AblyChannel;

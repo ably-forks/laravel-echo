@@ -13,7 +13,9 @@ const SETUP_ATTEMPT_TIMEOUT_MS = 5000;
 export interface SetupOptions {
     /**
      * Create the app on a MAU-enforced test account (`mauEnforced` in the sandbox app spec): connections need an
-     * identified client, so a null or '*' clientId is refused with 40161. Absent (the default) leaves enforcement off.
+     * identified client, so a null or '*' clientId is refused with 40161. Guests of laravel-broadcaster v2 (and the mock
+     * auth server) always have a guest client id; only a token without a clientId, as a custom auth endpoint may sign,
+     * is refused. Absent (the default) leaves enforcement off.
      */
     mau?: boolean;
 }

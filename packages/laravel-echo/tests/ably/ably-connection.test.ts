@@ -184,7 +184,8 @@ describe("AblyConnection", () => {
 
     test("a guest-to-user login never reports failed and ends connected", async () => {
         const user = mockAuthServer.clientId;
-        mockAuthServer.clientId = null; // a guest
+        mockAuthServer.clientId = null; // a guest: like laravel-broadcaster 2.0, the mock signs it with a guest: id
+        mockAuthServer.resetSession();
         try {
             const { seen, sampled } = recordStatus();
             const states: string[] = [];
@@ -195,6 +196,9 @@ describe("AblyConnection", () => {
             await waitForExpect(() =>
                 expect(seen).toEqual(["connecting", "connected"]),
             );
+            const guestId = echo.connector.ably.auth.clientId;
+            expect(guestId).toMatch(/^guest:/);
+            expect(guestId).toBe(mockAuthServer.guestId);
             const guestSocketId = echo.socketId();
 
             mockAuthServer.clientId = user; // the user logs in: the next token carries their clientId
@@ -215,6 +219,7 @@ describe("AblyConnection", () => {
                 "connected",
             ]);
             expect(echo.socketId()).not.toBe(guestSocketId);
+            expect(echo.connector.ably.auth.clientId).toBe(user); // guest: id -> user, not null -> user
         } finally {
             mockAuthServer.clientId = user;
         }

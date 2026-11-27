@@ -12,6 +12,9 @@ import type { MockInstance } from "vite-plus/test";
 /**
  * MAU (monthly active users) behaviour of Echo, against a real MAU-enforced sandbox app (`setup({ mau: true })`): the
  * server requires an identified client, so a connection with a null or '*' clientId is refused with 40161.
+ * The mock auth server behaves like laravel-broadcaster 2.0: guests always get a guest client id, so guest, login, user
+ * switch and logout never hit 40161. Only a custom auth endpoint that signs a token without a clientId
+ * (`getSignedTokenWithoutGuestId`) is still refused, and Echo then logs the 40161 hint once.
  *
  * Skip behaviour: the other sandbox suites have no skip mechanism (an unreachable sandbox fails their beforeAll).
  * Locally, beforeAll remembers the reason and each test returns early with a console.warn instead; in CI
@@ -128,13 +131,18 @@ describe("MAU account (real MAU-enforced sandbox app)", () => {
         }
         return !!skipReason;
     };
-    const connectEcho = () =>
+    const connectEcho = (
+        requestTokenFn: MockAuthServer["getSignedToken"] = mockAuthServer.getSignedToken,
+    ) =>
         new Echo({
             broadcaster: "ably",
             endpoint: "nonprod:sandbox",
-            requestTokenFn: mockAuthServer.getSignedToken,
+            requestTokenFn,
             echoMessages: true,
         });
+    /** A custom auth endpoint (not laravel-broadcaster v2): a request without a user gets a token with no clientId. */
+    const connectEchoWithCustomEndpoint = () =>
+        connectEcho(mockAuthServer.getSignedTokenWithoutGuestId);
     const hintCalls = () =>
         errorSpy.mock.calls.filter((call) => String(call[0]).includes("40161"));
     const connected = (e: Echo<"ably">) =>
@@ -179,8 +187,7 @@ describe("MAU account (real MAU-enforced sandbox app)", () => {
         diag.connectors = [];
         diag.t0 = Date.now();
         mockAuthServer.clientId = null;
-        mockAuthServer.guestClientId = false;
-        mockAuthServer.rotateGuestId();
+        mockAuthServer.resetSession(); // each test is a new browser session
         errorSpy = vi
             .spyOn(console, "error")
             .mockImplementation(() => undefined);
@@ -208,25 +215,27 @@ describe("MAU account (real MAU-enforced sandbox app)", () => {
         }
     });
 
-    test("a null guest is rejected with 40161 and Echo logs the hint once", async () => {
+    test("a custom auth endpoint without a clientId is rejected with 40161 and Echo logs the hint once", async () => {
         if (skipped()) return;
-        echo = connectEcho();
+        echo = connectEchoWithCustomEndpoint();
         const ably = echo.connector.ably;
         await waitForExpect(() => expect(ably.connection.state).toBe("failed"));
         expect(ably.connection.errorReason?.code).toBe(40161);
         expect(errorSpy).toHaveBeenCalledTimes(1);
         const message = String(errorSpy.mock.calls[0][0]);
         expect(message).toContain("40161");
-        expect(message).toContain("ABLY_MAU_ACCOUNT=true");
+        expect(message).toContain("laravel-broadcaster v2");
+        expect(message).toContain("always issues guest client ids");
     });
 
-    test("guest id to user login recovers without error()", async () => {
+    test("a guest gets a guest id and connects without 40161; guest id to user login recovers without error()", async () => {
         if (skipped()) return;
-        mockAuthServer.guestClientId = true;
         echo = connectEcho();
         await connected(echo);
         const guestId = echo.connector.ably.auth.clientId;
         expect(guestId).toMatch(/^guest:/);
+        expect(guestId).toBe(mockAuthServer.guestId);
+        expect(hintCalls()).toHaveLength(0);
 
         const publicChannel = echo.channel("mau") as AblyChannel;
         await new Promise((resolve) => publicChannel.subscribed(resolve));
@@ -264,12 +273,17 @@ describe("MAU account (real MAU-enforced sandbox app)", () => {
         expect(hintCalls()).toHaveLength(0);
     });
 
-    test("user to guest id logout recovers; private re-auth gets 403", async () => {
+    test("guest, login and logout through echo.connect(): a fresh guest id after logout; private re-auth gets 403", async () => {
         if (skipped()) return;
         const rejections = trackUnhandledRejections();
-        mockAuthServer.guestClientId = true;
-        mockAuthServer.clientId = "user1";
         echo = connectEcho();
+        await connected(echo);
+        const firstGuestId = echo.connector.ably.auth.clientId;
+        expect(firstGuestId).toMatch(/^guest:/);
+
+        // login: a reload, modelled as echo.connect() with the user's session
+        mockAuthServer.clientId = "user1";
+        echo.connect();
         await connected(echo);
         const publicChannel = echo.channel("mau") as AblyChannel;
         await new Promise((resolve) => publicChannel.subscribed(resolve));
@@ -279,15 +293,16 @@ describe("MAU account (real MAU-enforced sandbox app)", () => {
 
         // logout: the documented in-page path is echo.connect(), which replaces the client
         const oldClient = echo.connector.ably;
-        mockAuthServer.clientId = null;
-        mockAuthServer.rotateGuestId();
+        mockAuthServer.clientId = null; // the user's requests cleared the session's guest id
         echo.connect();
         const newClient = echo.connector.ably;
         expect(newClient).not.toBe(oldClient);
         await waitForExpect(() =>
             expect(newClient.connection.state).toBe("connected"),
         );
+        expect(newClient.auth.clientId).toMatch(/^guest:/);
         expect(newClient.auth.clientId).toBe(mockAuthServer.guestId);
+        expect(newClient.auth.clientId).not.toBe(firstGuestId);
 
         const guestPublic = echo.channel("mau") as AblyChannel;
         await new Promise((resolve) => guestPublic.subscribed(resolve));
@@ -315,10 +330,34 @@ describe("MAU account (real MAU-enforced sandbox app)", () => {
         expect(rejections.rejections).toStrictEqual([]);
     });
 
-    test("user to null logout without guest ids gets 40161 (MAU needs ABLY_MAU_ACCOUNT=true)", async () => {
+    test("user switch user1 -> user2 in the page recovers without error() and without 40161", async () => {
         if (skipped()) return;
         mockAuthServer.clientId = "user1";
         echo = connectEcho();
+        await connected(echo);
+        const publicChannel = echo.channel("mau") as AblyChannel;
+        await new Promise((resolve) => publicChannel.subscribed(resolve));
+        const errorSpy = vi.fn();
+        publicChannel.error(errorSpy);
+
+        mockAuthServer.clientId = "user2"; // another user signs in: the next token request is user2's
+        const privateChannel = echo.private("mau-switch") as AblyPrivateChannel;
+        privateChannel.error(errorSpy);
+        await new Promise((resolve) => privateChannel.subscribed(resolve));
+        await connected(echo);
+        await waitForExpect(() => {
+            expect(echo?.connector.ably.auth.clientId).toBe("user2");
+            expect(publicChannel.channel.state).toBe("attached");
+            expect(privateChannel.channel.state).toBe("attached");
+        });
+        expect(errorSpy).not.toHaveBeenCalled();
+        expect(hintCalls()).toHaveLength(0);
+    });
+
+    test("custom auth endpoint: user to no-clientId logout gets 40161 and the hint once", async () => {
+        if (skipped()) return;
+        mockAuthServer.clientId = "user1";
+        echo = connectEchoWithCustomEndpoint();
         await connected(echo);
 
         mockAuthServer.clientId = null;
@@ -330,7 +369,7 @@ describe("MAU account (real MAU-enforced sandbox app)", () => {
         expect(newClient.connection.errorReason?.code).toBe(40161);
         dumpHintDiagnostics(hintCalls());
         expect(hintCalls()).toHaveLength(1);
-        expect(String(hintCalls()[0][0])).toContain("ABLY_MAU_ACCOUNT=true");
+        expect(String(hintCalls()[0][0])).toContain("laravel-broadcaster v2");
     });
 
     describe("renewed token with another identity", () => {
@@ -349,7 +388,6 @@ describe("MAU account (real MAU-enforced sandbox app)", () => {
 
         test("renewal user to guest id reconnects as the guest, without a rejection", async () => {
             if (skipped()) return;
-            mockAuthServer.guestClientId = true;
             mockAuthServer.clientId = "user1";
             echo = connectEcho();
             await connected(echo);
@@ -359,7 +397,7 @@ describe("MAU account (real MAU-enforced sandbox app)", () => {
                 expect(echo?.connector.ably.auth.clientId).toBe("user1"),
             );
 
-            mockAuthServer.clientId = null; // another tab logged out; the next renewed token is the guest's
+            mockAuthServer.clientId = null; // another tab logged out; the next renewed token is a fresh guest id
             await waitForExpect(
                 () => {
                     expect(echo?.connector.ably.connection.state).toBe(
@@ -388,17 +426,17 @@ describe("MAU account (real MAU-enforced sandbox app)", () => {
             expect(hintCalls()).toHaveLength(0);
         });
 
-        test("renewal user to null without guest ids is rejected with 40161 and the hint is logged once", async () => {
+        test("custom auth endpoint: renewal user to no clientId is rejected with 40161 and the hint is logged once", async () => {
             if (skipped()) return;
             mockAuthServer.clientId = "user1";
-            echo = connectEcho();
+            echo = connectEchoWithCustomEndpoint();
             await connected(echo);
             await waitForExpect(() =>
                 expect(echo?.connector.ably.auth.clientId).toBe("user1"),
             );
             const client = echo.connector.ably;
 
-            mockAuthServer.clientId = null; // guestClientId stays false: MAU rejects the anonymous reconnect
+            mockAuthServer.clientId = null; // the custom endpoint signs no clientId: MAU rejects the anonymous reconnect
             await waitForExpect(
                 () => expect(client.connection.state).toBe("failed"),
                 40000,
@@ -408,7 +446,7 @@ describe("MAU account (real MAU-enforced sandbox app)", () => {
             dumpHintDiagnostics(hintCalls());
             expect(hintCalls()).toHaveLength(1);
             expect(String(hintCalls()[0][0])).toContain(
-                "ABLY_MAU_ACCOUNT=true",
+                "laravel-broadcaster v2",
             );
         });
     });
