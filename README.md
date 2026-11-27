@@ -1,36 +1,32 @@
-<p align="center"><img width="301" height="80" src="/art/logo.svg" alt="Logo Laravel Echo"></p>
+# Laravel Echo for Ably
 
-<p align="center">
-<a href="https://github.com/laravel/echo/actions"><img src="https://github.com/laravel/echo/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://www.npmjs.com/package/laravel-echo"><img src="https://img.shields.io/npm/dt/laravel-echo" alt="Total Downloads"></a>
-<a href="https://www.npmjs.com/package/laravel-echo"><img src="https://img.shields.io/npm/v/laravel-echo" alt="Latest Stable Version"></a>
-<a href="https://www.npmjs.com/package/laravel-echo"><img src="https://img.shields.io/npm/l/laravel-echo" alt="License"></a>
-</p>
+This repository is Ably's fork of [Laravel Echo](https://github.com/laravel/echo). It keeps upstream's public API and adds a native Ably connector, built on Ably's [`@ably/pubsub-device`](https://www.npmjs.com/package/@ably/pubsub-device) SDK. The `2.x` line is synced with upstream `laravel/echo` 2.x.
 
-## Introduction
+On the server, use [`ably/laravel-broadcaster`](https://github.com/ably/laravel-broadcaster) 2.x. Echo 2.x works only with laravel-broadcaster 2.x, so upgrade both together.
 
-In many modern web applications, WebSockets are used to implement realtime, live-updating user interfaces. When some data is updated on the server, a message is typically sent over a WebSocket connection to be handled by the client. This provides a more robust, efficient alternative to continually polling your application for changes.
+## Packages
 
-To assist you in building these types of applications, Laravel makes it easy to "broadcast" your events over a WebSocket connection. Broadcasting your Laravel events allows you to share the same event names between your server-side code and your client-side JavaScript application.
+| Package                     | npm                                                            | Documentation                                            |
+| --------------------------- | -------------------------------------------------------------- | -------------------------------------------------------- |
+| `@ably/laravel-echo`        | [npm](https://www.npmjs.com/package/@ably/laravel-echo)        | [packages/laravel-echo](packages/laravel-echo/README.md) |
+| `@ably/laravel-echo-react`  | [npm](https://www.npmjs.com/package/@ably/laravel-echo-react)  | [packages/react](packages/react/README.md)               |
+| `@ably/laravel-echo-vue`    | [npm](https://www.npmjs.com/package/@ably/laravel-echo-vue)    | [packages/vue](packages/vue/README.md)                   |
+| `@ably/laravel-echo-svelte` | [npm](https://www.npmjs.com/package/@ably/laravel-echo-svelte) | [packages/svelte](packages/svelte/README.md)             |
 
-Laravel Echo is a JavaScript library that makes it painless to subscribe to channels and listen for events broadcast by Laravel. You may install Echo via the NPM package manager.
+The React, Vue and Svelte packages use `@ably/laravel-echo` as a peer dependency, so install it next to them. All four packages share one version number.
 
-## Official Documentation
+## Documentation
 
-Documentation for Echo can be found on the [Laravel website](https://laravel.com/docs/broadcasting).
+- Setup, options and troubleshooting: the [`@ably/laravel-echo` README](packages/laravel-echo/README.md).
+- Upgrading: [UPDATING.md](UPDATING.md).
+- Release notes: [CHANGELOG-ABLY.md](CHANGELOG-ABLY.md).
+- Ably: the [Ably documentation](https://ably.com/docs).
+- Laravel broadcasting: the [Laravel documentation](https://laravel.com/docs/broadcasting).
 
 ## Contributing
 
-Thank you for considering contributing to Echo! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-Please review [our security policy](https://github.com/laravel/echo/security/policy) on how to report security vulnerabilities.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-Laravel Echo is open-sourced software licensed under the [MIT license](LICENSE.md).
+Laravel Echo and this fork are open-source software licensed under the [MIT license](LICENSE.md).

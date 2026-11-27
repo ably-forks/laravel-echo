@@ -71,3 +71,14 @@ cd packages/vue && pnpm test
 ## Ignoring the formatting commit in `git blame` (optional, this fork)
 
 The one-off oxfmt reformat of the Ably sources is listed in `.git-blame-ignore-revs`. GitHub applies it automatically. Locally, pass it per call with `git blame --ignore-revs-file .git-blame-ignore-revs <file>`. To make it the default in your own clone of the `2.x` line, opt in with `git config blame.ignoreRevsFile .git-blame-ignore-revs`. Note that `git blame` then fails on branches that do not have the file, such as the 1.x line.
+
+## Contributing to this fork
+
+- Keep every public method of the `Echo` and channel objects intact, whatever the internal implementation.
+- Follow these steps to change the code:
+    1. Fork the repository.
+    2. Create your feature branch (`git checkout -b my-new-feature`).
+    3. Commit your changes (`git commit -am 'Add some feature'`).
+    4. Make sure you have added suitable tests and that the test suite passes (`pnpm test`).
+    5. Push to the branch (`git push origin my-new-feature`).
+    6. Create a new pull request.
