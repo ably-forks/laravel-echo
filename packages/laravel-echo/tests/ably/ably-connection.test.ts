@@ -11,7 +11,7 @@ import {
 import { setup, tearDown } from "./setup/sandbox";
 import Echo, { type ConnectionStatus } from "../../src/echo";
 import { MockAuthServer } from "./setup/mock-auth-server";
-import safeAssert from "./setup/utils";
+import safeAssert, { closeConnection } from "./setup/utils";
 import { fromBase64UrlEncoded } from "../../src/channel/ably/utils";
 import waitForExpect from "wait-for-expect";
 vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
@@ -41,18 +41,7 @@ describe("AblyConnection", () => {
         });
     });
 
-    afterEach(async () => {
-        await new Promise<void>((resolve) => {
-            if (echo.connector.ably.connection.state === "closed") {
-                resolve();
-            } else {
-                echo.disconnect();
-                echo.connector.ably.connection.once("closed", () => {
-                    resolve();
-                });
-            }
-        });
-    });
+    afterEach(() => closeConnection(echo));
 
     test("should be able to connect to server", () =>
         new Promise<void>((resolve, reject) => {

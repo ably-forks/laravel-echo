@@ -45,6 +45,10 @@ export const waitWithDiagnostics = <T>(
     echo: Echo<"ably">,
     channel?: { channel: AblyRealtimeChannel },
 ): Promise<T> => {
+    // No usable timeout (0, unset, or not above the margin): never give up before the test does; just wait.
+    if (!(task.timeout > DIAGNOSTIC_MARGIN_MS)) {
+        return event;
+    }
     let timer: ReturnType<typeof setTimeout> | undefined;
     const expired = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {

@@ -15,6 +15,7 @@ import {
 import { setup, tearDown } from "./setup/sandbox";
 import Echo from "../../src/echo";
 import { MockAuthServer } from "./setup/mock-auth-server";
+import { closeConnection } from "./setup/utils";
 import type { ChannelVisibility } from "../../src/echo";
 
 let channelCounter = 0;
@@ -68,14 +69,7 @@ describe("Echo.leaveChannel(name, visibility) with the Ably connector (live)", (
         });
     });
 
-    afterEach(async () => {
-        await new Promise<void>((resolve) => {
-            echo.disconnect();
-            echo.connector.ably.connection.once("closed", () => {
-                resolve();
-            });
-        });
-    });
+    afterEach(() => closeConnection(echo));
 
     /** Subscribes the same name with all three visibilities and waits until each is attached. */
     const joinAll = async (name: string) => {

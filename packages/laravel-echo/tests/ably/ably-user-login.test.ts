@@ -11,6 +11,7 @@ import {
 import { setup, tearDown } from "./setup/sandbox";
 import Echo from "../../src/echo";
 import { MockAuthServer } from "./setup/mock-auth-server";
+import { closeConnection } from "./setup/utils";
 import { AblyChannel, AblyPrivateChannel } from "../../src/channel";
 import waitForExpect from "wait-for-expect";
 import { trackUnhandledRejections } from "../parity/fake-ably";
@@ -42,14 +43,7 @@ describe("AblyUserLogin", () => {
         });
     });
 
-    afterEach(async () => {
-        await new Promise<void>((resolve) => {
-            echo.disconnect();
-            echo.connector.ably.connection.once("closed", () => {
-                resolve();
-            });
-        });
-    });
+    afterEach(() => closeConnection(echo));
 
     test("user logs in without previous (public) channels", async () => {
         let connectionStates: Array<any> = [];

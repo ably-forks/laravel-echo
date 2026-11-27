@@ -22,6 +22,7 @@ import {
 import { setup, tearDown } from "./setup/sandbox";
 import Echo from "../../src/echo";
 import { MockAuthServer } from "./setup/mock-auth-server";
+import { closeConnection } from "./setup/utils";
 import { AblyChannel } from "../../src/channel";
 import { parseJwt } from "../../src/channel/ably/utils";
 import { createClient } from "@ably/pubsub-device";
@@ -83,10 +84,7 @@ describe("Token renewal (reverify)", () => {
     afterEach(async () => {
         observer?.close();
         observer = undefined;
-        echo.disconnect();
-        await new Promise<void>((resolve) =>
-            echo.connector.ably.connection.once("closed", () => resolve()),
-        );
+        await closeConnection(echo);
     });
 
     const renewalRequests = () =>
