@@ -103,7 +103,8 @@ describe('built bundles', () => {
     test('IIFE bundles @ably/pubsub-device; ESM/CJS keep it external (single install)', () => {
         // minify strips the SDK's license banner, so look for its version literal (minified output may use backticks)
         // and for a string only the SDK contains (its protocol-version header name)
-        const sdkVersion = new RegExp(`[\`'"]${pubsubDeviceVersion.replace(/\./g, '\\.')}[\`'"]`);
+        const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const sdkVersion = new RegExp(`[\`'"]${escapeRegExp(pubsubDeviceVersion)}[\`'"]`);
         const sdkOnly = /X-Ably-Version/;
         expect(iife).not.toMatch(/\brequire\(|^import /m);
         expect(iife).toMatch(sdkVersion);
