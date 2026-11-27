@@ -1,15 +1,20 @@
 {
-    "description": "Laravel Echo library for beautiful Pusher and Socket.IO integration",
-    "homepage": "https://github.com/laravel/echo",
+    "name": "ably-laravel-echo-monorepo",
+    "private": true,
+    "description": "Laravel Echo with the native Ably connector (monorepo for @ably/laravel-echo and the React, Vue and Svelte adapters)",
+    "homepage": "https://github.com/ably-forks/laravel-echo",
     "repository": {
         "type": "git",
-        "url": "https://github.com/laravel/echo"
+        "url": "https://github.com/ably-forks/laravel-echo"
     },
     "license": "MIT",
     "author": {
         "name": "Taylor Otwell"
     },
     "packageManager": "pnpm@12.3.4",
+    "engines": {
+        "node": ">=22.18"
+    },
     "scripts": {
         "test": "pnpm -r --parallel --no-sort --if-present run test",
         "build": "pnpm -r --if-present run build",

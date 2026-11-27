@@ -6,6 +6,8 @@ Echo is maintained as a monorepo using [pnpm workspaces](https://pnpm.io/workspa
 
 > **Note:** You'll need **pnpm version 12 or higher**. If you're unsure which version you have, run `pnpm -v`.
 
+**Prerequisites (this fork):** use Node 24 (see `.nvmrc`) or Node 22.18 or later, and pnpm 12.3.4, which the root `packageManager` field pins. Get pnpm through corepack 0.34.5 or later, because older corepack releases, such as the 0.34.0 bundled with Node 22.19, cannot start pnpm 11 or later: run `npm i -g corepack@latest`, then `corepack enable`. Or install pnpm directly with `npm i -g pnpm@12.3.4`. Do not work around a version mismatch with `npm_config_manage_package_manager_versions=false`. Projects that use the published packages need only Node 22 or later.
+
 ## Repository Overview
 
 ```
