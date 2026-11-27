@@ -64,6 +64,16 @@ export default class Echo<T extends keyof Broadcaster> {
     options: EchoOptions<T>;
 
     /**
+     * The Echo.onConnectionChange() callbacks (fork-only; provisional: P-03, option a).
+     */
+    private connectionListeners?: Set<(status: ConnectionStatus) => void>;
+
+    /**
+     * Unsubscribes Echo's own listener from the current connector.
+     */
+    private connectorUnsubscribe?: () => void;
+
+    /**
      * Create a new class instance.
      *
      * `broadcaster` accepts custom connector constructors alongside T; intersecting
@@ -89,6 +99,10 @@ export default class Echo<T extends keyof Broadcaster> {
      * Create a new connection.
      */
     connect(): void {
+        // fork (P-03): the registry's listener leaves the connector being replaced
+        this.connectorUnsubscribe?.();
+        this.connectorUnsubscribe = undefined;
+
         if (this.connector instanceof AblyConnector) {
             this.connector.releaseClient(); // Echo.connect() called again replaces the connector
         }
@@ -117,6 +131,12 @@ export default class Echo<T extends keyof Broadcaster> {
             throw new Error(
                 `Broadcaster ${typeof this.options.broadcaster} ${String(this.options.broadcaster)} is not supported.`,
             );
+        }
+
+        // fork (P-03): re-bind the registry to the new connector and report its status once
+        if (this.connectionListeners?.size) {
+            this.bindConnectorListener();
+            this.emitConnectionStatus(this.connector.connectionStatus());
         }
     }
 
@@ -240,6 +260,52 @@ export default class Echo<T extends keyof Broadcaster> {
      */
     connectionStatus(): ConnectionStatus {
         return this.connector.connectionStatus();
+    }
+
+    /**
+     * Subscribe to connection status changes; returns the unsubscribe function. Unlike
+     * `echo.connector.onConnectionChange()`, the subscription survives Echo.connect() replacing the connector: the
+     * callbacks move to the new connector and get its status once. Works with every connector (fork-only;
+     * provisional: P-03, option a).
+     */
+    onConnectionChange(
+        callback: (status: ConnectionStatus) => void,
+    ): () => void {
+        (this.connectionListeners ??= new Set()).add(callback);
+        this.bindConnectorListener();
+        return () => {
+            this.connectionListeners?.delete(callback);
+            if (!this.connectionListeners?.size) {
+                this.connectorUnsubscribe?.();
+                this.connectorUnsubscribe = undefined;
+            }
+        };
+    }
+
+    /**
+     * Subscribe the registry to the current connector, once, while it has callbacks.
+     */
+    private bindConnectorListener(): void {
+        if (this.connectorUnsubscribe || !this.connectionListeners?.size) {
+            return;
+        }
+        this.connectorUnsubscribe = this.connector.onConnectionChange(
+            (status: ConnectionStatus) => this.emitConnectionStatus(status),
+        );
+    }
+
+    /**
+     * Call every registry callback; a throwing callback is logged and does not stop the others.
+     */
+    private emitConnectionStatus(status: ConnectionStatus): void {
+        this.connectionListeners?.forEach((callback) => {
+            try {
+                callback(status);
+            } catch (e) {
+                // oxlint-disable-next-line no-console -- report the callback's error without breaking the others
+                console.error(e);
+            }
+        });
     }
 
     /**

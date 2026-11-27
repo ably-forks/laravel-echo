@@ -24,6 +24,7 @@ vi.mock("@ably/pubsub-device", async (importOriginal) => {
 });
 import Echo, { type ConnectionStatus } from "../../src/echo";
 import { AblyConnector } from "../../src/connector/ably-connector";
+import { NullConnector } from "../../src/connector";
 import { ablyError, makeFakeAblyClient } from "../parity/fake-ably";
 
 const SWITCH = 40102;
@@ -531,5 +532,121 @@ describe("9-10: releaseClient() and connect() called again", () => {
         const { seen } = record(connector);
         echo.disconnect();
         expect(seen).toEqual(["disconnected"]);
+    });
+});
+
+describe("11: Echo.onConnectionChange() (P-03 registry)", () => {
+    test("subscribe and unsubscribe", () => {
+        const { echo, connection } = echoWithClient();
+        const seen: ConnectionStatus[] = [];
+        const off = echo.onConnectionChange((status) => seen.push(status));
+        expect(seen).toEqual([]); // not called on subscribe
+        connectFully(connection);
+        off();
+        connection.transition("disconnected");
+        expect(seen).toEqual(["connected"]);
+    });
+
+    test("Echo.connect(): one emission with the new connector's status, then its updates; the old one is silent", () => {
+        const {
+            echo,
+            connector: old,
+            connection: oldConnection,
+        } = echoWithClient();
+        connectFully(oldConnection);
+        const seen: ConnectionStatus[] = [];
+        echo.onConnectionChange((status) => seen.push(status));
+        const next = makeEchoClient();
+        vi.mocked(AblyDevice.createClient).mockReturnValueOnce(next);
+
+        echo.connect();
+        expect(echo.connector).not.toBe(old);
+        expect(seen).toEqual(["connecting"]); // emit-on-rebind; the old client's close is not reported
+
+        oldConnection.transition("connected");
+        connectFully(next.connection, "key-2");
+        expect(seen).toEqual(["connecting", "connected"]);
+    });
+
+    test("the registry survives several Echo.connect() calls without duplicate listeners", () => {
+        const { echo } = echoWithClient();
+        const seen: ConnectionStatus[] = [];
+        echo.onConnectionChange((status) => seen.push(status));
+        const clients = [makeEchoClient(), makeEchoClient()];
+        clients.forEach((client) => {
+            vi.mocked(AblyDevice.createClient).mockReturnValueOnce(client);
+            echo.connect();
+        });
+        connectFully(clients[1].connection);
+        expect(seen).toEqual(["connecting", "connecting", "connected"]);
+    });
+
+    test("no subscriber: Echo.connect() emits nothing and binds nothing", () => {
+        const { echo } = echoWithClient();
+        const spy = vi.spyOn(AblyConnector.prototype, "onConnectionChange");
+        echo.connect();
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    test("the last unsubscribe unbinds Echo from the connector; a new subscribe binds again", () => {
+        const { echo, connection } = echoWithClient();
+        const statusListeners = () =>
+            (echo.connector as any).statusListeners?.size ?? 0;
+        const offA = echo.onConnectionChange(() => undefined);
+        const offB = echo.onConnectionChange(() => undefined);
+        expect(statusListeners()).toBe(1); // one bridge for every registry callback
+        offA();
+        expect(statusListeners()).toBe(1);
+        offB();
+        expect(statusListeners()).toBe(0);
+        const seen: ConnectionStatus[] = [];
+        echo.onConnectionChange((status) => seen.push(status));
+        connectFully(connection);
+        expect(seen).toEqual(["connected"]);
+    });
+
+    test("a throwing callback does not stop the others", () => {
+        const error = vi
+            .spyOn(console, "error")
+            .mockImplementation(() => undefined);
+        const { echo, connection } = echoWithClient();
+        const boom = new Error("boom");
+        echo.onConnectionChange(() => {
+            throw boom;
+        });
+        const seen: ConnectionStatus[] = [];
+        echo.onConnectionChange((status) => seen.push(status));
+        connectFully(connection);
+        echo.connect(); // the emit-on-rebind is isolated too
+        expect(seen).toEqual(["connected", "connecting"]);
+        expect(error).toHaveBeenCalledTimes(2);
+        expect(error).toHaveBeenCalledWith(boom);
+    });
+
+    test("works with any connector: a custom connector class", () => {
+        const emitters: Array<(status: ConnectionStatus) => void> = [];
+        class StatusConnector extends NullConnector {
+            connectionStatus(): ConnectionStatus {
+                return "connected";
+            }
+            onConnectionChange(
+                callback: (status: ConnectionStatus) => void,
+            ): () => void {
+                emitters.push(callback);
+                return () => emitters.splice(emitters.indexOf(callback), 1);
+            }
+        }
+        const echo = new Echo({
+            broadcaster: StatusConnector,
+            withoutInterceptors: true,
+        } as any);
+        const seen: ConnectionStatus[] = [];
+        echo.onConnectionChange((status) => seen.push(status));
+        expect(emitters).toHaveLength(1);
+        emitters[0]("reconnecting");
+        echo.connect();
+        expect(emitters).toHaveLength(1); // the old connector's subscription was removed
+        emitters[0]("failed");
+        expect(seen).toEqual(["reconnecting", "connected", "failed"]);
     });
 });
