@@ -49,6 +49,44 @@ jobs:
       - name: Smoke-test the built bundles (self-contained IIFE, ESM/CJS export surface)
         run: pnpm --filter @ably/laravel-echo run test:bundles
 
+  adapters:
+    # The React, Vue and Svelte packages (Phase 10). Their upstream suites still assert Pusher-style channel names
+    # until Phases 11-13 port them, so this job runs the fork's shared tests; Phase 14 folds it into `pnpm test`.
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [22, 24]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm (version from packageManager)
+        uses: pnpm/action-setup@v6.1.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          check-latest: true
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the core, then the adapters (JS bundles and declarations)
+        run: pnpm build
+
+      - name: Type-check upstream @laravel/echo-react, -vue and -svelte usage against the built declarations
+        run: pnpm --filter "@ably/laravel-echo-*" run test:compat
+
+      - name: Execute the shared adapter tests (native Ably default, leave by visibility, connection status, reconfigure, pusher-js)
+        run: pnpm --filter "@ably/laravel-echo-*" run test --run ably-shared pusher
+
+      - name: Smoke-test the built adapter bundles (ESM, .cjs and IIFE exports, externals)
+        run: pnpm --filter "@ably/laravel-echo-*" run test:bundles
+
   browser-build:
     # tests/ably against @ably/pubsub-device's browser build (dist/index.js), which users actually ship (R15).
     runs-on: ubuntu-latest
