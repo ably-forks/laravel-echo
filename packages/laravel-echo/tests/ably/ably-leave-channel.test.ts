@@ -1,5 +1,4 @@
 import {
-    vi,
     describe,
     test,
     expect,
@@ -18,20 +17,33 @@ import Echo from "../../src/echo";
 import { MockAuthServer } from "./setup/mock-auth-server";
 import type { ChannelVisibility } from "../../src/echo";
 
-vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
-
 let channelCounter = 0;
 // unique per test and per run, so an earlier test's channel state cannot leak into the next one
 const uniqueChannel = (label: string) =>
     `${label}-${Date.now()}-${++channelCounter}`;
 
+/** Rejects after `ms` (F-351): a detach, attach or message that never happens fails fast, not at the test timeout. */
+const within = <T>(promise: Promise<T>, what: string, ms = 10_000) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+            () => reject(new Error(`${what}: not within ${ms} ms`)),
+            ms,
+        );
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+};
+
 // leaveChannel() calls channel.off() before detach(), so wait on the state rather than on a listener added earlier
 const whenDetached = (channel: any) =>
-    channel.state === "detached"
-        ? Promise.resolve()
-        : new Promise<void>((resolve) =>
-              channel.once("detached", () => resolve()),
-          );
+    within(
+        channel.state === "detached"
+            ? Promise.resolve()
+            : new Promise<void>((resolve) =>
+                  channel.once("detached", () => resolve()),
+              ),
+        `${channel.name} detached`,
+    );
 
 describe("Echo.leaveChannel(name, visibility) with the Ably connector (live)", () => {
     let testApp: any;
@@ -72,11 +84,14 @@ describe("Echo.leaveChannel(name, visibility) with the Ably connector (live)", (
             private: echo.private(name),
             presence: echo.join(name),
         };
-        await Promise.all(
-            Object.values(channels).map(
-                (channel) =>
-                    new Promise((resolve) => channel.subscribed(resolve)),
+        await within(
+            Promise.all(
+                Object.values(channels).map(
+                    (channel) =>
+                        new Promise((resolve) => channel.subscribed(resolve)),
+                ),
             ),
+            `${name} attached`,
         );
         return channels;
     };
@@ -112,7 +127,9 @@ describe("Echo.leaveChannel(name, visibility) with the Ably connector (live)", (
                 "afterLeave",
                 "still here",
             );
-            await expect(received).resolves.toBe("still here");
+            await expect(
+                within(received, `${sibling}:${name} message`),
+            ).resolves.toBe("still here");
         },
     );
 
