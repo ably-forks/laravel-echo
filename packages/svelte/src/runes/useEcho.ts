@@ -272,7 +272,8 @@ export function useEcho<
     };
 
     const listen = () => {
-        if (listening) {
+        // fork (P-09): during server rendering there is no channel to listen on, so a manual listen() is a no-op
+        if (listening || serverRender) {
             return;
         }
 
@@ -356,6 +357,8 @@ export const useEchoNotification = <
         "private",
     );
 
+    // fork (P-09)
+    const serverRender = isServerRender();
     let listening = false;
     let events = toArray(resolveInput(event))
         .map((e) => {
@@ -378,7 +381,8 @@ export const useEchoNotification = <
     };
 
     const listen = () => {
-        if (listening) {
+        // fork (P-09): during server rendering there is no channel to listen on, so a manual listen() is a no-op
+        if (listening || serverRender) {
             return;
         }
 
@@ -396,7 +400,7 @@ export const useEchoNotification = <
         listening = false;
     };
 
-    clientEffect(isServerRender(), () => {
+    clientEffect(serverRender, () => {
         trackDependencies(dependencies);
         events = toArray(resolveInput(event))
             .map((e) => {

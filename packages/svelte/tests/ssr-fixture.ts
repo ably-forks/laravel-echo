@@ -29,18 +29,36 @@ const source = `
         useSocketId,
     } from ${JSON.stringify(srcIndex)};
 
+    // manual: also call the returned controls during rendering (the server render must not throw)
+    let { manual = false } = $props();
+
     const status = useConnectionStatus();
     const socketId = useSocketId();
     const orders = useEcho("orders", ".OrderShipped", () => {});
 
     useEchoPublic("posts", ".PostPublished", () => {});
     useEchoPresence("room", ".Joined", () => {});
-    useEchoNotification("App.Models.User.1", () => {});
+    const notifications = useEchoNotification("App.Models.User.1", () => {});
     useEchoModel("App.Models.User", 1, ["UserUpdated"], () => {});
-    useChannel("account");
+    const account = useChannel("account");
     usePresenceChannel("lobby");
     usePublicChannel("news");
+
+    if (manual) {
+        for (const controls of [orders, notifications]) {
+            controls.listen();
+            controls.stopListening();
+            controls.listen();
+            controls.leaveChannel();
+            controls.leave();
+        }
+
+        account.leaveChannel();
+        account.leave();
+    }
 </script>
+
+{#if manual}<p id="manual">controls called</p>{/if}
 
 <p id="status">{status()}</p>
 <p id="socket">{socketId() ?? "no-socket"}</p>

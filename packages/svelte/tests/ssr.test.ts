@@ -35,6 +35,28 @@ describe("server rendering (P-09)", () => {
         expect("window" in globalThis).toBe(false);
     });
 
+    it("makes the returned controls no-ops during server rendering", async () => {
+        const { configureEcho } = await import("../src");
+
+        configureEcho({ broadcaster: "ably" });
+
+        const { default: Fixture } = await compileFixture("server");
+        let body = "";
+
+        // listen(), stopListening(), leaveChannel() and leave() of useEcho, useEchoNotification and useChannel
+        expect(() => {
+            body = render(Fixture, { props: { manual: true } }).body;
+        }).not.toThrow();
+
+        expect(body).toContain(`<p id="manual">controls called</p>`);
+        expect(body).toContain(`<p id="status">disconnected</p>`);
+
+        const Echo = (await import("@ably/laravel-echo")).default;
+
+        expect(Echo).not.toHaveBeenCalled();
+        expect("window" in globalThis).toBe(false);
+    });
+
     it("does not create Echo when configureEcho() ran on the server", async () => {
         const { configureEcho, echoIsConfigured } = await import("../src");
 
