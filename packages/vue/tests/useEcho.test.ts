@@ -1148,11 +1148,12 @@ describe("useConnectionStatus composable", async () => {
         }
     });
 
-    it("keeps updating when Echo.connect() replaces the connector", async () => {
+    it("subscribes through Echo.onConnectionChange, not through the connector", async () => {
         const { wrapper, emit } = mountStatusComponent();
         const replacedConnector = (Echo as any).prototype.connector;
 
-        // Echo's registry moves its callbacks to the new connector and emits the new connector's status (F-075)
+        // a different connector object: updates still arrive through Echo.onConnectionChange, and the composable
+        // never subscribes on the connector itself (a real Echo.connect() swap is tested in ably-shared.test.ts)
         (Echo as any).prototype.connector = {
             onConnectionChange: vi.fn(() => () => {}),
         };
