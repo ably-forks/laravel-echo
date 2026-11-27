@@ -2,7 +2,7 @@ import { Connector, type EchoOptionsWithDefaults } from './connector';
 
 import { AblyChannel, AblyPrivateChannel, AblyPresenceChannel, AblyAuth } from './../channel';
 import type { ClientOptions, ConnectionStateChange, PubSubClient } from '../types/ably';
-import type { ConnectionStatus } from '../echo';
+import type { ConnectionStatus, EchoOptions } from '../echo';
 import { toBase64UrlEncoded, resolveAblyLib, warnIfAblyGlobalsIgnored } from '../channel/ably/utils';
 
 /**
@@ -118,6 +118,24 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
         connected: () => void;
         interrupted: () => void;
     } | null;
+
+    /**
+     * Merge the custom options with the defaults (E-07, F-046).
+     *
+     * Upstream merges a static `_defaultOptions` shallowly, so `auth.headers` and `userAuthentication.headers`
+     * would be one object shared by every connector (and the caller's object would be mutated). Pass fresh copies
+     * so the CSRF and bearer-token writes below never leak to another connector or survive a logout. A header the
+     * caller set explicitly is kept. Fork-only: the upstream Connector is not changed.
+     */
+    protected setOptions(options: EchoOptions<"ably">): void {
+        const auth = options.auth ?? Connector._defaultOptions.auth;
+        const userAuthentication = options.userAuthentication ?? Connector._defaultOptions.userAuthentication;
+        super.setOptions({
+            ...options,
+            auth: { ...auth, headers: { ...auth.headers } },
+            userAuthentication: { ...userAuthentication, headers: { ...userAuthentication.headers } },
+        });
+    }
 
     /**
      * Create a fresh Ably connection.
