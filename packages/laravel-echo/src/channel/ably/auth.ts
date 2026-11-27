@@ -369,7 +369,15 @@ export class AblyAuth {
     clientIdSwitchListeners: {
         failed: (stateChange?: ConnectionStateChange) => void;
         connected: () => void;
+        closed: () => void;
     } | null = null;
+
+    /**
+     * True while the connection is `failed` only because of a 40102 that the handler below reconnects from (Echo's
+     * own clientId switch). AblyConnector.connectionStatus() then reports `reconnecting`/`connecting`, not `failed`
+     * (P-01). Recorded on every `failed`, and cleared on `connected`, `closing`, `closed` and on release.
+     */
+    reconnectingForClientIdChange = false;
 
     /**
      * 40102 = the server refused a clientId change on the live connection (or ably-js refused a token for another
@@ -380,6 +388,10 @@ export class AblyAuth {
         const connection = this.ablyClient().connection;
         let armed = true;
         const failed = (stateChange?: ConnectionStateChange) => {
+            // first, before onClientIdChanged(): its client.connect() emits a nested `connecting` (F-172)
+            const armedBefore = armed;
+            this.reconnectingForClientIdChange =
+                stateChange?.reason?.code === 40102 && armedBefore;
             if (stateChange?.reason?.code !== 40102) {
                 endIdentitySwitch(this.ablyClient()); // E3: a real failure ends the switch window
                 return;
@@ -390,14 +402,21 @@ export class AblyAuth {
         };
         const connected = () => {
             armed = true;
+            this.reconnectingForClientIdChange = false;
             endIdentitySwitch(this.ablyClient()); // E3: the switch is complete
+        };
+        // F-173: a close ends a suppressed switch too
+        const closed = () => {
+            this.reconnectingForClientIdChange = false;
         };
         connection.on("failed", failed);
         connection.on("connected", connected);
-        this.clientIdSwitchListeners = { failed, connected };
+        connection.on(["closing", "closed"], closed);
+        this.clientIdSwitchListeners = { failed, connected, closed };
     };
 
     releaseClientIdSwitchListeners = () => {
+        this.reconnectingForClientIdChange = false;
         if (!this.clientIdSwitchListeners) return;
         const client = this.ablyClient();
         client?.connection?.off("failed", this.clientIdSwitchListeners.failed);
@@ -405,6 +424,7 @@ export class AblyAuth {
             "connected",
             this.clientIdSwitchListeners.connected,
         );
+        client?.connection?.off(this.clientIdSwitchListeners.closed); // both closing and closed
         if (client) {
             endIdentitySwitch(client);
             endRenewalReattach(client);
