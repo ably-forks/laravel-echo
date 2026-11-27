@@ -4,9 +4,10 @@
 # One git tag, ably-echo-<version>, covers the four lockstep packages.
 RELEASE_TAG_PREFIX="ably-echo-"
 
-# A release version is X.Y.Z, or X.Y.Z-rc.N for a release candidate.
+# A release version is X.Y.Z, or X.Y.Z-rc.N for a release candidate, with no leading zeros (as semver requires).
+# Keep it equal to VERSION_PATTERN in scripts/check-release-tarballs.mjs.
 is_release_version() {
-    [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]
+    [[ "$1" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?$ ]]
 }
 
 is_prerelease_version() {

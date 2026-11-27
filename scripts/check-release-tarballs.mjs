@@ -30,7 +30,9 @@ const OUT_DIR = join(ROOT, "release-tarballs");
 const PUBLISH_WORKFLOW = join(ROOT, ".github/workflows/publish.yml");
 const TAG_PREFIX = "ably-echo-";
 const REPOSITORY_URL = "https://github.com/ably-forks/laravel-echo";
-const VERSION_PATTERN = /^(\d+\.\d+\.\d+)(-rc\.\d+)?$/;
+// X.Y.Z or X.Y.Z-rc.N with no leading zeros; keep it equal to is_release_version in scripts/release-lib.sh.
+const VERSION_PATTERN =
+    /^((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(-rc\.(?:0|[1-9]\d*))?$/;
 const LIFECYCLE_SCRIPTS = [
     "prepublish",
     "prepublishOnly",

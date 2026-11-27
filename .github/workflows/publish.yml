@@ -144,8 +144,9 @@ jobs:
           VERSION: ${{ needs.verify.outputs.version }}
           DIST_TAG: ${{ needs.verify.outputs.dist_tag }}
         run: |
-          if ! { [ "$DIST_TAG" = next ] && [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; } &&
-            ! { [ "$DIST_TAG" = latest ] && [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; }; then
+          core='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)'
+          if ! { [ "$DIST_TAG" = next ] && [[ "$VERSION" =~ ^$core-rc\.(0|[1-9][0-9]*)$ ]]; } &&
+            ! { [ "$DIST_TAG" = latest ] && [[ "$VERSION" =~ ^$core$ ]]; }; then
             echo "::error::Unexpected version '$VERSION' or dist-tag '$DIST_TAG' from the release guard."
             exit 1
           fi

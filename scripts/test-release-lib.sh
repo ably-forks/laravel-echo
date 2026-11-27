@@ -30,8 +30,8 @@ expect_equal() {
 }
 
 # The adapters' peer range: finals require the core they were released with, RCs admit every RC of that version.
-PEER_CASES="2.0.0:^2.0.0 2.1.0:^2.1.0 2.0.1:^2.0.1 10.20.30:^10.20.30 2.0.0-rc.0:^2.0.0-rc.0 2.0.0-rc.3:^2.0.0-rc.0 2.1.0-rc.2:^2.1.0-rc.0"
-INVALID_VERSIONS="2.0 v2.0.0 2.0.0-beta.1 2.0.0-rc 2.0.0-rc.1.2 2.0.0+build ably-echo-2.0.0"
+PEER_CASES="2.0.0:^2.0.0 2.1.0:^2.1.0 2.0.1:^2.0.1 10.20.30:^10.20.30 0.0.0:^0.0.0 2.0.0-rc.0:^2.0.0-rc.0 2.0.0-rc.3:^2.0.0-rc.0 2.0.0-rc.10:^2.0.0-rc.0 2.1.0-rc.2:^2.1.0-rc.0"
+INVALID_VERSIONS="2.0 v2.0.0 2.0.0-beta.1 2.0.0-rc 2.0.0-rc.1.2 2.0.0+build ably-echo-2.0.0 02.0.0 2.00.0 2.0.01 2.0.0-rc.01"
 
 for case in $PEER_CASES; do
     version=${case%%:*}
@@ -124,7 +124,7 @@ fi
 # The publish.yml release guard: tag -> version -> npm dist-tag, checked against the four manifests.
 expect_equal "version_from_tag ably-echo-2.0.0" "$(version_from_tag ably-echo-2.0.0)" 2.0.0
 expect_equal "version_from_tag ably-echo-2.0.0-rc.1" "$(version_from_tag ably-echo-2.0.0-rc.1)" 2.0.0-rc.1
-for tag in v2.0.0 2.0.0 ably-echo-v2.0.0 ably-echo-2.0.0-beta.1 ably-echo- "" ably-echo-2.0.0-rc.1-x; do
+for tag in v2.0.0 2.0.0 ably-echo-v2.0.0 ably-echo-2.0.0-beta.1 ably-echo- "" ably-echo-2.0.0-rc.1-x ably-echo-02.0.0 ably-echo-2.0.0-rc.01; do
     if version_from_tag "$tag" > /dev/null; then
         failed "version_from_tag rejects '$tag'"
     else
