@@ -1,3 +1,4 @@
+import { vi, describe, test, expect, beforeEach, afterEach } from "vite-plus/test";
 /**
  * subscribe() rejections and error() listeners: forward what no state change or attach() reported, once (review T4).
  */
@@ -19,7 +20,7 @@ describe('subscribe() errors that no state change reports are forwarded once', (
         const ably = makeFakeAbly();
         const fake = ably.channels.get('public:failed');
         const echoChannel = new AblyChannel(ably, 'public:failed', ECHO_OPTIONS);
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         echoChannel.error(errorListener);
         const stateErr = ablyError('denied', 40160);
         fake.transition('failed', stateErr);
@@ -37,7 +38,7 @@ describe('subscribe() errors that no state change reports are forwarded once', (
         const ably = makeFakeAbly();
         const fake = ably.channels.get('private:x');
         const echoChannel = new AblyChannel(ably, 'private:x', ECHO_OPTIONS);
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         echoChannel.error(errorListener);
         await settle();
         const err = ablyError('auth endpoint 403', 40300);
@@ -52,7 +53,7 @@ describe('subscribe() errors that no state change reports are forwarded once', (
         const ably = makeFakeAbly();
         const fake = ably.channels.get('private:y');
         const echoChannel = new AblyChannel(ably, 'private:y', ECHO_OPTIONS);
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         echoChannel.error(errorListener);
         fake.transition('detached');
         const first = ablyError('auth endpoint 403', 40300);
@@ -72,7 +73,7 @@ describe('an older state-change error does not hide a new attach attempt failure
         const ably = makeFakeAbly();
         const fake = ably.channels.get('private:again');
         const echoChannel = new AblyChannel(ably, 'private:again', ECHO_OPTIONS);
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         echoChannel.error(errorListener);
         const earlier = ablyError('auth endpoint 403', 40300);
         fake.transition('detached', earlier); // reported by the state change
@@ -91,7 +92,7 @@ describe('T4 still holds: one reported failure is not repeated per subscription'
         const ably = makeFakeAbly();
         const fake = ably.channels.get('public:deny');
         const echoChannel = new AblyChannel(ably, 'public:deny', ECHO_OPTIONS);
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         echoChannel.error(errorListener);
         let reject: (e: any) => void = () => undefined;
         fake.attach.mockImplementation(() => new Promise((_, r) => (reject = r)));
@@ -107,7 +108,7 @@ describe('T4 still holds: one reported failure is not repeated per subscription'
         const fake = ably.channels.get('presence:room');
         const err = ablyError('auth endpoint 403', 40300);
         fake.attach.mockImplementation(() => Promise.reject(err));
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         const echoChannel = new AblyPresenceChannel(ably, 'presence:room', ECHO_OPTIONS, stubAuth);
         echoChannel.error(errorListener);
         echoChannel.here(() => undefined).listen('A', () => undefined);
@@ -119,7 +120,7 @@ describe('T4 still holds: one reported failure is not repeated per subscription'
         const ably = makeFakeAbly();
         const fake = ably.channels.get('public:modes');
         const echoChannel = new AblyChannel(ably, 'public:modes', ECHO_OPTIONS);
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         echoChannel.error(errorListener);
         fake.transition('attached');
         const err = ablyError('attached without the message_subscribe mode', 90009);
@@ -137,7 +138,7 @@ describe('the attach rejection does not add a second error() call after a state-
         let reject: (e: any) => void = () => undefined;
         fake.attach.mockImplementation(() => new Promise((_, r) => (reject = r)));
         const echoChannel = new AblyChannel(ably, 'public:t7', ECHO_OPTIONS); // subscribe() starts the attach
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         echoChannel.error(errorListener);
         const err = ablyError('denied', 40161);
         fake.transition('failed', err);

@@ -1,3 +1,4 @@
+import { test, expect, beforeAll, afterAll } from "vite-plus/test";
 // Demonstrates the R21 x T6 conflict when applied naively: a fixed queue bound (scaled: 300 ms ~ T's 30 s) shorter
 // than httpRequestTimeout (scaled: 400 ms ~ 40 s) pre-empts the fetch timeout; the combined design (max(bound, http+grace)) does not.
 import { createServer } from 'http';

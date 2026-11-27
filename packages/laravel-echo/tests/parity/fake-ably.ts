@@ -1,3 +1,5 @@
+import { vi } from "vite-plus/test";
+import type { Mock } from "vite-plus/test";
 /**
  * A minimal fake of the ably RealtimeChannel / RealtimePresence surface that Echo uses (the same in ably 2.30
  * and @ably/pubsub-device 3.0.0, so these tests run unchanged on master and on the pubsub-device branch).
@@ -74,23 +76,23 @@ export const makeFakeChannel = (name: string) => {
         on: (...a) => stateEmitter.on(...a),
         once: (...a) => (stateEmitter as any).once(...a),
         off: (...a) => stateEmitter.off(...a),
-        attach: jest.fn(() => Promise.resolve(null)),
-        detach: jest.fn(() => Promise.resolve()),
-        publish: jest.fn(() => Promise.resolve()),
-        unsubscribe: jest.fn((...a) => messages.off(...a)),
-        subscribe: jest.fn((...args: any[]) => {
+        attach: vi.fn(() => Promise.resolve(null)),
+        detach: vi.fn(() => Promise.resolve()),
+        publish: vi.fn(() => Promise.resolve()),
+        unsubscribe: vi.fn((...a) => messages.off(...a)),
+        subscribe: vi.fn((...args: any[]) => {
             if (args.length === 1) messages.on(args[0]);
             else messages.on(args[0], args[1]);
             return channel.attach(); // attachOnSubscribe (default true)
         }),
         presence: {
             emitter: presenceEmitter,
-            enter: jest.fn(() => Promise.resolve()),
-            leave: jest.fn(() => Promise.resolve()),
-            update: jest.fn(() => Promise.resolve()),
-            get: jest.fn(() => Promise.resolve([])),
-            unsubscribe: jest.fn(),
-            subscribe: jest.fn((...args: any[]) => {
+            enter: vi.fn(() => Promise.resolve()),
+            leave: vi.fn(() => Promise.resolve()),
+            update: vi.fn(() => Promise.resolve()),
+            get: vi.fn(() => Promise.resolve([])),
+            unsubscribe: vi.fn(),
+            subscribe: vi.fn((...args: any[]) => {
                 if (args.length === 1) presenceEmitter.on(args[0]);
                 else presenceEmitter.on(args[0], args[1]);
                 return channel.attach();
@@ -159,11 +161,11 @@ export const makeJwt = (capability: Record<string, string[]> = { 'private:*': ['
 export const makeFakeAblyClient = (clientId?: string | null) => {
     const connection: any = new FakeEmitter();
     const client: any = makeFakeAbly();
-    client.connect = jest.fn(); // Echo's onClientIdChanged calls client.connect()
+    client.connect = vi.fn(); // Echo's onClientIdChanged calls client.connect()
     client.connection = connection;
     client.auth = {
         clientId,
-        authorize: jest.fn(() => Promise.resolve({})) as jest.Mock<Promise<any>, any[]>,
+        authorize: vi.fn(() => Promise.resolve({})) as Mock<() => Promise<any>>,
     };
     return client;
 };

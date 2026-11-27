@@ -1,3 +1,4 @@
+import { vi, describe, test, expect, beforeEach, afterEach } from "vite-plus/test";
 /**
  * error() / subscribed() listener semantics through the promise-based ably API.
  */
@@ -32,7 +33,7 @@ const failingPublicChannel = (configure: (echoChannel: AblyChannel) => void) => 
 
 describe('attach failure -> error() listeners', () => {
     test('baseline: error listener sees the failed state change once (E4: the identical attach rejection is not reported again)', async () => {
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         const { fail, err } = failingPublicChannel((c) => c.error(errorListener));
         await fail();
         // 1.0.6: 2 calls (the state change, then the attach rejection). The payload shape is unchanged.
@@ -41,7 +42,7 @@ describe('attach failure -> error() listeners', () => {
     });
 
     test('listen()/listenToAll() do not add extra error notifications for the same attach failure', async () => {
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         const { fail } = failingPublicChannel((c) =>
             c
                 .listen('A', () => undefined)
@@ -55,7 +56,7 @@ describe('attach failure -> error() listeners', () => {
     });
 
     test('a throwing error() listener does not prevent the next error() listener from running', async () => {
-        const second = jest.fn();
+        const second = vi.fn();
         const { fail } = failingPublicChannel((c) =>
             c
                 .error(() => {
@@ -84,7 +85,7 @@ describe('presence-channel error routing', () => {
         const fake = ably.channels.get('presence:room');
         const err = ablyError('denied');
         fake.attach.mockImplementation(() => Promise.reject(err));
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         const echoChannel = new AblyPresenceChannel(ably, 'presence:room', ECHO_OPTIONS, stubAuth);
         echoChannel.error(errorListener);
         await settle();
@@ -103,7 +104,7 @@ describe('subscribed() listeners', () => {
         const ably = makeFakeAbly();
         const fake = ably.channels.get('public:ok');
         const echoChannel = new AblyChannel(ably, 'public:ok', ECHO_OPTIONS);
-        const s = jest.fn();
+        const s = vi.fn();
         echoChannel.subscribed(s);
         fake.transition('attaching');
         fake.transition('attached');
@@ -115,7 +116,7 @@ describe('subscribed() listeners', () => {
         const ably = makeFakeAbly();
         const fake = ably.channels.get('public:ok');
         const echoChannel = new AblyChannel(ably, 'public:ok', ECHO_OPTIONS);
-        const second = jest.fn();
+        const second = vi.fn();
         echoChannel
             .subscribed(() => {
                 throw new Error('user bug');

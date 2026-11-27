@@ -1,3 +1,4 @@
+import { vi, describe, test, expect } from "vite-plus/test";
 /**
  * Patched _attach / AblyAuth.whenConnectedOrSettled: the pre-attach authorize() waits for `connected` while the
  * connection is `initialized`, `connecting` or `disconnected` (authorize() restarts a connecting attempt, RTC8b, and
@@ -35,11 +36,11 @@ const makeClient = (state: string) => {
     };
     const client: any = {
         channels: { get: (n: string) => (channels[n] = channels[n] || Object.assign(new FakeRealtimeChannel(n), { client })) },
-        getTimestamp: jest.fn(() => Promise.resolve(Date.now())),
+        getTimestamp: vi.fn(() => Promise.resolve(Date.now())),
         getTimestampUsingOffset: () => Date.now(),
-        auth: { tokenDetails: null, authorize: jest.fn((_, o) => Promise.resolve(o.token)), clientId: 'user1' },
+        auth: { tokenDetails: null, authorize: vi.fn((_, o) => Promise.resolve(o.token)), clientId: 'user1' },
         connection,
-        connect: jest.fn(),
+        connect: vi.fn(),
     };
     const connector: any = { ably: client, channels: {} };
     const auth = new AblyAuth(connector, {
@@ -55,8 +56,8 @@ const listenerCount = (connection: any) =>
     Object.values(connection.events as Record<string, Function[]>).reduce((n, l) => n + l.length, 0) + connection.any.length;
 
 const spyOnOff = (connection: any) => {
-    const on = jest.spyOn(connection, 'on');
-    const off = jest.spyOn(connection, 'off');
+    const on = vi.spyOn(connection, 'on');
+    const off = vi.spyOn(connection, 'off');
     return { on, off };
 };
 
@@ -167,7 +168,7 @@ describe('pre-attach authorize waits for `connected`', () => {
         const { client, connection, connector } = makeClient('connecting');
         const attached = client.channels.get('private:p').attach();
         await tick();
-        const replacement = { auth: { authorize: jest.fn(() => Promise.resolve({})), clientId: 'user1' }, connection: { state: 'connected' } };
+        const replacement = { auth: { authorize: vi.fn(() => Promise.resolve({})), clientId: 'user1' }, connection: { state: 'connected' } };
         connector.ably = replacement; // Echo.connect() replaced the client; the old one never emitted closed
         connection.set('connected');
         await expect(attached).rejects.toMatchObject({ code: 80000 });

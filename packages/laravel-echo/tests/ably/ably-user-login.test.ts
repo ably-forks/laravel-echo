@@ -1,3 +1,4 @@
+import { vi, describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from "vite-plus/test";
 import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
@@ -5,7 +6,7 @@ import { AblyChannel, AblyPrivateChannel } from '../../src/channel';
 import waitForExpect from 'wait-for-expect';
 import { trackUnhandledRejections } from '../parity/fake-ably';
 
-jest.setTimeout(30000);
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
 describe('AblyUserLogin', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
@@ -101,7 +102,7 @@ describe('AblyUserLogin', () => {
 
         // Register listeners up front, since reconnect and re-attach can complete before an error would be observed
         // E3: the transient 40102 ("mismatched clientid") of the Echo-initiated switch is suppressed, so error() is not called
-        const errorSpy = jest.fn();
+        const errorSpy = vi.fn();
         privateChannel.error(errorSpy);
         publicChannel.error(errorSpy);
         const channelsReattached = Promise.all([
@@ -145,7 +146,7 @@ describe('AblyUserLogin', () => {
         // login: null -> user
         mockAuthServer.clientId = 'sacOO7@github.com'
         const privateChannel = echo.private('test') as AblyPrivateChannel; // Requests new token
-        const loginErrorSpy = jest.fn();
+        const loginErrorSpy = vi.fn();
         privateChannel.error(loginErrorSpy);
         await new Promise((resolve) => privateChannel.subscribed(resolve)); // successful attach
         await waitForExpect(() => {

@@ -1,3 +1,4 @@
+import { vi, describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from "vite-plus/test";
 import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
@@ -5,7 +6,7 @@ import { AblyChannel, AblyPresenceChannel } from '../../src/channel';
 import safeAssert, { execute } from './setup/utils';
 import waitForExpect from 'wait-for-expect';
 
-jest.setTimeout(20000);
+vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
 describe('AblyChannel', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
@@ -111,9 +112,9 @@ describe('AblyChannel', () => {
 
     test('stop listening to a event', async () => {
         const publicChannel = echo.channel('test') as AblyChannel;
-        const eventHandler1 = jest.fn();
-        const eventHandler2 = jest.fn();
-        const eventHandler3 = jest.fn();
+        const eventHandler1 = vi.fn();
+        const eventHandler2 = vi.fn();
+        const eventHandler3 = vi.fn();
 
         await new Promise((resolve) => {
             publicChannel
@@ -147,35 +148,35 @@ describe('AblyChannel', () => {
 
         await broadcastAndWaitForDelivery(4);
 
-        expect(eventHandler1).toBeCalledTimes(4);
-        expect(eventHandler2).toBeCalledTimes(4);
-        expect(eventHandler3).toBeCalledTimes(4);
+        expect(eventHandler1).toHaveBeenCalledTimes(4);
+        expect(eventHandler2).toHaveBeenCalledTimes(4);
+        expect(eventHandler3).toHaveBeenCalledTimes(4);
 
-        jest.clearAllMocks();
+        vi.clearAllMocks();
         publicChannel.stopListening('.testEvent', eventHandler1);
 
         await broadcastAndWaitForDelivery(3);
 
-        expect(eventHandler1).toBeCalledTimes(0);
-        expect(eventHandler2).toBeCalledTimes(3);
-        expect(eventHandler3).toBeCalledTimes(3);
+        expect(eventHandler1).toHaveBeenCalledTimes(0);
+        expect(eventHandler2).toHaveBeenCalledTimes(3);
+        expect(eventHandler3).toHaveBeenCalledTimes(3);
 
-        jest.clearAllMocks();
+        vi.clearAllMocks();
         publicChannel.stopListening('.testEvent');
 
         await broadcastAndWaitForDelivery(3);
 
-        expect(eventHandler1).toBeCalledTimes(0);
-        expect(eventHandler2).toBeCalledTimes(0);
-        expect(eventHandler3).toBeCalledTimes(0);
+        expect(eventHandler1).toHaveBeenCalledTimes(0);
+        expect(eventHandler2).toHaveBeenCalledTimes(0);
+        expect(eventHandler3).toHaveBeenCalledTimes(0);
     });
 
     // internally calls stop listening to a event
     test('stop listening to a whisper/client-event', async () => {
         const publicChannel = echo.channel('test') as AblyChannel;
-        const eventHandler1 = jest.fn();
-        const eventHandler2 = jest.fn();
-        const eventHandler3 = jest.fn();
+        const eventHandler1 = vi.fn();
+        const eventHandler2 = vi.fn();
+        const eventHandler3 = vi.fn();
 
         await new Promise((resolve) => {
             publicChannel
@@ -189,21 +190,21 @@ describe('AblyChannel', () => {
         execute(() => mockAuthServer.broadcast('public:test', 'client-msg2', 'Hello there'), 1);
 
         await waitForExpect(() => {
-            expect(eventHandler1).toBeCalledTimes(4);
-            expect(eventHandler2).toBeCalledTimes(4);
-            expect(eventHandler3).toBeCalledTimes(1);
+            expect(eventHandler1).toHaveBeenCalledTimes(4);
+            expect(eventHandler2).toHaveBeenCalledTimes(4);
+            expect(eventHandler3).toHaveBeenCalledTimes(1);
         });
 
-        jest.clearAllMocks();
+        vi.clearAllMocks();
         publicChannel.stopListeningForWhisper('msg', eventHandler1);
 
         execute(() => mockAuthServer.broadcast('public:test', 'client-msg', 'Hello there'), 3);
         execute(() => mockAuthServer.broadcast('public:test', 'client-msg2', 'Hello there'), 2);
 
         await waitForExpect(() => {
-            expect(eventHandler1).toBeCalledTimes(0);
-            expect(eventHandler2).toBeCalledTimes(3);
-            expect(eventHandler3).toBeCalledTimes(2);
+            expect(eventHandler1).toHaveBeenCalledTimes(0);
+            expect(eventHandler2).toHaveBeenCalledTimes(3);
+            expect(eventHandler3).toHaveBeenCalledTimes(2);
         });
     });
 

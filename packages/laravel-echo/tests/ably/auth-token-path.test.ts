@@ -1,3 +1,4 @@
+import { vi, describe, test, expect, afterEach, beforeAll, afterAll } from "vite-plus/test";
 /**
  * The combined HTTP/auth/token design (review §9.1) (R1, R6, R9, R12, R18, R20, R21, T6, T7, T10) works as one unit.
  */
@@ -42,7 +43,7 @@ describe('auth token path (review §9.1 combined design)', () => {
     });
 
     test("R6: httpError is a real v3 ErrorInfo (Echo's own @ably/pubsub-device), whatever the globals", () => {
-        (globalThis as any).Ably = { Realtime: jest.fn() }; // a legacy global is ignored
+        (globalThis as any).Ably = { Realtime: vi.fn() }; // a legacy global is ignored
         const e: any = httpError('x', 403, 40300, new Error('c'));
         expect(e).toBeInstanceOf(AblyDevice.ErrorInfo);
         expect(e).toMatchObject({ code: 40300, statusCode: 403, message: 'x' });
@@ -74,18 +75,18 @@ describe('auth token path (review §9.1 combined design)', () => {
     });
 
     test('T6: a hung requestTokenFn is bounded, error is coded and names the source', async () => {
-        jest.useFakeTimers();
+        vi.useFakeTimers();
         try {
             // a large httpRequestTimeout does not extend the requestTokenFn bound (it is for the authEndpoint fetch)
             const hung = () => new Promise(() => undefined);
             const auth = makeAuth({ httpRequestTimeout: 40000 }, { requestTokenFn: hung });
             const p = auth.authRequestExecuter.request('private:a').catch((e) => e);
-            jest.advanceTimersByTime(TOKEN_REQUEST_TIMEOUT_MS);
+            vi.advanceTimersByTime(TOKEN_REQUEST_TIMEOUT_MS);
             const err: any = await p;
             expect(err).toMatchObject({ code: 50003, statusCode: 500 });
             expect(err.message).toContain(`requestTokenFn did not complete within ${TOKEN_REQUEST_TIMEOUT_MS}ms`);
         } finally {
-            jest.useRealTimers();
+            vi.useRealTimers();
         }
     });
 
@@ -136,7 +137,7 @@ describe('auth token path (review §9.1 combined design)', () => {
     test('T10: authCallback calls back exactly once even if the callback throws', async () => {
         const token = jwt({ 'x-ably-capability': '{}', exp: 9e9, iat: 1 });
         const auth = makeAuth({}, { requestTokenFn: async () => ({ token }) });
-        const cb = jest.fn(() => {
+        const cb = vi.fn(() => {
             throw new Error('ably callback threw');
         });
         await (auth.options.authCallback as any)(null, cb).catch(() => undefined);
@@ -147,10 +148,10 @@ describe('auth token path (review §9.1 combined design)', () => {
 describe('review §8.3: the cached token is used only if its capability has the channel as a key', () => {
     const authorizeWithCachedToken = async (capability: string, channelName: string) => {
         let authorize: Function;
-        const spy = jest.spyOn(attach, 'beforeChannelAttach').mockImplementation((_client, fn) => {
+        const spy = vi.spyOn(attach, 'beforeChannelAttach').mockImplementation((_client, fn) => {
             authorize = fn;
         });
-        const requestTokenFn = jest.fn().mockRejectedValue(new Error('new token requested'));
+        const requestTokenFn = vi.fn().mockRejectedValue(new Error('new token requested'));
         const ably = {
             auth: { tokenDetails: { token: jwt({ 'x-ably-capability': capability, exp: 9e9, iat: 1 }), expires: Date.now() + 60000 } },
             getTimestamp: () => Promise.resolve(Date.now()),
@@ -166,7 +167,7 @@ describe('review §8.3: the cached token is used only if its capability has the 
         } finally {
             spy.mockRestore();
         }
-        const errorCallback = jest.fn();
+        const errorCallback = vi.fn();
         authorize({ name: channelName }, errorCallback);
         await new Promise((resolve) => setTimeout(resolve, 0));
         return { requestTokenFn, errorCallback };

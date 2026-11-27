@@ -1,3 +1,4 @@
+import { vi, describe, test, expect, beforeAll, afterAll } from "vite-plus/test";
 /**
  * R17: coverage gaps. (_attach patch applied on the real library, listener metadata key sets, options.client path.)
  * R17.1 (no-token guard) and R17.3 (wrong-global error) are covered by auth-token-path / connector-options tests,
@@ -9,7 +10,7 @@ import { AblyChannel, AblyPresenceChannel } from '../../src/channel';
 import { setup, tearDown } from './setup/sandbox';
 import { MockAuthServer } from './setup/mock-auth-server';
 
-jest.setTimeout(30000);
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
 
 describe('coverage gaps (R17)', () => {
     let testApp: any;
@@ -41,7 +42,7 @@ describe('coverage gaps (R17)', () => {
                 .listen('testEvent', (_data, m) => resolve(m));
         });
         // Key set for this publish shape (REST publish, no clientId/extras); keys such as clientId/extras appear only when set.
-        // Explicit list rather than toMatchSnapshot(): CI runs jest with --ci, which never writes new snapshots.
+        // Explicit list rather than toMatchSnapshot(): Vitest never writes new snapshots under CI.
         expect(Object.keys(meta).sort()).toEqual(
             ['action', 'annotations', 'connectionId', 'encoding', 'id', 'name', 'serial', 'timestamp', 'version']
         );

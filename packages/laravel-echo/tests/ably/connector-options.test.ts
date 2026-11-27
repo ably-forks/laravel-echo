@@ -1,3 +1,5 @@
+import { vi, describe, test, expect, beforeEach, afterEach } from "vite-plus/test";
+import type { Mock } from "vite-plus/test";
 /**
  * AblyConnector.connect(): library resolution (single install), legacy host-option mapping (R5) and the
  * failed-connection re-attach latch (R3). No network: clients are created with autoConnect: false or faked.
@@ -7,7 +9,7 @@ import * as AblyDevice from '@ably/pubsub-device';
 // createClient is a non-configurable getter on the real module, so wrap the module to observe the options Echo passes
 jest.mock('@ably/pubsub-device', () => {
     const actual = jest.requireActual('@ably/pubsub-device');
-    return { ...actual, createClient: jest.fn((options) => actual.createClient(options)) };
+    return { ...actual, createClient: vi.fn((options) => actual.createClient(options)) };
 });
 import Echo from '../../src/echo';
 import { AblyConnector } from '../../src/connector/ably-connector';
@@ -18,11 +20,11 @@ const baseOptions = { broadcaster: 'ably', autoConnect: false, requestTokenFn: a
 afterEach(() => {
     delete (globalThis as any).Ably;
     delete (globalThis as any).AblyPubSub;
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
 });
 
 describe('single install: Echo uses its own @ably/pubsub-device', () => {
-    beforeEach(() => jest.spyOn(console, 'warn').mockImplementation(() => undefined));
+    beforeEach(() => vi.spyOn(console, 'warn').mockImplementation(() => undefined));
 
     test('connects with no Ably global at all', () => {
         const echo = new Echo({ ...baseOptions });
@@ -32,9 +34,9 @@ describe('single install: Echo uses its own @ably/pubsub-device', () => {
     });
 
     test('a legacy ably v1/v2 global (no createClient) is ignored', () => {
-        const legacy = { Realtime: jest.fn() };
+        const legacy = { Realtime: vi.fn() };
         (globalThis as any).Ably = legacy;
-        (AblyDevice.createClient as jest.Mock).mockClear();
+        (AblyDevice.createClient as Mock).mockClear();
         const echo = new Echo({ ...baseOptions });
         expect(AblyDevice.createClient).toHaveBeenCalledTimes(1);
         expect(legacy.Realtime).not.toHaveBeenCalled();
@@ -42,7 +44,7 @@ describe('single install: Echo uses its own @ably/pubsub-device', () => {
     });
 
     test('a v3 global with its own createClient is not used either', () => {
-        const createClient = jest.fn();
+        const createClient = vi.fn();
         (globalThis as any).Ably = { createClient };
         (globalThis as any).AblyPubSub = { createClient };
         const echo = new Echo({ ...baseOptions });
@@ -54,7 +56,7 @@ describe('single install: Echo uses its own @ably/pubsub-device', () => {
 
 describe('P4: Echo-only options are kept out of the Ably client options', () => {
     test('createClient gets every Ably option and none of the Echo-only keys; Echo keeps its own options', () => {
-        const createClient = AblyDevice.createClient as jest.Mock;
+        const createClient = AblyDevice.createClient as Mock;
         createClient.mockClear();
         const echo = new Echo({
             ...baseOptions,
@@ -114,7 +116,7 @@ describe('P4: Echo-only options are kept out of the Ably client options', () => 
 
 describe('R5: environment / realtimeHost / restHost are mapped to endpoint', () => {
     beforeEach(() => {
-        jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     });
 
     test.each([
@@ -146,7 +148,7 @@ describe('R5: environment / realtimeHost / restHost are mapped to endpoint', () 
 
     test('a dotless host other than localhost warns that it is a routing-policy id', () => {
         const echo = new Echo({ ...baseOptions, realtimeHost: 'ably-proxy' });
-        expect((console.warn as jest.Mock).mock.calls.flat().join(' ')).toContain('routing-policy id');
+        expect((console.warn as Mock).mock.calls.flat().join(' ')).toContain('routing-policy id');
         echo.disconnect();
     });
 
@@ -161,14 +163,14 @@ describe('R5: environment / realtimeHost / restHost are mapped to endpoint', () 
 describe('E5: MAU hints only for 40161, 40168 and 40167, once per code', () => {
     const makeClient = () => {
         const connection = new FakeEmitter();
-        const fake: any = { ...makeFakeAbly(), connection, close: jest.fn(), auth: {} };
+        const fake: any = { ...makeFakeAbly(), connection, close: vi.fn(), auth: {} };
         return { fake, connection };
     };
     const fail = (connection: FakeEmitter, code: number) =>
         connection.emit('failed', { current: 'failed', reason: { code, message: `failure ${code}` } });
-    const logged = () => (console.error as jest.Mock).mock.calls.map(([message]) => String(message));
+    const logged = () => (console.error as Mock).mock.calls.map(([message]) => String(message));
 
-    beforeEach(() => jest.spyOn(console, 'error').mockImplementation(() => undefined));
+    beforeEach(() => vi.spyOn(console, 'error').mockImplementation(() => undefined));
 
     // the exact texts of MAU_HINTS in src/connector/ably-connector.ts, duplicated on purpose
     const HINT_40161 =
@@ -234,12 +236,12 @@ describe('E5: MAU hints only for 40161, 40168 and 40167, once per code', () => {
 describe('R3: re-attach channels after the connection failed (installed from connect(), so options.client is covered)', () => {
     const makeClient = () => {
         const connection = new FakeEmitter();
-        const fake: any = { ...makeFakeAbly(), connection, close: jest.fn(), auth: {} };
+        const fake: any = { ...makeFakeAbly(), connection, close: vi.fn(), auth: {} };
         return { fake, connection };
     };
 
     test('on the first connected after failed, re-attaches channels that are not attached/attaching, once', () => {
-        jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
         const { fake, connection } = makeClient();
         const echo = new Echo({ broadcaster: 'ably', client: fake });
         const states = { a: 'failed', b: 'initialized', c: 'attached', d: 'attaching', e: 'detached' };
@@ -255,7 +257,7 @@ describe('R3: re-attach channels after the connection failed (installed from con
         const attachCalls = Object.keys(states).map((n) => echo.connector.channels[`public:${n}`].channel.attach.mock.calls.length);
         expect(attachCalls).toEqual([1, 1, 0, 0, 1]);
         expect(console.error).toHaveBeenCalledTimes(1); // the MAU hint
-        expect((console.error as jest.Mock).mock.calls[0][0]).toContain('40161');
+        expect((console.error as Mock).mock.calls[0][0]).toContain('40161');
     });
 
     test('a supplied client that is already failed when Echo connects re-attaches on the next connected, once', () => {
@@ -288,7 +290,7 @@ describe('R3: re-attach channels after the connection failed (installed from con
 
 describe('P3: options.client (no AblyAuth)', () => {
     test('private(), join() and leaveChannel() do not throw', () => {
-        const fake: any = { ...makeFakeAbly(), connection: new FakeEmitter(), close: jest.fn(), auth: {} };
+        const fake: any = { ...makeFakeAbly(), connection: new FakeEmitter(), close: vi.fn(), auth: {} };
         const echo = new Echo({ broadcaster: 'ably', client: fake });
         expect(echo.connector.ablyAuth).toBeUndefined();
         expect(() => echo.private('p3')).not.toThrow();
@@ -311,7 +313,7 @@ describe('P6: encryptedPrivate()', () => {
 });
 
 describe('P7: connect() called again', () => {
-    const makeClient = (): any => ({ ...makeFakeAbly(), connection: new FakeEmitter(), close: jest.fn(), auth: {} });
+    const makeClient = (): any => ({ ...makeFakeAbly(), connection: new FakeEmitter(), close: vi.fn(), auth: {} });
 
     test('leaves the Echo channels, closes the previous client, and new channels bind to the new client', () => {
         const first = makeClient();

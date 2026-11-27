@@ -1,3 +1,4 @@
+import { vi, describe, test, expect } from "vite-plus/test";
 /**
  * Presence auto-enter on a resumed attach (review T15): ably re-enters a member it already has (RTP17), so Echo skips
  * its own enter on a resumed attach, unless the last enter() failed and there is no membership to restore.
@@ -15,7 +16,7 @@ const resume = (fake: any) => {
 const setup = (name: string) => {
     const ably = makeFakeAbly();
     const echoChannel = new AblyPresenceChannel(ably, name, ECHO_OPTIONS, stubAuth);
-    const errorListener = jest.fn();
+    const errorListener = vi.fn();
     echoChannel.error(errorListener);
     return { fake: ably.channels.get(name), echoChannel, errorListener };
 };
@@ -72,7 +73,7 @@ describe('presence auto-enter on a resumed attach', () => {
         fake.transition('attached');
         await settle();
         fake.presence.enter.mockImplementationOnce(() => Promise.reject(ablyError('enter failed', 91004)));
-        const cb = jest.fn();
+        const cb = vi.fn();
         echoChannel.enter({ name: 'u' }, cb);
         await settle();
         expect(cb.mock.calls[0][0]).toMatchObject({ code: 91004 });

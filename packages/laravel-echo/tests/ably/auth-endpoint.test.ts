@@ -1,3 +1,5 @@
+import { vi, describe, test, expect, beforeAll, afterAll } from "vite-plus/test";
+import type { Mock } from "vite-plus/test";
 /**
  * R7: the default Laravel setup (authEndpoint -> fetch) end to end against the Ably sandbox, with a local
  * /broadcasting/auth server backed by MockAuthServer. Every other integration test uses requestTokenFn.
@@ -10,7 +12,7 @@ import waitForExpect from 'wait-for-expect';
 import { setup, tearDown } from './setup/sandbox';
 import { MockAuthServer } from './setup/mock-auth-server';
 
-jest.setTimeout(30000);
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
 
 describe('authEndpoint end to end', () => {
     let testApp: any;
@@ -99,7 +101,7 @@ describe('authEndpoint end to end', () => {
 
             mockAuthServer.clientId = 'sacOO7@github.com'; // user logs in for the next auth request
             const privateChannel = echo.private('r7login') as AblyPrivateChannel;
-            const errorSpy = jest.fn(); // E3: the transient 40102 of the switch is suppressed
+            const errorSpy = vi.fn(); // E3: the transient 40102 of the switch is suppressed
             privateChannel.error(errorSpy);
             const channelsReattached = Promise.all([
                 new Promise((resolve) => publicChannel.subscribed(resolve)),
@@ -146,7 +148,7 @@ describe('authEndpoint end to end', () => {
         ['connection-401', 'disconnected', 40100],
     ] as const)('connection-token request %s -> connection %s (cause %s)', async (m, expectedState, causeCode) => {
         mode = m;
-        jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
         const echo = makeEcho();
         const stateChange: any = await new Promise((resolve) =>
             echo.connector.ably.connection.on((c: any) => {
@@ -156,6 +158,6 @@ describe('authEndpoint end to end', () => {
         expect(stateChange.current).toBe(expectedState);
         expect(stateChange.reason?.cause?.code).toBe(causeCode);
         echo.disconnect();
-        (console.error as jest.Mock).mockRestore();
+        (console.error as Mock).mockRestore();
     });
 });

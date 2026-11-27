@@ -1,3 +1,4 @@
+import { vi, describe, test, expect } from "vite-plus/test";
 /**
  * Channel-listener and pre-attach authorization edge cases (review T13–T17, P1). Fake ably, no network.
  * Each test name carries the review finding ID.
@@ -15,7 +16,7 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * Key property: off(event, undefined) removes EVERY listener for `event`; off(undefined, undefined) removes ALL.
  */
 const useAblyUnsubscribeSemantics = (fake: any) => {
-    fake.unsubscribe = jest.fn((...raw: any[]) => {
+    fake.unsubscribe = vi.fn((...raw: any[]) => {
         const args = [...raw];
         if (typeof args[0] === 'function') args.unshift(null);
         const [event, listener] = args;
@@ -50,8 +51,8 @@ const publicChannel = () => {
 describe('T13: stopListening / stopListeningToAll must only remove what was registered (Pusher parity)', () => {
     test('T13a stopListening(event, cbNeverRegistered) leaves other listeners of that event alone', () => {
         const { echoChannel, deliver } = publicChannel();
-        const a1 = jest.fn();
-        const a2 = jest.fn();
+        const a1 = vi.fn();
+        const a2 = vi.fn();
         echoChannel.listen('A', a1).listen('A', a2);
         echoChannel.stopListening('A', () => undefined);
         deliver('A');
@@ -61,8 +62,8 @@ describe('T13: stopListening / stopListeningToAll must only remove what was regi
 
     test('T13b calling stopListening(event, cb) twice does not remove other listeners', () => {
         const { echoChannel, deliver } = publicChannel();
-        const a1 = jest.fn();
-        const a2 = jest.fn();
+        const a1 = vi.fn();
+        const a2 = vi.fn();
         echoChannel.listen('A', a1).listen('A', a2);
         echoChannel.stopListening('A', a1);
         echoChannel.stopListening('A', a1); // e.g. a component cleanup that runs twice
@@ -73,7 +74,7 @@ describe('T13: stopListening / stopListeningToAll must only remove what was regi
 
     test('T13c stopListeningToAll(cbNeverRegistered) does not wipe every listen() listener', () => {
         const { echoChannel, deliver } = publicChannel();
-        const b = jest.fn();
+        const b = vi.fn();
         echoChannel.listen('B', b);
         echoChannel.stopListeningToAll(() => undefined);
         deliver('B');
@@ -82,7 +83,7 @@ describe('T13: stopListening / stopListeningToAll must only remove what was regi
 
     test('T13d one callback on two events: stopListening(X, cb) stops X only', () => {
         const { echoChannel, deliver } = publicChannel();
-        const shared = jest.fn();
+        const shared = vi.fn();
         echoChannel.listen('X', shared).listen('Y', shared);
         echoChannel.stopListening('X', shared);
         deliver('X');
@@ -93,7 +94,7 @@ describe('T13: stopListening / stopListeningToAll must only remove what was regi
 
     test('T13e the same callback registered twice on one event is removed by stopListening(event, cb)', () => {
         const { echoChannel, deliver } = publicChannel();
-        const dupe = jest.fn();
+        const dupe = vi.fn();
         echoChannel.listen('D', dupe).listen('D', dupe);
         echoChannel.stopListening('D', dupe);
         deliver('D');
@@ -102,8 +103,8 @@ describe('T13: stopListening / stopListeningToAll must only remove what was regi
 
     test('T13f stopListeningToAll() removes listenToAll() listeners only, not listen() ones (PusherChannel uses unbind_global)', () => {
         const { echoChannel, deliver } = publicChannel();
-        const a = jest.fn();
-        const all = jest.fn();
+        const a = vi.fn();
+        const all = vi.fn();
         echoChannel.listen('A', a).listenToAll(all);
         echoChannel.stopListeningToAll();
         deliver('A');
@@ -113,8 +114,8 @@ describe('T13: stopListening / stopListeningToAll must only remove what was regi
 
     test('stopListening(event, cb) for a registered cb removes exactly that listener (contract)', () => {
         const { echoChannel, deliver } = publicChannel();
-        const a1 = jest.fn();
-        const a2 = jest.fn();
+        const a1 = vi.fn();
+        const a2 = vi.fn();
         echoChannel.listen('A', a1).listen('A', a2);
         echoChannel.stopListening('A', a1);
         deliver('A');
@@ -128,7 +129,7 @@ describe('T14: listenToAll with namespace: false', () => {
         const ably = makeFakeAbly();
         const echoChannel = new AblyChannel(ably, 'public:n', { namespace: false });
         const fake = ably.channels.get('public:n');
-        const cb = jest.fn();
+        const cb = vi.fn();
         echoChannel.listenToAll(cb);
         fake.messages.emit('MyEvent', { name: 'MyEvent', data: { v: 1 } });
         expect(fake.messages.listenerErrors).toEqual([]); // before the T14 fix: TypeError: this.options.namespace.replace is not a function
@@ -172,7 +173,7 @@ describe('documented parity with 1.0.6 and Pusher', () => {
         const echoChannel = new AblyChannel(ably, 'public:s', ECHO_OPTIONS);
         const fake = ably.channels.get('public:s');
         fake.transition('attached');
-        const cb = jest.fn();
+        const cb = vi.fn();
         echoChannel.subscribed(cb);
         await settle();
         expect(cb).not.toHaveBeenCalled();
@@ -212,7 +213,7 @@ class FakeRealtimeChannel {
     presence: any;
     constructor(name: string) {
         this.name = name;
-        this.presence = { unsubscribe: jest.fn(), leave: jest.fn(() => Promise.resolve()), enter: jest.fn(() => Promise.resolve()) };
+        this.presence = { unsubscribe: vi.fn(), leave: vi.fn(() => Promise.resolve()), enter: vi.fn(() => Promise.resolve()) };
     }
     on(...a: any[]) {
         this.listeners.push(a[a.length - 1]);
@@ -246,11 +247,11 @@ describe('T16 / P1-fix review: patched _attach', () => {
         const channels: Record<string, FakeRealtimeChannel> = {};
         const client: any = {
             channels: { get: (n: string) => (channels[n] = channels[n] || Object.assign(new FakeRealtimeChannel(n), { client })) },
-            getTimestamp: jest.fn(() => Promise.resolve(Date.now())),
+            getTimestamp: vi.fn(() => Promise.resolve(Date.now())),
             getTimestampUsingOffset: () => Date.now(),
-            auth: { tokenDetails: null, authorize: jest.fn((_, o) => Promise.resolve(o.token)), clientId: 'user1' },
-            connection: { on: jest.fn(), off: jest.fn() },
-            connect: jest.fn(),
+            auth: { tokenDetails: null, authorize: vi.fn((_, o) => Promise.resolve(o.token)), clientId: 'user1' },
+            connection: { on: vi.fn(), off: vi.fn() },
+            connect: vi.fn(),
         };
         const connector: any = { ably: client, channels: {} };
         const auth = new AblyAuth(connector, { authEndpoint: 'http://localhost/broadcasting/auth', auth: { headers: {} }, requestTokenFn });
@@ -295,7 +296,7 @@ describe('T16 / P1-fix review: patched _attach', () => {
             done(null);
             done(new Error('late error'));
         });
-        const cb = jest.fn();
+        const cb = vi.fn();
         ch._attach(false, null, cb);
         expect(cb.mock.calls).toEqual([[null]]);
     });
@@ -323,7 +324,7 @@ describe('T16 / P1-fix review: patched _attach', () => {
         first.unsubscribe();
         const second = new AblyPrivateChannel(client, 'private:rejoin', ECHO_OPTIONS, auth);
         connector.channels['private:rejoin'] = second;
-        const subscribed = jest.fn();
+        const subscribed = vi.fn();
         second.subscribed(subscribed);
         await wait(150);
         const ch: any = client.channels.get('private:rejoin');

@@ -1,3 +1,4 @@
+import { describe, test, expect, afterEach } from "vite-plus/test";
 import { fromBase64UrlEncoded, fullUrl, parseJwt, toBase64UrlEncoded, toTokenDetails } from '../../src/channel/ably/utils';
 
 describe('Utils', () => {

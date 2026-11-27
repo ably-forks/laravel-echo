@@ -1,3 +1,5 @@
+import { vi, describe, test, expect, beforeEach, afterEach } from "vite-plus/test";
+import type { Mock } from "vite-plus/test";
 /**
  * Callback-style parity for Echo's public API now that ably calls are promise based.
  *
@@ -20,7 +22,7 @@ type Op = {
     name: string;
     make: () => { echoChannel: any; fake: any };
     call: (echoChannel: any, cb?: Function) => any;
-    fakeFn: (fake: any) => jest.Mock;
+    fakeFn: (fake: any) => Mock;
 };
 
 const presence = () => {
@@ -49,7 +51,7 @@ afterEach(() => unhandled.stop());
 describe.each(OPS)('$name callback parity', (op) => {
     test('success: callback called once with null', async () => {
         const { echoChannel } = op.make();
-        const cb = jest.fn();
+        const cb = vi.fn();
         op.call(echoChannel, cb);
         await settle();
         expect(cb.mock.calls).toEqual([[null]]);
@@ -59,7 +61,7 @@ describe.each(OPS)('$name callback parity', (op) => {
         const { echoChannel, fake } = op.make();
         const err = ablyError();
         op.fakeFn(fake).mockImplementationOnce(() => Promise.reject(err));
-        const cb = jest.fn();
+        const cb = vi.fn();
         op.call(echoChannel, cb);
         await settle();
         expect(cb.mock.calls).toEqual([[err]]);
@@ -84,7 +86,7 @@ describe.each(OPS)('$name callback parity', (op) => {
 
     test('success + callback throws: callback NOT re-invoked with its own exception', async () => {
         const { echoChannel } = op.make();
-        const cb = jest.fn(() => {
+        const cb = vi.fn(() => {
             throw new Error('user bug');
         });
         op.call(echoChannel, cb);
@@ -127,7 +129,7 @@ describe('no callback: ably failure is routed to error() listeners (since the ab
     test.each(OPS)('$name', async (op) => {
         const { echoChannel, fake } = op.make();
         const err = ablyError();
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         echoChannel.error(errorListener);
         op.fakeFn(fake).mockImplementationOnce(() => Promise.reject(err));
         op.call(echoChannel, undefined);
@@ -146,7 +148,7 @@ describe('here() parity', () => {
     test('member-list change: callback(members data, null) once', async () => {
         const { echoChannel, fake, emitEnter } = setup();
         fake.presence.get.mockResolvedValue([{ data: { id: 1 } }, { data: { id: 2 } }]);
-        const cb = jest.fn();
+        const cb = vi.fn();
         echoChannel.here(cb);
         emitEnter();
         await settle();
@@ -157,7 +159,7 @@ describe('here() parity', () => {
         const { echoChannel, fake, emitEnter } = setup();
         const err = ablyError('get failed', 91000);
         fake.presence.get.mockRejectedValue(err);
-        const cb = jest.fn();
+        const cb = vi.fn();
         echoChannel.here(cb);
         emitEnter();
         await settle();
@@ -167,7 +169,7 @@ describe('here() parity', () => {
     test('callback throws on success: NOT re-invoked with ([], its own exception)', async () => {
         const { echoChannel, fake, emitEnter } = setup();
         fake.presence.get.mockResolvedValue([{ data: { id: 1 } }]);
-        const cb = jest.fn(() => {
+        const cb = vi.fn(() => {
             throw new Error('user bug');
         });
         echoChannel.here(cb);
@@ -191,11 +193,11 @@ describe('here() parity', () => {
 describe('joining()/leaving()/listen() callbacks', () => {
     test('joining/leaving pass (data, metadata without data); a throwing callback does not stop other ably listeners', async () => {
         const { echoChannel, fake } = presence();
-        const joined = jest.fn(() => {
+        const joined = vi.fn(() => {
             throw new Error('user bug');
         });
-        const left = jest.fn();
-        const other = jest.fn();
+        const left = vi.fn();
+        const other = vi.fn();
         echoChannel.joining(joined).leaving(left);
         fake.presence.emitter.on('enter', other);
         fake.presence.emitter.emit('enter', { data: { id: 2 }, clientId: 'u2' });
@@ -209,7 +211,7 @@ describe('joining()/leaving()/listen() callbacks', () => {
 
     test('listen() callback gets (data, metadata) and stopListening(event, cb) removes exactly that wrapper', async () => {
         const { echoChannel, fake } = priv();
-        const cb = jest.fn();
+        const cb = vi.fn();
         echoChannel.listen('Foo', cb);
         fake.messages.emit('App\\Events\\Foo', { name: 'App\\Events\\Foo', data: 'x', id: 'm1' });
         echoChannel.stopListening('Foo', cb);
@@ -224,7 +226,7 @@ describe('presence channel lifecycle', () => {
         echoChannel.presenceData = { id: 1 };
         const err = ablyError('enter refused');
         fake.presence.enter.mockImplementationOnce(() => Promise.reject(err));
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         echoChannel.error(errorListener);
         fake.transition('attached');
         await settle();
@@ -236,7 +238,7 @@ describe('presence channel lifecycle', () => {
         const { echoChannel, fake } = presence();
         fake.presence.leave.mockRejectedValue(ablyError('leave failed'));
         fake.detach.mockRejectedValue(ablyError('detach failed'));
-        const errorListener = jest.fn();
+        const errorListener = vi.fn();
         echoChannel.error(errorListener);
         echoChannel.unsubscribe();
         await settle();

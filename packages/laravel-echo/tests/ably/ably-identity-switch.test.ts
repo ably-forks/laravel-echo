@@ -1,3 +1,4 @@
+import { vi, describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from "vite-plus/test";
 import { setup, tearDown } from './setup/sandbox';
 import Echo from '../../src/echo';
 import { MockAuthServer } from './setup/mock-auth-server';
@@ -6,7 +7,7 @@ import { createClient } from '@ably/pubsub-device';
 import waitForExpect from 'wait-for-expect';
 import { trackUnhandledRejections } from '../parity/fake-ably';
 
-jest.setTimeout(45000);
+vi.setConfig({ testTimeout: 45000, hookTimeout: 45000 });
 
 /**
  * Identity switches inside one page (guest -> user, user -> user, user -> guest, null -> user -> null) against the
@@ -106,7 +107,7 @@ describe('AblyIdentitySwitch', () => {
 
         mockAuthServer.clientId = 'user1';
         const privateChannel = echo.private('t2') as AblyPrivateChannel;
-        const errorSpy = jest.fn(); // E3: the transient 40102 of the switch is suppressed on both channels
+        const errorSpy = vi.fn(); // E3: the transient 40102 of the switch is suppressed on both channels
         publicChannel.error(errorSpy);
         privateChannel.error(errorSpy);
         await new Promise((resolve) => privateChannel.subscribed(resolve));
@@ -148,7 +149,7 @@ describe('AblyIdentitySwitch', () => {
         // Per channel: the number of 'attaching' state changes, observable as one ATTACH per channel per connection
         const publicStates = trackStates(publicChannel.channel);
         const privateStates = trackStates(privateChannel.channel);
-        const errorSpy = jest.fn();
+        const errorSpy = vi.fn();
         publicChannel.error(errorSpy);
         privateChannel.error(errorSpy);
 
@@ -225,7 +226,7 @@ describe('AblyIdentitySwitch', () => {
 
         mockAuthServer.clientId = 'user1';
         const privateChannel = echo.private('t5') as AblyPrivateChannel;
-        const errorSpy = jest.fn();
+        const errorSpy = vi.fn();
         privateChannel.error(errorSpy);
         publicChannel.error(errorSpy);
         await new Promise((resolve) => privateChannel.subscribed(resolve));

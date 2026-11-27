@@ -1,3 +1,4 @@
+import { vi, describe, test, expect } from "vite-plus/test";
 /**
  * R15 / R26 / single install: smoke-test the *built* bundles that users ship. Requires `npm run build` first (CI runs
  * it before this suite). Runs dist/echo.iife.js in a browser-like vm context: it bundles its own @ably/pubsub-device,
@@ -38,7 +39,7 @@ describe('built bundles', () => {
     const cdn = read('node_modules/@ably/pubsub-device/dist/cdn/ably.min.js');
 
     test('IIFE alone is self-contained: no Ably global needed, none defined, no warning', () => {
-        const warn = jest.fn();
+        const warn = vi.fn();
         const ctx = browserContext(warn);
         vm.runInContext(iife, ctx);
         const echo = vm.runInContext(newEcho, ctx);
@@ -49,7 +50,7 @@ describe('built bundles', () => {
     });
 
     test('IIFE + v3 CDN bundle and the old README alias (window.Ably = AblyPubSub): the globals are ignored, one warning', () => {
-        const warn = jest.fn();
+        const warn = vi.fn();
         const ctx = browserContext(warn);
         vm.runInContext(cdn, ctx);
         // the CDN exports are getters, so count createClient calls through a copy of the global

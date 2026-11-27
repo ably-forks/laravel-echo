@@ -1,3 +1,4 @@
+import { describe, test, expect, beforeAll, afterAll } from "vite-plus/test";
 /**
  * R16: assert the real Ably-Agent header (not device internals or the private httpRequester): it must carry
  * laravel-echo/<version> and the ably-pubsub-device declaration that drives MAU billing. R14: LIB_VERSION guard.

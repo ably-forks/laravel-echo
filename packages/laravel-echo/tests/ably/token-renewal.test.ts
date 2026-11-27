@@ -1,3 +1,4 @@
+import { vi, describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from "vite-plus/test";
 /**
  * Connection token renewal with the fixed laravel-broadcaster (MockAuthServer renewalMode 'reverify', the default):
  * a renewal request ({channel_name: null, token: <valid token>}) gets a fresh iat/exp, with the public claims plus the
@@ -21,7 +22,7 @@ const TOKEN_EXPIRY_S = 60; // >= 30, see above
 const RENEWALS = 4; // observe several renewals
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-jest.setTimeout(240000);
+vi.setConfig({ testTimeout: 240000, hookTimeout: 240000 });
 describe('Token renewal (reverify)', () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;

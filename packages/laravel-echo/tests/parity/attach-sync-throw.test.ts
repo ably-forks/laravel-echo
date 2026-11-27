@@ -1,3 +1,4 @@
+import { test, expect } from "vite-plus/test";
 /**
  * Patched _attach (beforeChannelAttach): an exception thrown synchronously by the library's own attach, after the
  * authorizer already called back (public channel or cached token) or after an asynchronous authorization, must

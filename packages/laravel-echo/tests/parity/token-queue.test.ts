@@ -1,3 +1,4 @@
+import { vi, describe, test, expect } from "vite-plus/test";
 /**
  * SequentialAuthTokenRequestExecuter / TaskQueue: the promise bridge every channel auth and every connection
  * token renewal (authCallback) goes through.
@@ -10,7 +11,7 @@ describe('SequentialAuthTokenRequestExecuter', () => {
         const seen: any[] = [];
         let active = 0;
         let maxActive = 0;
-        const fn = jest.fn(async (channel, token) => {
+        const fn = vi.fn(async (channel, token) => {
             active++;
             maxActive = Math.max(maxActive, active);
             seen.push([channel, token]);
@@ -30,7 +31,7 @@ describe('SequentialAuthTokenRequestExecuter', () => {
     });
 
     test('requestTokenFn throwing synchronously rejects that request and does not block the queue', async () => {
-        const fn = jest
+        const fn = vi
             .fn()
             .mockImplementationOnce(() => {
                 throw new Error('sync throw');
@@ -47,7 +48,7 @@ describe('SequentialAuthTokenRequestExecuter', () => {
     });
 
     test('a rejected request does not block later queued requests', async () => {
-        const fn = jest
+        const fn = vi
             .fn()
             .mockRejectedValueOnce(new Error('first failed'))
             .mockResolvedValueOnce({ token: 't2' });
@@ -61,15 +62,15 @@ describe('SequentialAuthTokenRequestExecuter', () => {
     test('requestTokenFn resolving without a token string rejects, and does not overwrite the cached token', async () => {
         // T7: a custom requestTokenFn result must be validated before caching; otherwise the executer caches `undefined`
         // and callers later fail in parseJwt with an opaque TypeError.
-        const fn = jest.fn().mockResolvedValueOnce({}).mockResolvedValueOnce({ token: 't2' });
+        const fn = vi.fn().mockResolvedValueOnce({}).mockResolvedValueOnce({ token: 't2' });
         const ex = new SequentialAuthTokenRequestExecuter('t0', fn);
         await expect(ex.request('a')).rejects.toThrow(/token/);
         expect(ex.cachedToken).toBe('t0');
     });
     test('a requestTokenFn that never settles does not block every later token request forever', async () => {
-        jest.useFakeTimers();
+        vi.useFakeTimers();
         try {
-            const fn = jest
+            const fn = vi
                 .fn()
                 .mockImplementationOnce(() => new Promise(() => undefined)) // hung custom requestTokenFn
                 .mockResolvedValueOnce({ token: 't2' });
@@ -81,12 +82,12 @@ describe('SequentialAuthTokenRequestExecuter', () => {
                 () => (settled = true)
             );
             for (let i = 0; i < 5; i++) {
-                jest.advanceTimersByTime(60_000);
+                vi.advanceTimersByTime(60_000);
                 for (let j = 0; j < 20; j++) await Promise.resolve();
             }
             expect(settled).toBe(true);
         } finally {
-            jest.useRealTimers();
+            vi.useRealTimers();
         }
     });
 

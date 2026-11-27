@@ -1,3 +1,4 @@
+import { vi, describe, test, expect } from "vite-plus/test";
 /**
  * The pre-attach authorize hook is per client (review P2): two Echo clients of one ably build each use their own
  * authorizer, and a client Echo doesn't own attaches through ably's original _attach.
@@ -36,7 +37,7 @@ const makeBuild = () => {
 
 const attach = (client: any, name: string) => {
     const ch = client.channels.get(name);
-    const cb = jest.fn();
+    const cb = vi.fn();
     ch._attach(false, null, cb);
     return { ch, cb };
 };
@@ -47,8 +48,8 @@ describe('P2 pre-attach authorize hook per client', () => {
     test('two Echo clients of one build each call their own authorizer', () => {
         const echoA = build.createClient();
         const echoB = build.createClient();
-        const authorizeA = jest.fn((_c, done) => done(null));
-        const authorizeB = jest.fn((_c, done) => done(null));
+        const authorizeA = vi.fn((_c, done) => done(null));
+        const authorizeB = vi.fn((_c, done) => done(null));
         beforeChannelAttach(echoA, authorizeA);
         beforeChannelAttach(echoB, authorizeB);
         const a = attach(echoA, 'private:a');
@@ -62,7 +63,7 @@ describe('P2 pre-attach authorize hook per client', () => {
 
     test('a client Echo does not own attaches through the original _attach, without authorize', () => {
         const echo = build.createClient();
-        const authorize = jest.fn((_c, done) => done(null));
+        const authorize = vi.fn((_c, done) => done(null));
         beforeChannelAttach(echo, authorize);
         const other = build.createClient(); // e.g. the app's own createClient() for LiveObjects
         const { ch, cb } = attach(other, 'private:not-echo');
@@ -97,7 +98,7 @@ describe('P2 pre-attach authorize hook per client', () => {
 
     test('the prototype is patched once: repeated installs do not wrap _attach twice', () => {
         const echo = build.createClient();
-        const authorize = jest.fn((_c, done) => done(null));
+        const authorize = vi.fn((_c, done) => done(null));
         beforeChannelAttach(echo, authorize);
         beforeChannelAttach(echo, authorize);
         const { ch } = attach(echo, 'private:once');
@@ -108,7 +109,7 @@ describe('P2 pre-attach authorize hook per client', () => {
     test('another ably build (its own RealtimeChannel class) is patched independently', () => {
         const other = makeBuild();
         const echo = other.createClient();
-        const authorize = jest.fn((_c, done) => done(null));
+        const authorize = vi.fn((_c, done) => done(null));
         beforeChannelAttach(echo, authorize);
         const { ch } = attach(echo, 'private:other-build');
         expect(authorize).toHaveBeenCalledTimes(1);
