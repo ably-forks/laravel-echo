@@ -5,6 +5,7 @@
  * Ably options of the core are accepted, and echo() exposes the core's Echo.onConnectionChange (P-03) and
  * visibility-aware leaveChannel (P-04).
  */
+/* oxlint-disable no-console -- the README's usage logs the payloads */
 import {
     configureEcho,
     echo,
@@ -31,5 +32,10 @@ echo().leaveChannel("orders", "private");
 const fullName: string = echo().connectorChannelName("orders", "presence");
 const ablyEcho = echo<"ably">();
 ablyEcho.private("orders").listen(".OrderShipped", () => {});
-const current: ConnectionStatus = useConnectionStatus();
-void [fullName, current];
+function StatusText(): string {
+    const current: ConnectionStatus = useConnectionStatus();
+
+    return current;
+}
+
+void [fullName, StatusText];

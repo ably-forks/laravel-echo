@@ -5,6 +5,7 @@
  * Ably options of the core are accepted, and echo() exposes the core's Echo.onConnectionChange (P-03) and
  * visibility-aware leaveChannel (P-04).
  */
+/* oxlint-disable no-console -- the README's usage logs the payloads */
 import {
     configureEcho,
     echo,

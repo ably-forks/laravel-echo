@@ -9,6 +9,7 @@
  * `pnpm run build && pnpm run test:compat` type-checks it: tests/compat/tsconfig.json maps `@laravel/echo-react`
  * to dist/index.d.ts. It is not a Vitest test file and is not published (`files: ["dist"]`).
  */
+/* oxlint-disable no-console -- the README's usage logs the payloads */
 import {
     configureEcho,
     echo,

@@ -315,10 +315,14 @@ describe("shared adapter behaviour (fork)", () => {
                 instance.connector.onConnectionChange,
             ).not.toHaveBeenCalled();
 
-            act(() => instance.__swapConnector("connected"));
+            act(() => {
+                instance.__swapConnector("connected");
+            });
             expect(result.current).toBe("connected");
 
-            act(() => instance.__swapConnector("reconnecting"));
+            act(() => {
+                instance.__swapConnector("reconnecting");
+            });
             expect(result.current).toBe("reconnecting");
 
             unmount();
@@ -338,10 +342,14 @@ describe("shared adapter behaviour (fork)", () => {
                 instance.connector.onConnectionChange,
             ).not.toHaveBeenCalled();
 
-            act(() => instance.__swapConnector("connected", "socket-a"));
+            act(() => {
+                instance.__swapConnector("connected", "socket-a");
+            });
             expect(result.current).toBe("socket-a");
 
-            act(() => instance.__swapConnector("connected", "socket-b"));
+            act(() => {
+                instance.__swapConnector("connected", "socket-b");
+            });
             expect(result.current).toBe("socket-b");
         });
     });
