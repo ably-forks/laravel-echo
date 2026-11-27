@@ -192,6 +192,20 @@ describe("8: types", () => {
         echo.disconnect();
     });
 
+    test("P07-01: echo.options.broadcaster reads non-optional, as upstream; the EchoOptions alias stays optional", () => {
+        const echo = new Echo({ ...offline });
+        expectTypeOf(echo.options.broadcaster).toEqualTypeOf<"ably">();
+        expectTypeOf(
+            new Echo({ broadcaster: "null", withoutInterceptors: true }).options
+                .broadcaster,
+        ).toEqualTypeOf<"null">();
+        expectTypeOf<EchoOptions<"ably">["broadcaster"]>().toEqualTypeOf<
+            "ably" | undefined
+        >(); // residual: a type-level read of the alias (the write side is additive)
+        expect(echo.options.broadcaster).toBe("ably");
+        echo.disconnect();
+    });
+
     test("an explicit broadcaster still infers its driver", () => {
         expectTypeOf(
             new Echo({ broadcaster: "null", withoutInterceptors: true }),

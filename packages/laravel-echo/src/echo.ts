@@ -59,9 +59,11 @@ export default class Echo<T extends keyof Broadcaster = "ably"> {
     connector: Broadcaster[Exclude<T, "function">]["connector"];
 
     /**
-     * The Echo options.
+     * The Echo options. `broadcaster` is always set here (the caller's, or the `"ably"` default), so readers keep
+     * upstream's non-optional type even though EchoOptions accepts options without it (fork, P-02, P07-01).
+     * `& { broadcaster: {} }` is NonNullable applied per driver, which keeps `broadcaster` a discriminant.
      */
-    options: EchoOptions<T>;
+    options: EchoOptions<T> & { broadcaster: {} };
 
     /**
      * The Echo.onConnectionChange() callbacks (fork-only; provisional: P-03, option a).
@@ -89,7 +91,7 @@ export default class Echo<T extends keyof Broadcaster = "ably"> {
             broadcaster === options.broadcaster
                 ? options
                 : { ...options, broadcaster }
-        ) as EchoOptions<T>;
+        ) as this["options"];
         this.connect();
 
         if (!this.options.withoutInterceptors) {

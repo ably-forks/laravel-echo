@@ -10,6 +10,7 @@ import Echo, {
     Connector,
     EventFormatter,
     type AblyOptions,
+    type BroadcastDriver,
     type Broadcaster,
     type ChannelVisibility,
     type ConnectionStatus,
@@ -59,6 +60,11 @@ const optionsWithoutBroadcaster: EchoOptions<"ably"> = {
     authEndpoint: "/broadcasting/auth",
 };
 const fromOptions: Echo<"ably"> = new Echo(optionsWithoutBroadcaster);
+// readers keep upstream's type: echo.options.broadcaster is never undefined (P07-01; it is always set at runtime)
+const readDriver: BroadcastDriver = echo.options.broadcaster;
+const readDefaulted: "ably" = byDefault.options.broadcaster;
+const nullEcho = new Echo({ broadcaster: "null" });
+const readNull: "null" = nullEcho.options.broadcaster;
 
 const connector: AblyConnector = echo.connector;
 const sameConnector: AblyConnector = inferred.connector;
@@ -101,6 +107,9 @@ const encrypted: never = echo.encryptedPrivate("secret");
 new EventFormatter("App.Events").format("OrderShipped");
 
 void [
+    readDriver,
+    readDefaulted,
+    readNull,
     inferredAsAbly,
     defaultTypeArgument,
     defaultConnector,
