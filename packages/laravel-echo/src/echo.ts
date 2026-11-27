@@ -1,5 +1,8 @@
 import type { InternalAxiosRequestConfig } from "axios";
 import {
+    AblyChannel,
+    AblyPresenceChannel,
+    AblyPrivateChannel,
     Channel,
     MercureChannel,
     MercureEncryptedPrivateChannel,
@@ -19,6 +22,7 @@ import {
     type PresenceChannel,
 } from "./channel";
 import {
+    AblyConnector,
     Connector,
     MercureConnector,
     NullConnector,
@@ -79,19 +83,19 @@ export default class Echo<T extends keyof Broadcaster> {
      * Create a new connection.
      */
     connect(): void {
-        if (this.options.broadcaster === "reverb") {
+        if (this.connector instanceof AblyConnector) {
+            this.connector.releaseClient(); // Echo.connect() called again replaces the connector
+        }
+
+        if (this.options.broadcaster === "ably") {
+            this.connector = new AblyConnector(this.options as any) as any; // typed properly in Phase 03 (step 3.1 removes the casts)
+        } else if (this.options.broadcaster === "reverb") {
             this.connector = new PusherConnector<"reverb">({
                 ...this.options,
                 cluster: "",
             });
         } else if (this.options.broadcaster === "pusher") {
             this.connector = new PusherConnector<"pusher">(this.options);
-        } else if (this.options.broadcaster === "ably") {
-            this.connector = new PusherConnector<"pusher">({
-                ...this.options,
-                cluster: "",
-                broadcaster: "pusher",
-            });
         } else if (this.options.broadcaster === "socket.io") {
             this.connector = new SocketIoConnector(this.options);
         } else if (this.options.broadcaster === "mercure") {
@@ -192,6 +196,7 @@ export default class Echo<T extends keyof Broadcaster> {
 
     /**
      * Get the Socket ID for the connection.
+     * For ably, returns base64 url encoded json with keys {connectionKey, clientId}
      */
     socketId(): string | undefined {
         return this.connector.socketId();
@@ -327,12 +332,12 @@ export type Broadcaster = {
         options: GenericOptions<"pusher"> & Partial<PusherOptions<"pusher">>;
     };
     ably: {
-        connector: PusherConnector<"pusher">;
-        public: PusherChannel<"pusher">;
-        private: PusherPrivateChannel<"pusher">;
-        encrypted: PusherEncryptedPrivateChannel<"pusher">;
-        presence: PusherPresenceChannel<"pusher">;
-        options: GenericOptions<"ably"> & Partial<PusherOptions<"ably">>;
+        connector: AblyConnector;
+        public: AblyChannel;
+        private: AblyPrivateChannel;
+        encrypted: never;
+        presence: AblyPresenceChannel;
+        options: GenericOptions<"ably">; // AblyOptions in Phase 03
     };
     "socket.io": {
         connector: SocketIoConnector;
