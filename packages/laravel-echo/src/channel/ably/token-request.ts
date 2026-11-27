@@ -40,7 +40,8 @@ export class SequentialAuthTokenRequestExecuter {
         tokenRequestFn: (existingToken: string | null) => Promise<AblyTokenResponse>
     ): Promise<{ token: string; info: unknown }> =>
         new Promise((resolve, reject) => {
-            this.queue.run(async () => {
+            // the task settles this promise itself and never rejects, so run()'s own promise is deliberately not awaited
+            void this.queue.run(async () => {
                 try {
                     const response = await withTimeout(
                         Promise.resolve().then(() => tokenRequestFn(this.cachedToken)),
