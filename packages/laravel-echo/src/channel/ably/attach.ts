@@ -1,4 +1,11 @@
 import { isNullOrUndefined } from './utils';
+import type { AblyRealtimeChannel } from '../../types/ably';
+
+/**
+ * The internal flags Echo keeps on an Ably channel: `authorizing` while the patched _attach waits for the pre-attach
+ * authorize, and `cancelAuthorizedAttach` when Echo left the channel meanwhile (T17).
+ */
+export type PatchedRealtimeChannel = AblyRealtimeChannel & { authorizing?: boolean; cancelAuthorizedAttach?: boolean };
 
 /** Echo's authorize function per ably client: only clients Echo created go through the pre-attach authorize. */
 const authorizers = new WeakMap<object, Function>();

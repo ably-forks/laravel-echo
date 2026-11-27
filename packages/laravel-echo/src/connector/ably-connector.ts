@@ -266,7 +266,7 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
     /**
      * Listen for an event on a channel instance.
      */
-    listen(name: string, event: string, callback: Function): AblyChannel {
+    listen(name: string, event: string, callback: CallableFunction): AblyChannel {
         return this.channel(name).listen(event, callback);
     }
 

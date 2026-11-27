@@ -1,7 +1,11 @@
-import type { AblyRealtime, AblyRealtimeChannel } from '../types/ably';
+import type { AblyRealtime, AblyRealtimeChannel, ErrorInfo, InboundMessage } from '../types/ably';
 import { EventFormatter } from '../util';
 import { Channel } from './channel';
+import type { PatchedRealtimeChannel } from './ably/attach';
 import { safeInvoke, isSameError, consumeSwitchError, settleRenewalReattach } from './ably/utils';
+
+/** The listener Echo registers with Ably for a user callback (listen() / listenToAll()). */
+export type AblyMessageListener = (message: InboundMessage) => void;
 
 /**
  * This class represents an Ably channel.
@@ -18,11 +22,6 @@ export class AblyChannel extends Channel {
     name: string;
 
     /**
-     * Channel options.
-     */
-    options: any;
-
-    /**
      * The event formatter.
      */
     eventFormatter: EventFormatter;
@@ -35,40 +34,41 @@ export class AblyChannel extends Channel {
     /**
      * An array containing all registered subscribed listeners.
      */
-    subscribedListeners: Function[];
+    subscribedListeners: CallableFunction[];
 
     /**
      * An array containing all registered error listeners.
      */
-    errorListeners: Function[];
+    errorListeners: CallableFunction[];
 
     /**
      * Channel event subscribe callbacks, maps callback to modified implementation.
      */
-    callbacks: Map<Function, Function>;
+    callbacks: Map<CallableFunction, AblyMessageListener>;
 
     /**
      * The reason of the last channel state change reported to error() listeners (cleared on attach), how many such
      * reasons were reported so far, and the last error reported to them. _alertSubscribeError uses them so one
      * failure is reported once.
      */
-    lastStateChangeReason: any = null;
+    lastStateChangeReason: ErrorInfo | null = null;
     stateChangeReasonCount = 0;
-    lastAlertedError: any = null;
+    lastAlertedError: unknown = null;
 
     /**
      * listen() wrappers, per formatted event name, then per user callback (a callback may be registered more than once).
      */
-    eventCallbacks: Map<string, Map<Function, Function[]>> = new Map();
+    eventCallbacks: Map<string, Map<CallableFunction, AblyMessageListener[]>> = new Map();
 
     /**
      * listenToAll() wrappers per user callback.
      */
-    allCallbacks: Map<Function, Function[]> = new Map();
+    allCallbacks: Map<CallableFunction, AblyMessageListener[]> = new Map();
 
     /**
      * Create a new class instance.
      */
+    // any: the connector passes its Ably client and options; the parity tests pass fakes (SDK boundary)
     constructor(ably: any, name: string, options: any, autoSubscribe = true) {
         super();
 
@@ -79,7 +79,7 @@ export class AblyChannel extends Channel {
         this.subscribedListeners = [];
         this.errorListeners = [];
         this.channel = ably.channels.get(name);
-        (this.channel as any).cancelAuthorizedAttach = false; // T17: re-joined before a cancelled authorization finished
+        (this.channel as PatchedRealtimeChannel).cancelAuthorizedAttach = false; // T17: re-joined before a cancelled authorization finished
         this.callbacks = new Map();
 
         if (autoSubscribe) {
@@ -90,7 +90,7 @@ export class AblyChannel extends Channel {
     /**
      * Subscribe to an Ably channel.
      */
-    subscribe(): any {
+    subscribe(): void {
         this.channel.on((stateChange) => {
             const { previous, current, reason } = stateChange;
             if (previous !== 'attached' && current == 'attached') {
@@ -115,9 +115,10 @@ export class AblyChannel extends Channel {
         this.callbacks.clear();
         this.eventCallbacks.clear();
         this.allCallbacks.clear();
-        if ((this.channel as any).authorizing) {
+        const channel = this.channel as PatchedRealtimeChannel;
+        if (channel.authorizing) {
             // T17: the patched _attach must not attach the channel once the pending authorization completes
-            (this.channel as any).cancelAuthorizedAttach = true;
+            channel.cancelAuthorizedAttach = true;
         }
         this.unregisterError();
         this.unregisterSubscribed();
@@ -128,45 +129,46 @@ export class AblyChannel extends Channel {
     /**
      * Listen for an event on the channel instance.
      */
-    listen(event: string, callback: Function): AblyChannel {
+    listen(event: string, callback: CallableFunction): this {
         const name = this.eventFormatter.format(event);
-        const wrapper = ({ data, ...metaData }) => callback(data, metaData);
-        const byCallback = this.eventCallbacks.get(name) ?? new Map<Function, Function[]>();
+        const wrapper: AblyMessageListener = ({ data, ...metaData }: InboundMessage) => callback(data, metaData);
+        const byCallback = this.eventCallbacks.get(name) ?? new Map<CallableFunction, AblyMessageListener[]>();
         this.eventCallbacks.set(name, byCallback);
         byCallback.set(callback, [...(byCallback.get(callback) ?? []), wrapper]);
         this.callbacks.set(callback, wrapper); // kept for backwards compatibility of the public field
-        this.channel.subscribe(name, wrapper as any).catch(this._subscribeErrorHandler());
+        this.channel.subscribe(name, wrapper).catch(this._subscribeErrorHandler());
         return this;
     }
 
     /**
      * Listen for all events on the channel instance.
      */
-    listenToAll(callback: Function): AblyChannel {
-        const wrapper = ({ name, data, ...metaData }) => {
+    listenToAll(callback: CallableFunction): this {
+        const wrapper: AblyMessageListener = ({ name, data, ...metaData }: InboundMessage) => {
             // T14: `namespace: false` is a supported Echo option (EventFormatter), so don't call .replace on it
             const namespace = this.options.namespace ? String(this.options.namespace).replace(/\./g, '\\') : '';
 
+            // `name` is optional on an Ably message: an unnamed one gives '.undefined', as with `namespace: false`
             const formattedEvent =
-                namespace && name.startsWith(namespace) ? name.substring(namespace.length + 1) : '.' + name;
+                namespace && name?.startsWith(namespace) ? name.substring(namespace.length + 1) : '.' + name;
 
             callback(formattedEvent, data, metaData);
         };
         this.allCallbacks.set(callback, [...(this.allCallbacks.get(callback) ?? []), wrapper]);
         this.callbacks.set(callback, wrapper); // kept for backwards compatibility of the public field
-        this.channel.subscribe(wrapper as any).catch(this._subscribeErrorHandler());
+        this.channel.subscribe(wrapper).catch(this._subscribeErrorHandler());
         return this;
     }
 
     /**
      * Stop listening for an event on the channel instance.
      */
-    stopListening(event: string, callback?: Function): AblyChannel {
+    stopListening(event: string, callback?: CallableFunction): this {
         const name = this.eventFormatter.format(event);
         if (callback) {
             // T13: never call channel.unsubscribe(name, undefined): ably treats it as "remove every listener for name"
             const wrappers = this.eventCallbacks.get(name)?.get(callback) ?? [];
-            wrappers.forEach((wrapper) => this.channel.unsubscribe(name, wrapper as any));
+            wrappers.forEach((wrapper) => this.channel.unsubscribe(name, wrapper));
             this.eventCallbacks.get(name)?.delete(callback);
             this.callbacks.delete(callback);
         } else {
@@ -180,11 +182,11 @@ export class AblyChannel extends Channel {
     /**
      * Stop listening for all events on the channel instance.
      */
-    stopListeningToAll(callback?: Function): AblyChannel {
+    stopListeningToAll(callback?: CallableFunction): this {
         // T13: remove only listenToAll() wrappers (PusherChannel: unbind_global), never channel.unsubscribe(undefined)
         const callbacks = callback ? [callback] : [...this.allCallbacks.keys()];
         callbacks.forEach((cb) => {
-            (this.allCallbacks.get(cb) ?? []).forEach((wrapper) => this.channel.unsubscribe(wrapper as any));
+            (this.allCallbacks.get(cb) ?? []).forEach((wrapper) => this.channel.unsubscribe(wrapper));
             this.allCallbacks.delete(cb);
             this.callbacks.delete(cb);
         });
@@ -195,7 +197,7 @@ export class AblyChannel extends Channel {
     /**
      * Register a callback to be called anytime a subscription succeeds.
      */
-    subscribed(callback: Function): AblyChannel {
+    subscribed(callback: CallableFunction): this {
         this.subscribedListeners.push(callback);
 
         return this;
@@ -204,7 +206,7 @@ export class AblyChannel extends Channel {
     /**
      * Register a callback to be called anytime a subscription error occurs.
      */
-    error(callback: Function): AblyChannel {
+    error(callback: CallableFunction): this {
         this.errorListeners.push(callback);
 
         return this;
@@ -213,9 +215,9 @@ export class AblyChannel extends Channel {
     /**
      * Unregisters given error callback from the listeners.
      * @param callback
-     * @returns AblyChannel
+     * @returns this channel
      */
-    unregisterSubscribed(callback?: Function): AblyChannel {
+    unregisterSubscribed(callback?: CallableFunction): this {
         if (callback) {
             this.subscribedListeners = this.subscribedListeners.filter((s) => s != callback);
         } else {
@@ -228,9 +230,9 @@ export class AblyChannel extends Channel {
     /**
      * Unregisters given error callback from the listeners.
      * @param callback
-     * @returns AblyChannel
+     * @returns this channel
      */
-    unregisterError(callback?: Function): AblyChannel {
+    unregisterError(callback?: CallableFunction): this {
         if (callback) {
             this.errorListeners = this.errorListeners.filter((e) => e != callback);
         } else {
@@ -240,7 +242,7 @@ export class AblyChannel extends Channel {
         return this;
     }
 
-    _alertErrorListeners = (err: any) => {
+    _alertErrorListeners = (err: unknown) => {
         if (!err) return;
         if (consumeSwitchError(this.ably, this.name, err)) return; // expected 40102 of an Echo-initiated identity switch
         this.lastAlertedError = err;
@@ -255,7 +257,7 @@ export class AblyChannel extends Channel {
      * A state change counts only if it was reported during this subscribe()'s attach attempt (after
      * `stateChangeReasonsBefore`), so an older reason with the same code and message doesn't hide a new failure.
      */
-    _alertSubscribeError = (err: any, stateChangeReasonsBefore = -1) => {
+    _alertSubscribeError = (err: unknown, stateChangeReasonsBefore = -1) => {
         const reportedByStateChange =
             this.stateChangeReasonCount > stateChangeReasonsBefore && isSameError(err, this.lastStateChangeReason);
         if (this.channel.state === 'attached' || !(reportedByStateChange || err === this.lastAlertedError)) {
@@ -268,6 +270,6 @@ export class AblyChannel extends Channel {
      */
     _subscribeErrorHandler = () => {
         const stateChangeReasonsBefore = this.stateChangeReasonCount;
-        return (err: any) => this._alertSubscribeError(err, stateChangeReasonsBefore);
+        return (err: unknown) => this._alertSubscribeError(err, stateChangeReasonsBefore);
     };
 }
