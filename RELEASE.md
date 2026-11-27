@@ -108,6 +108,7 @@ A release adapter never admits a release candidate of the core, which it was not
 - the publish order (core first, one package at a time);
 - the runner's npm version (11.5.1 or later), and that `npm publish <tarball> --provenance` with OIDC publishes with provenance. If npm rejects provenance for a tarball argument, publish from the package directory after `pnpm pack`, and compare checksums;
 - the trusted publisher setup for the three new packages (above).
+- the type resolution, in particular of the `require` (CommonJS) entry points: run [are-the-types-wrong](https://github.com/arethetypeswrong/arethetypeswrong.github.io) (`attw --pack`) on each of the four packages. One `.d.ts` serves both `import` and `require`, which TypeScript's `node16` resolution can report for a CommonJS consumer. attw is not part of CI yet; adding it to CI as a devDependency is a follow-up for the maintainers.
 
 ## If something goes wrong
 
