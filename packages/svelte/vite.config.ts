@@ -156,7 +156,26 @@ const config: UserConfig = (() => {
         },
         test: {
             globals: true,
-            environment: "jsdom",
+            projects: [
+                {
+                    extends: true,
+                    test: {
+                        name: "unit",
+                        environment: "jsdom",
+                        include: ["tests/**/*.test.ts"],
+                        exclude: ["tests/bundles/**"],
+                    },
+                },
+                {
+                    // fork: smoke tests of dist/ (ESM, .cjs and IIFE); run after the build
+                    extends: true,
+                    test: {
+                        name: "bundles",
+                        environment: "node",
+                        include: ["tests/bundles/**/*.test.ts"],
+                    },
+                },
+            ],
         },
     };
 })();
