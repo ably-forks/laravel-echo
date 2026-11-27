@@ -12,13 +12,37 @@ import {
 } from './utils';
 import { SequentialAuthTokenRequestExecuter, TOKEN_REQUEST_TIMEOUT_MS } from './token-request';
 import type { AblyChannel } from '../ably-channel';
-import { AblyConnector } from '../../connector/ably-connector';
+import type { AblyConnector, AblyOptions, AblyTokenResponse } from '../../connector/ably-connector';
 import { AblyPresenceChannel } from '../ably-presence-channel';
-import type { AblyRealtime, AuthOptions, ChannelStateChange, ClientOptions, TokenDetails } from '../../types/ably';
+import type {
+    AblyRealtime,
+    AuthOptions,
+    ChannelStateChange,
+    ClientOptions,
+    ConnectionStateChange,
+    ErrorInfo,
+    TokenDetails,
+} from '../../types/ably';
+
+/** The internals of ably's client that AblyAuth uses; none of them is in ably's public types. */
+type InternalAblyClient = AblyRealtime & {
+    getTimestamp(queryTime?: boolean): Promise<number>;
+    getTimestampUsingOffset(): number;
+    auth: AblyRealtime['auth'] & {
+        tokenDetails?: TokenDetails;
+        authorize(tokenParams: null, authOptions?: AuthOptions): Promise<TokenDetails>;
+    };
+};
+
+/** An Echo channel with the flag that stops a second 40160 re-authorize while one is in progress. */
+type ReauthorizingChannel = AblyChannel & { skipAuth?: boolean };
+
+/** Called once by tryAuthorizeOnSameConnection(): with the error, or with the new token details. */
+type AuthorizeCallback = (error: ErrorInfo | Error | null, tokenDetails: TokenDetails | null) => void;
 
 export class AblyAuth {
     authEndpoint: string;
-    authHeaders: any;
+    authHeaders: Record<string, string>;
     authRequestExecuter: SequentialAuthTokenRequestExecuter;
     ablyConnector: AblyConnector;
 
@@ -33,12 +57,13 @@ export class AblyAuth {
         authCallback: async (_, callback) => {
             const client = this.ablyClient(); // the client this token is for: Echo.connect() may replace it meanwhile
             const wasClosed = this.isClosedOrClosing(client);
-            let tokenDetails;
+            let tokenDetails: TokenDetails;
             try {
                 const { token } = await this.authRequestExecuter.request(null);
                 tokenDetails = toTokenDetails(token);
             } catch (error) {
-                callback(error, null);
+                // an ErrorInfo from httpError(), or whatever a requestTokenFn rejected with (ably reads code/message)
+                callback(error as ErrorInfo, null);
                 return;
             }
             if (this.ablyClient() !== client || (!wasClosed && this.isClosedOrClosing(client))) {
@@ -94,9 +119,10 @@ export class AblyAuth {
     };
 
     /** The connection was closed (or is closing) by the app: nothing Echo scheduled earlier may open it again. */
-    isClosedOrClosing = (client: any) => ['closing', 'closed'].includes(client?.connection?.state);
+    isClosedOrClosing = (client: AblyRealtime | undefined) =>
+        ['closing', 'closed'].includes(client?.connection?.state ?? '');
 
-    requestToken = async (channelName: string, existingToken: string) => {
+    requestToken = async (channelName: string | null, existingToken: string | null): Promise<AblyTokenResponse> => {
         let postData = JSON.stringify({ channel_name: channelName, token: existingToken });
         let postOptions = {
             uri: this.authEndpoint,
@@ -112,7 +138,7 @@ export class AblyAuth {
         return httpRequestAsync(postOptions, this.httpRequestTimeout());
     };
 
-    constructor(ablyConnector: AblyConnector, options) {
+    constructor(ablyConnector: AblyConnector, options: AblyOptions) {
         this.ablyConnector = ablyConnector;
         const {
             authEndpoint,
@@ -135,11 +161,11 @@ export class AblyAuth {
 
     httpRequestTimeout = (): number => this.ablyConnector.options?.httpRequestTimeout ?? HTTP_REQUEST_TIMEOUT_MS;
 
-    ablyClient = () => this.ablyConnector.ably as AblyRealtime | any;
+    ablyClient = () => this.ablyConnector.ably as InternalAblyClient;
 
-    existingToken = () => this.ablyClient().auth.tokenDetails as TokenDetails;
+    existingToken = () => this.ablyClient().auth.tokenDetails;
 
-    getChannel = name => this.ablyConnector.channels[name];
+    getChannel = (name: string): AblyChannel | undefined => this.ablyConnector.channels[name];
 
     enableAuthorizeBeforeChannelAttach = () => {
         const ablyClient = this.ablyClient()
@@ -203,7 +229,7 @@ export class AblyAuth {
                         );
                     });
                 })
-                .catch((err) => errorCallback(err));
+                .catch((err: ErrorInfo | Error) => errorCallback(err));
         });
     };
 
@@ -218,19 +244,23 @@ export class AblyAuth {
      * `closed`. A single connection listener is used and always removed; an exception thrown by `proceed` while waiting
      * is reported through `onAbandon` too (ably-js would only log it).
      */
-    whenConnectedOrSettled = (client: any, onAbandon: (error: any) => void, proceed: () => void) => {
+    whenConnectedOrSettled = (
+        client: AblyRealtime | undefined,
+        onAbandon: (error: ErrorInfo | Error) => void,
+        proceed: () => void
+    ) => {
         const connection = client?.connection;
-        const abandon = (state: string, reason?: any) =>
+        const abandon = (state: string, reason?: ErrorInfo) =>
             onAbandon(
                 reason ??
                     Object.assign(new Error(`laravel-echo: the connection is ${state}, the channel was not authorized`), {
                         code: 80000,
                     })
             );
-        const waitStates = ['initialized', 'connecting', 'disconnected'];
-        const abandonStates = ['failed', 'suspended', 'closing', 'closed'];
+        const waitStates: string[] = ['initialized', 'connecting', 'disconnected'];
+        const abandonStates: string[] = ['failed', 'suspended', 'closing', 'closed'];
         const state = connection?.state;
-        if (!connection || (!waitStates.includes(state) && !abandonStates.includes(state))) {
+        if (!connection || !state || (!waitStates.includes(state) && !abandonStates.includes(state))) {
             proceed();
             return;
         }
@@ -238,7 +268,7 @@ export class AblyAuth {
             abandon(state, connection.errorReason);
             return;
         }
-        const listener = (stateChange?: any) => {
+        const listener = (stateChange?: ConnectionStateChange) => {
             const current = stateChange?.current;
             if (current === 'connected') {
                 connection.off(listener);
@@ -247,9 +277,9 @@ export class AblyAuth {
                 } catch (e) {
                     // ably-js's EventEmitter only logs a listener's exception: report it to the attach, as the
                     // immediate path does (its .catch(errorCallback))
-                    onAbandon(e);
+                    onAbandon(e as Error);
                 }
-            } else if (abandonStates.includes(current)) {
+            } else if (current && abandonStates.includes(current)) {
                 connection.off(listener);
                 abandon(current, stateChange?.reason);
             } // initialized, connecting, disconnected: keep waiting
@@ -257,7 +287,8 @@ export class AblyAuth {
         connection.on(listener);
     };
 
-    clientIdSwitchListeners: { failed: (stateChange?: any) => void; connected: () => void } | null = null;
+    clientIdSwitchListeners: { failed: (stateChange?: ConnectionStateChange) => void; connected: () => void } | null =
+        null;
 
     /**
      * 40102 = the server refused a clientId change on the live connection (or ably-js refused a token for another
@@ -267,7 +298,7 @@ export class AblyAuth {
     allowReconnectOnUserLogin = () => {
         const connection = this.ablyClient().connection;
         let armed = true;
-        const failed = (stateChange?: any) => {
+        const failed = (stateChange?: ConnectionStateChange) => {
             if (stateChange?.reason?.code !== 40102) {
                 endIdentitySwitch(this.ablyClient()); // E3: a real failure ends the switch window
                 return;
@@ -310,7 +341,10 @@ export class AblyAuth {
         setTimeout(() => {
             // Echo.connect() replaced the client, or this connection failed again or was closed meanwhile: setting the
             // latch now would make the next `connected` skip the connector's re-attach
-            if (this.ablyClient() !== client || ['failed', 'closing', 'closed'].includes(client.connection?.state)) {
+            if (
+                this.ablyClient() !== client ||
+                ['failed', 'closing', 'closed'].includes(client.connection?.state ?? '')
+            ) {
                 return;
             }
             // these attaches cover this reconnect: the connector's re-attach on the next `connected` must not attach
@@ -336,14 +370,14 @@ export class AblyAuth {
         return identityChanges ? { ...this.options, token, clientId: null } : { ...this.options, token };
     };
 
-    tryAuthorizeOnSameConnection = (authOptions?: AuthOptions, callback?: (error, TokenDetails) => void) => {
+    tryAuthorizeOnSameConnection = (authOptions?: AuthOptions, callback?: AuthorizeCallback) => {
         const client = this.ablyClient();
         if (this.isClosedOrClosing(client)) {
             // a token request that finished after Echo.disconnect(): authorize() on a closed connection reconnects it
             callback?.(new Error('laravel-echo: the connection is closed'), null);
             return;
         }
-        const token = authOptions?.token as TokenDetails;
+        const token = authOptions?.token;
         // E3: a token for another identity (including null -> user) opens the switch window before authorize(), since
         // a channel's 40102 can arrive before the connection's `failed`
         if (token && typeof token === 'object' && (token.clientId ?? null) !== (client.auth.clientId ?? null)) {
@@ -352,10 +386,10 @@ export class AblyAuth {
         client.auth
             .authorize(null, authOptions)
             .then(
-                (tokenDetails) => callback?.(null, tokenDetails),
-                (err) => callback?.(err, null)
+                (tokenDetails: TokenDetails) => callback?.(null, tokenDetails),
+                (err: ErrorInfo | Error) => callback?.(err, null)
             )
-            .catch((e) => console.error('laravel-echo: unexpected error after authorize', e));
+            .catch((e: unknown) => console.error('laravel-echo: unexpected error after authorize', e));
     }
 
     onChannelFailed = (echoAblyChannel: AblyChannel) => (stateChange: ChannelStateChange) => {
@@ -365,8 +399,8 @@ export class AblyAuth {
         }
     };
 
-    handleChannelAuthError = (echoAblyChannel: AblyChannel) => {
-        if ((echoAblyChannel as any).skipAuth) {
+    handleChannelAuthError = (echoAblyChannel: ReauthorizingChannel) => {
+        if (echoAblyChannel.skipAuth) {
             return;
         }
         const channelName = echoAblyChannel.name;
@@ -376,24 +410,24 @@ export class AblyAuth {
             .then(({ token: jwtToken, info }) => {
                 this.setPresenceInfo(echoAblyChannel, info);
                 this.tryAuthorizeOnSameConnection(
-                    this.authOptionsForToken(jwtToken) as any,
+                    this.authOptionsForToken(jwtToken),
                     (err, _tokenDetails) => {
                         if (err) {
                             echoAblyChannel._alertErrorListeners(err);
                         } else {
-                            (echoAblyChannel as any).skipAuth = true;
+                            echoAblyChannel.skipAuth = true;
                             echoAblyChannel.channel.once('attached', () => {
-                                (echoAblyChannel as any).skipAuth = false;
+                                echoAblyChannel.skipAuth = false;
                             });
                             echoAblyChannel.channel.attach().catch(echoAblyChannel._alertErrorListeners);
                         }
                     }
                 );
             })
-            .catch((err) => echoAblyChannel._alertErrorListeners(err));
+            .catch((err: unknown) => echoAblyChannel._alertErrorListeners(err));
     };
 
-    setPresenceInfo = (echoAblyChannel: AblyChannel, info: any) => {
+    setPresenceInfo = (echoAblyChannel: AblyChannel | undefined, info: unknown) => {
         if (echoAblyChannel instanceof AblyPresenceChannel) {
             echoAblyChannel.presenceData = info;
         }

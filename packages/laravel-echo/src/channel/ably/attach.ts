@@ -1,5 +1,5 @@
 import { isNullOrUndefined } from './utils';
-import type { AblyRealtimeChannel } from '../../types/ably';
+import type { AblyRealtime, AblyRealtimeChannel, ErrorInfo } from '../../types/ably';
 
 /**
  * The internal flags Echo keeps on an Ably channel: `authorizing` while the patched _attach waits for the pre-attach
@@ -7,8 +7,32 @@ import type { AblyRealtimeChannel } from '../../types/ably';
  */
 export type PatchedRealtimeChannel = AblyRealtimeChannel & { authorizing?: boolean; cancelAuthorizedAttach?: boolean };
 
+/** ably's internal attach callback, which the pre-attach authorize settles: an error, or none. */
+export type AttachCallback = (err?: ErrorInfo | Error | null) => void;
+
+/** Echo's pre-attach authorize: calls `done` once, with null when the channel may attach. */
+export type ChannelAuthorizer = (channel: PatchedRealtimeChannel, done: AttachCallback) => void;
+
+/** The internals of ably's RealtimeChannel that the patch uses; none of them is in ably's public types. */
+type InternalRealtimeChannel = PatchedRealtimeChannel & {
+    client?: object;
+    _pendingAttachCbs?: (AttachCallback | undefined)[];
+};
+
+type InternalAttach = (
+    this: InternalRealtimeChannel,
+    forceReattach?: boolean,
+    attachReason?: unknown,
+    errCallback?: AttachCallback
+) => void;
+
+type InternalChannelPrototype = {
+    _attach?: InternalAttach;
+    attach?: (this: InternalRealtimeChannel, ...args: unknown[]) => unknown;
+};
+
 /** Echo's authorize function per ably client: only clients Echo created go through the pre-attach authorize. */
-const authorizers = new WeakMap<object, Function>();
+const authorizers = new WeakMap<object, ChannelAuthorizer>();
 
 /** RealtimeChannel prototypes whose _attach is patched; each ably build (node, browser, debug, ...) has its own. */
 const patchedPrototypes = new WeakSet<object>();
@@ -31,10 +55,10 @@ const PROBE_CHANNEL = 'dummy';
  * has the channel's capability, such a re-attach fails with 40160 and AblyAuth.onChannelFailed re-authorizes
  * private and presence channels.
  */
-export const beforeChannelAttach = (ablyClient, authorize: Function) => {
+export const beforeChannelAttach = (ablyClient: AblyRealtime, authorize: ChannelAuthorizer) => {
     const probeExisted = !!ablyClient.channels.all?.[PROBE_CHANNEL];
-    const probe = ablyClient.channels.get(PROBE_CHANNEL);
-    const prototype = Object.getPrototypeOf(probe);
+    const probe: InternalRealtimeChannel = ablyClient.channels.get(PROBE_CHANNEL);
+    const prototype: InternalChannelPrototype = Object.getPrototypeOf(probe);
     authorizers.set(probe.client ?? ablyClient, authorize);
     if (!probeExisted) {
         ablyClient.channels.release?.(PROBE_CHANNEL); // the probe was only needed to reach the prototype
@@ -42,13 +66,19 @@ export const beforeChannelAttach = (ablyClient, authorize: Function) => {
     if (patchedPrototypes.has(prototype)) {
         return;
     }
-    const internalAttach = prototype._attach;
-    if (isNullOrUndefined(internalAttach)) {
+    const prototypeAttach = prototype._attach;
+    if (isNullOrUndefined(prototypeAttach)) {
         console.warn('Failed to enable authorize for pre-attach, please check for right library version');
         return;
     }
-    function customInternalAttach(forceReattach, attachReason, errCallback) {
-        const authorizeChannel = authorizers.get(this.client);
+    const internalAttach: InternalAttach = prototypeAttach; // narrowed here: the function below is hoisted
+    function customInternalAttach(
+        this: InternalRealtimeChannel,
+        forceReattach?: boolean,
+        attachReason?: unknown,
+        errCallback?: AttachCallback
+    ) {
+        const authorizeChannel = this.client ? authorizers.get(this.client) : undefined;
         if (!authorizeChannel) {
             // a client Echo doesn't own (e.g. the app's own createClient() from the same build): ably's attach, unchanged
             internalAttach.call(this, forceReattach, attachReason, errCallback);
@@ -60,7 +90,7 @@ export const beforeChannelAttach = (ablyClient, authorize: Function) => {
         }
         this.authorizing = true;
         let settled = false;
-        const done = (error) => {
+        const done: AttachCallback = (error) => {
             if (settled) return; // authorizeChannel must call back once; ignore a second call
             settled = true;
             this.authorizing = false;
@@ -89,11 +119,11 @@ export const beforeChannelAttach = (ablyClient, authorize: Function) => {
                 internalAttach.call(this, forceReattach, attachReason, errCallback);
             } catch (e) {
                 if (errCallback) {
-                    errCallback(e);
+                        errCallback(e as Error); // a throw from ably's own attach: an Error
                 } else {
                     console.error(`channel ${this.name} attach error => ${e}`);
                 }
-                pending.forEach((cb) => cb?.(e));
+                pending.forEach((cb) => cb?.(e as Error));
                 return;
             }
             // while 'attaching', internalAttach only registers another once-listener; no second ATTACH is sent
@@ -101,7 +131,7 @@ export const beforeChannelAttach = (ablyClient, authorize: Function) => {
                 try {
                     internalAttach.call(this, false, attachReason, cb);
                 } catch (e) {
-                    cb?.(e);
+                    cb?.(e as Error); // a throw from ably's own attach: an Error
                 }
             });
         };
@@ -109,7 +139,7 @@ export const beforeChannelAttach = (ablyClient, authorize: Function) => {
             authorizeChannel(this, done);
         } catch (e) {
             if (settled) throw e; // thrown after done() ran (e.g. by the library's attach): surface it, as before
-            done(e); // T8: a sync throw must not leave `authorizing` stuck
+            done(e as Error); // T8: a sync throw must not leave `authorizing` stuck
         }
     }
     prototype._attach = customInternalAttach;
@@ -120,11 +150,11 @@ export const beforeChannelAttach = (ablyClient, authorize: Function) => {
     // 'detached' channel, can't raise an unhandled rejection (T18).
     const internalAttachPromise = prototype.attach;
     if (typeof internalAttachPromise === 'function') {
-        prototype.attach = function attach(...args) {
+        prototype.attach = function attach(this: InternalRealtimeChannel, ...args: unknown[]) {
             const wasAuthorizing = !!this.authorizing;
-            const result = internalAttachPromise.apply(this, args);
+            const result = internalAttachPromise.apply(this, args) as Promise<unknown> | undefined;
             const authorizing = wasAuthorizing || !!this.authorizing; // queued, or started a pending authorization
-            if (authorizing && authorizers.has(this.client) && typeof result?.catch === 'function') {
+            if (authorizing && this.client && authorizers.has(this.client) && typeof result?.catch === 'function') {
                 result.catch(() => undefined);
             }
             return result;

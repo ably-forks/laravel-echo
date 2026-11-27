@@ -172,8 +172,8 @@ export class AblyConnector extends Connector<"ably", AblyChannel, AblyPrivateCha
      * The options passed to createClient: Echo's options without the Echo-only keys (P4). `this.options` is not
      * modified, so Echo keeps reading its own settings from it.
      */
-    clientOptions(): any {
-        const clientOptions = { ...this.options };
+    clientOptions(): ClientOptions {
+        const clientOptions: Record<string, unknown> = { ...this.options };
         AblyConnector.ECHO_ONLY_KEYS.forEach((key) => delete clientOptions[key]);
         return clientOptions;
     }
