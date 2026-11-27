@@ -10,6 +10,8 @@ permissions:
 
 jobs:
     publish:
+        # Disabled: upstream's flow (upstream names, per-package `release` scripts). Phase 16 replaces it with the fork's 4-package OIDC publish of the @ably/* packages.
+        if: ${{ false }}
         runs-on: ubuntu-latest
         strategy:
             matrix:
