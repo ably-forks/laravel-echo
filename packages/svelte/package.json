@@ -26,7 +26,8 @@
         "build": "vp build && FORMAT=iife vp build && tsc -p tsconfig.build.json",
         "dev": "vp dev",
         "test": "vp test --project unit",
-        "test:bundles": "vp test --run --project bundles"
+        "test:bundles": "vp test --run --project bundles",
+        "test:compat": "tsc -p tests/compat/tsconfig.json"
     },
     "devDependencies": {
         "@types/node": "^24.13.3",
