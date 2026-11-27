@@ -121,9 +121,6 @@ export const configureEcho = <T extends keyof Broadcaster>(
 
     // Reset the instance if it was already created
     if (echoInstance) {
-        // fork (F-082): leave the old instance's channels, as the Svelte package does; the hooks then start
-        // their channel registry over for the new instance
-        echoInstance.leaveAllChannels();
         echoInstance = null;
     }
 };

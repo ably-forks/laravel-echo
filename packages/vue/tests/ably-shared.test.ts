@@ -303,6 +303,29 @@ describe("shared adapter behaviour (fork)", () => {
             );
         });
 
+        it("a hook that already left does not release a sibling's new entry (UB-15)", async () => {
+            const module = await getModule();
+
+            module.configureEcho({});
+
+            const first = renderHook(() => module.useEcho("x", "E", () => {}));
+            const instance = echoInstances[0];
+
+            first.result.leaveChannel();
+            expect(instance.leaveChannel).toHaveBeenCalledTimes(1);
+
+            const second = renderHook(() => module.useEcho("x", "E", () => {}));
+
+            expect(instance.private).toHaveBeenCalledTimes(2);
+
+            // upstream would decrement the sibling's entry here and leave the channel under it
+            first.unmount();
+            expect(instance.leaveChannel).toHaveBeenCalledTimes(1);
+
+            second.unmount();
+            expect(instance.leaveChannel).toHaveBeenCalledTimes(2);
+        });
+
         it("leave() still leaves every visibility by name", async () => {
             const module = await getModule();
 
@@ -371,8 +394,8 @@ describe("shared adapter behaviour (fork)", () => {
         });
     });
 
-    describe("reset on reconfigure (F-082)", () => {
-        it("leaves all channels of the replaced instance and starts the registry over", async () => {
+    describe("reconfigure, as upstream React and Vue (UB-17, UB-18)", () => {
+        it("keeps the old instance's channels and the registry, so a new hook shares the old entry", async () => {
             const module = await getModule();
 
             module.configureEcho({});
@@ -384,28 +407,30 @@ describe("shared adapter behaviour (fork)", () => {
 
             module.configureEcho({ authEndpoint: "/other/auth" });
 
-            expect(first.leaveAllChannels).toHaveBeenCalledTimes(1);
+            // upstream React and Vue only drop the instance
+            expect(first.leaveAllChannels).not.toHaveBeenCalled();
 
             const after = renderHook(() =>
                 module.useEcho("orders", "E", () => {}),
             );
-            const second = echoInstances[1];
 
-            expect(second).not.toBe(first);
-            expect(second.private).toHaveBeenCalledWith("orders");
+            // the registry is kept: the new hook reuses the old subscription
+            expect(first.private).toHaveBeenCalledTimes(1);
+            expect(echoInstances).toHaveLength(1);
 
-            // the old hook's channel was left with the old instance: nothing to leave on the new one
             before.unmount();
-            expect(second.leaveChannel).not.toHaveBeenCalled();
-
             after.unmount();
-            expect(second.leaveChannel).toHaveBeenCalledWith(
+
+            // the last unmount leaves through echo(), now the reconfigured instance, as upstream
+            expect(echoInstances).toHaveLength(2);
+            expect(first.leaveChannel).not.toHaveBeenCalled();
+            expect(echoInstances[1].leaveChannel).toHaveBeenCalledWith(
                 "orders",
                 "private",
             );
         });
 
-        it("does not call leaveAllChannels when no instance was created yet", async () => {
+        it("does not create an instance when none was created yet", async () => {
             const module = await getModule();
 
             module.configureEcho({});

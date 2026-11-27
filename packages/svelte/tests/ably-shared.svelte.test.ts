@@ -306,6 +306,31 @@ describe("shared adapter behaviour (fork)", () => {
             );
         });
 
+        it("a hook that already left does not release a sibling's new entry (UB-15)", async () => {
+            const module = await getModule();
+
+            module.configureEcho({});
+
+            const first = await mount(() => module.useEcho("x", "E", () => {}));
+            const instance = echoInstances[0];
+
+            first.value.leaveChannel();
+            expect(instance.leaveChannel).toHaveBeenCalledTimes(1);
+
+            const second = await mount(() =>
+                module.useEcho("x", "E", () => {}),
+            );
+
+            expect(instance.private).toHaveBeenCalledTimes(2);
+
+            // upstream would decrement the sibling's entry here and leave the channel under it
+            first.cleanup();
+            expect(instance.leaveChannel).toHaveBeenCalledTimes(1);
+
+            second.cleanup();
+            expect(instance.leaveChannel).toHaveBeenCalledTimes(2);
+        });
+
         it("leave() still leaves every visibility by name", async () => {
             const module = await getModule();
 
@@ -380,7 +405,7 @@ describe("shared adapter behaviour (fork)", () => {
         });
     });
 
-    describe("reset on reconfigure (F-082)", () => {
+    describe("reconfigure, as upstream Svelte (leaves all channels, starts the registry over)", () => {
         it("leaves all channels of the replaced instance and starts the registry over", async () => {
             const module = await getModule();
 
@@ -403,7 +428,8 @@ describe("shared adapter behaviour (fork)", () => {
             expect(second).not.toBe(first);
             expect(second.private).toHaveBeenCalledWith("orders");
 
-            // the old hook's channel was left with the old instance: nothing to leave on the new one
+            // UB-15 guard (provisional): the old hook's channel was left with the old instance, and the entry with
+            // this key now holds the new hook's subscription; upstream would release it and leave under the new hook
             before.cleanup();
             expect(second.leaveChannel).not.toHaveBeenCalled();
 
@@ -414,7 +440,7 @@ describe("shared adapter behaviour (fork)", () => {
             );
         });
 
-        it("does not call leaveAllChannels when no instance was created yet", async () => {
+        it("does not create an instance when none was created yet", async () => {
             const module = await getModule();
 
             module.configureEcho({});

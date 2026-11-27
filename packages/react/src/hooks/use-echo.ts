@@ -1,4 +1,3 @@
-import type Echo from "@ably/laravel-echo";
 import {
     type BroadcastDriver,
     type ConnectionStatus,
@@ -28,34 +27,6 @@ import { toArray } from "../util";
 
 const channels: Record<string, ChannelData<BroadcastDriver>> = {};
 
-// fork (F-082): the Echo instance the registry's subscriptions belong to, as in the Svelte package
-let activeEchoInstance: Echo<BroadcastDriver> | null = null;
-
-const clearChannelCache = (): void => {
-    Object.keys(channels).forEach((channelId) => {
-        delete channels[channelId];
-    });
-};
-
-/**
- * fork (F-082): start the registry over when echo() returns another instance than the one its subscriptions
- * belong to; configureEcho() has already left every channel of the instance it replaced.
- */
-const syncChannelCache = <T extends BroadcastDriver>(): Echo<T> => {
-    const instance = echo<T>();
-
-    if (
-        activeEchoInstance !== null &&
-        activeEchoInstance !== (instance as Echo<BroadcastDriver>)
-    ) {
-        clearChannelCache();
-    }
-
-    activeEchoInstance = instance;
-
-    return instance;
-};
-
 const subscribeToChannel = <T extends BroadcastDriver>(
     channel: Channel,
 ): Connection<T> => {
@@ -81,14 +52,9 @@ const leaveChannel = (
         return;
     }
 
-    // fork (F-082): after a reconfiguration, configureEcho() has left this hook's channel with the old instance, and
-    // the registry entry is gone or belongs to a hook of the new instance
-    syncChannelCache();
-
-    if (
-        !channels[channel.id] ||
-        (connection && channels[channel.id].connection !== connection)
-    ) {
+    // fork (UB-15, provisional): the entry belongs to another hook's subscription when this hook already left and a
+    // sibling subscribed the channel again; releasing it would leave the channel under the sibling
+    if (connection && channels[channel.id].connection !== connection) {
         return;
     }
 
@@ -111,8 +77,6 @@ const leaveChannel = (
 const resolveChannelSubscription = <T extends BroadcastDriver>(
     channel: Channel,
 ): Connection<T> => {
-    syncChannelCache();
-
     if (channels[channel.id]) {
         channels[channel.id].count += 1;
 
