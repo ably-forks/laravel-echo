@@ -55,7 +55,7 @@ Optionally, after the first publish through OIDC, set each package to "Require t
 3. **Release [GATE].** `./release.sh <version>`. It:
     - checks that you are on `2.x` with a clean working tree, pulls `2.x`, and checks that the four packages share one version, that pnpm is the `packageManager` version, and that neither the tag nor `<version>` of any package exists yet (on origin and on npm);
     - writes the GitHub release notes from the changelog entry;
-    - sets `<version>` in all four `package.json` files (`pnpm -r --filter './packages/*' exec pnpm version <version> --no-git-tag-version`);
+    - sets `<version>` in all four `package.json` files (`pnpm -r --filter './packages/*' exec pnpm version <version> --no-git-tag-version --no-git-checks`; pnpm 12 refuses a dirty working tree after the first package is bumped, and `release.sh` has already checked that the tree is clean);
     - sets the React, Vue and Svelte packages' peer dependency on `@ably/laravel-echo` (see "Adapter peer range" below) and checks it;
     - updates the lockfile (`pnpm install`);
     - builds (`pnpm build`) and checks the tarballs (`node scripts/check-release-tarballs.mjs`), as CI will;
@@ -104,7 +104,7 @@ A release adapter never admits a release candidate of the core, which it was not
 
 **[first RC]** Confirm on `2.0.0-rc.0`, and record the outcome here:
 
-- the version bump command, `pnpm -r --filter './packages/*' exec pnpm version <version> --no-git-tag-version`, under pnpm 12.3.4 on the release machine;
+- the version bump command, `pnpm -r --filter './packages/*' exec pnpm version <version> --no-git-tag-version --no-git-checks`, under pnpm 12.3.4 on the release machine (`--no-git-checks` because pnpm 12 refuses a dirty working tree after the first package is bumped; `release.sh` checks for a clean tree first);
 - the publish order (core first, one package at a time);
 - the runner's npm version (11.5.1 or later), and that `npm publish <tarball> --provenance` with OIDC publishes with provenance. If npm rejects provenance for a tarball argument, publish from the package directory after `pnpm pack`, and compare checksums;
 - the trusted publisher setup for the three new packages (above).
