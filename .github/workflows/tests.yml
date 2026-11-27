@@ -37,8 +37,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build the core (JS bundles; declarations are built once the type fixes land)
-        run: pnpm --filter @ably/laravel-echo run build:js
+      - name: Build the core (JS bundles and declarations)
+        run: pnpm --filter @ably/laravel-echo run build
 
       - name: Execute the core tests (unit, Ably parity and local tests)
         run: pnpm --filter @ably/laravel-echo run test
