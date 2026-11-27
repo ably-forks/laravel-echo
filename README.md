@@ -27,6 +27,10 @@ The React, Vue and Svelte packages use `@ably/laravel-echo` as a peer dependency
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Security
+
+To report a security vulnerability, see the [security policy](.github/SECURITY.md).
+
 ## License
 
 Laravel Echo and this fork are open-source software licensed under the [MIT license](LICENSE.md).
