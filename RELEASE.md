@@ -76,7 +76,7 @@ Optionally, after the first publish through OIDC, set each package to "Require t
 6. **Check npm:** `npm view <package> dist-tags` for each of the four packages, and that each version shows provenance. `npm view <package>@<version> dist.integrity` matches the `sha512` the `verify` job printed.
 7. **Announce** a final release: update the [Ably Changelog](https://changelog.ably.com/) (via [headwayapp](https://headwayapp.co/)) with the release notes.
 
-A manual run of `publish.yml` (Actions → publish → Run workflow, on a branch) runs only the `verify` job, without the release guard, and never publishes. `bash scripts/test-release-lib.sh` tests the release helpers, the release guard and the workflow's job conditions (`scripts/test-publish-workflow.mjs`). To check the tarballs locally on a release commit: `pnpm build && node scripts/check-release-tarballs.mjs`. Between releases the manifests may not match a release (the adapters keep an RC peer range until the final release), so use the dry run instead.
+A manual run of `publish.yml` (Actions → publish → Run workflow, on a branch) runs only the `verify` job, without the release guard, and never publishes. `bash scripts/test-release-lib.sh` tests the release helpers, the release guard and the workflow's job conditions (`scripts/test-publish-workflow.mjs`). To check the tarballs locally on a release commit: `pnpm build && node scripts/check-release-tarballs.mjs`. Between releases the manifests may not match a release (for example, the adapters keep an RC peer range until the final release), so the tarball check, locally or in a manual run, can fail on a branch that `release.sh` has not prepared; use the dry run instead.
 
 ## Adapter peer range
 
