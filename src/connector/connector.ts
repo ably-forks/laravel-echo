@@ -38,7 +38,24 @@ export abstract class Connector {
      * Merge the custom options with the defaults.
      */
     protected setOptions(options: any): any {
-        this.options = Object.assign(this._defaultOptions, options);
+        // Copy the caller's header objects before writing the CSRF / bearer headers into them, so the caller's own
+        // object is never mutated. Otherwise a logout (`bearerToken = null` + `connect()`) would keep the old
+        // `Authorization` header left in the original `auth.headers`. Only copy what the caller passed, so the
+        // defaults (e.g. the `userAuthentication.endpoint`) survive when it is omitted.
+        const own = { ...options };
+
+        if (options.auth) {
+            own.auth = { ...options.auth, headers: { ...options.auth.headers } };
+        }
+
+        if (options.userAuthentication) {
+            own.userAuthentication = {
+                ...options.userAuthentication,
+                headers: { ...options.userAuthentication.headers },
+            };
+        }
+
+        this.options = Object.assign(this._defaultOptions, own);
 
         let token = this.csrfToken();
 
@@ -109,7 +126,7 @@ export abstract class Connector {
     abstract leaveChannel(channel: string): void;
 
     /**
-     * Get the socket_id of the connection.
+     * Get the socket_id of the connection. For ably this is '' until the connection is up.
      */
     abstract socketId(): string;
 

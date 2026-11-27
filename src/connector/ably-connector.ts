@@ -302,9 +302,14 @@ export class AblyConnector extends Connector {
 
     /**
      * Get the socket ID for the connection.
-     * For ably, returns base64 url encoded json with keys {connectionKey, clientId}
+     * For ably, returns base64 url encoded json with keys {connectionKey, clientId}.
+     * Returns '' until the connection has a key (before it is connected), so no invalid id is sent.
      */
     socketId(): string {
+        if (!this.ably?.connection?.key) {
+            return '';
+        }
+
         let socketIdObject = {
             connectionKey : this.ably.connection.key,
             clientId : this.ably.auth.clientId ?? null,

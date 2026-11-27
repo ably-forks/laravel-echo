@@ -122,7 +122,8 @@ export default class Echo {
 
     /**
      * Get the Socket ID for the connection.
-     * For ably, returns base64 url encoded json with keys {connectionKey, clientId}
+     * For ably, returns base64 url encoded json with keys {connectionKey, clientId},
+     * or '' before the connection is up.
      */
     socketId(): string {
         return this.connector.socketId();
@@ -194,7 +195,9 @@ export default class Echo {
      */
     registerTurboRequestInterceptor(): void {
         document.addEventListener('turbo:before-fetch-request', (event: any) => {
-            event.detail.fetchOptions.headers['X-Socket-Id'] = this.socketId();
+            if (this.socketId()) {
+                event.detail.fetchOptions.headers['X-Socket-Id'] = this.socketId();
+            }
         });
     }
 }
