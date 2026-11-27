@@ -1074,7 +1074,7 @@ describe("useEchoNotification hook", async () => {
     });
 });
 
-describe.skip("useConnectionStatus composable", async () => {
+describe("useConnectionStatus composable", async () => {
     beforeEach(async () => {
         vi.resetModules();
     });
@@ -1100,6 +1100,88 @@ describe.skip("useConnectionStatus composable", async () => {
         const wrapper = mount(TestComponent);
 
         expect(wrapper.text()).toBe("connected");
+    });
+
+    // fork (F-085): re-enabled; the composable subscribes through Echo.onConnectionChange (provisional: P-03)
+    const mountStatusComponent = () => {
+        let emit: (status: string) => void = () => {};
+        const unsubscribe = vi.fn();
+
+        vi.mocked(
+            (Echo as any).prototype.onConnectionChange,
+        ).mockImplementationOnce((cb: (status: string) => void) => {
+            emit = cb;
+            return unsubscribe;
+        });
+
+        configureEcho({
+            broadcaster: "null",
+        });
+
+        const TestComponent = defineComponent({
+            setup() {
+                return {
+                    status: useConnectionStatus(),
+                };
+            },
+            template: "<div>{{ status }}</div>",
+        });
+
+        const wrapper = mount(TestComponent);
+
+        return { wrapper, emit: (status: string) => emit(status), unsubscribe };
+    };
+
+    it("updates with every status the connection emits", async () => {
+        const { wrapper, emit } = mountStatusComponent();
+
+        for (const status of [
+            "connecting",
+            "connected",
+            "reconnecting",
+            "failed",
+        ]) {
+            emit(status);
+            await wrapper.vm.$nextTick();
+
+            expect(wrapper.text()).toBe(status);
+        }
+    });
+
+    it("keeps updating when Echo.connect() replaces the connector", async () => {
+        const { wrapper, emit } = mountStatusComponent();
+        const replacedConnector = (Echo as any).prototype.connector;
+
+        // Echo's registry moves its callbacks to the new connector and emits the new connector's status (F-075)
+        (Echo as any).prototype.connector = {
+            onConnectionChange: vi.fn(() => () => {}),
+        };
+
+        try {
+            emit("connecting");
+            await wrapper.vm.$nextTick();
+            expect(wrapper.text()).toBe("connecting");
+
+            emit("connected");
+            await wrapper.vm.$nextTick();
+            expect(wrapper.text()).toBe("connected");
+
+            expect(
+                (Echo as any).prototype.connector.onConnectionChange,
+            ).not.toHaveBeenCalled();
+        } finally {
+            (Echo as any).prototype.connector = replacedConnector;
+        }
+    });
+
+    it("unsubscribes on unmount", () => {
+        const { wrapper, unsubscribe } = mountStatusComponent();
+
+        expect(unsubscribe).not.toHaveBeenCalled();
+
+        wrapper.unmount();
+
+        expect(unsubscribe).toHaveBeenCalledTimes(1);
     });
 });
 
