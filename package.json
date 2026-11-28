@@ -22,7 +22,8 @@
         "format": "vp fmt",
         "compile": "pnpm -r --if-present run compile",
         "declarations": "pnpm -r --if-present run declarations",
-        "dev": "pnpm -r --parallel --filter './packages/*' dev"
+        "dev": "pnpm -r --parallel --filter './packages/*' dev",
+        "check:versions": "node scripts/release.js check"
     },
     "devDependencies": {
         "vite-plus": "catalog:"

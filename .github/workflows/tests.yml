@@ -48,6 +48,17 @@ jobs:
       - name: Build the core, then the adapters (JS bundles and declarations)
         run: pnpm build
 
+      # The release checks, as the release workflow runs them before staging: the four versions and the
+      # adapters' peer range agree, and every main/module/types/exports file is in each packed tarball.
+      - name: Check the package versions
+        run: pnpm run check:versions
+
+      - name: Test the release script
+        run: node --test scripts/release.test.js
+
+      - name: Pack the four packages and check each tarball
+        run: node scripts/release.js check --pack
+
       - name: Lint and type check
         run: pnpm run lint
 

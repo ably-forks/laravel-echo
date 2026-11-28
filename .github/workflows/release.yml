@@ -1,0 +1,150 @@
+name: Release
+
+# Stages a release of @ably/laravel-echo, @ably/laravel-echo-react, @ably/laravel-echo-vue and
+# @ably/laravel-echo-svelte (one lockstep version) to npm. Modelled on ably-js's release workflow.
+#
+# Publishing uses npm trusted publishing (OIDC), so there is no npm token: npm trusts this workflow
+# file running in the `npm` environment. The packages are staged with `npm stage publish`, not
+# published. Each staged version goes live only once a maintainer approves it with 2FA, on
+# npmjs.com (Staged Packages tab) or with `npm stage approve <stage-id>`. Approve
+# @ably/laravel-echo first, because the other three peer-depend on it.
+#
+# It runs when a GitHub release is published, staging that release's tag (ably-echo-<version>), or
+# on demand for a given tag. A release candidate (X.Y.Z-rc.N) gets the dist-tag `next`, never
+# `latest`. A GitHub release runs this file as it is at the tagged commit, so 1.x releases (tagged
+# on master, which has no release workflow) keep their manual process.
+#
+# The build runs in its own job, without `id-token: write`, so no dependency install script or
+# build plugin can request the OIDC token that npm exchanges for publish rights. The stage job that
+# holds that permission installs no project dependencies, runs no project scripts and fetches
+# nothing from the registry: the npm CLI it needs is downloaded and checked against a pinned
+# integrity in the build job, checked again, and installed offline without install scripts.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to stage, e.g. ably-echo-2.0.0-rc.0. Its version must match every package.json'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # A release event carries no inputs, so its tag is the release's tag.
+  TAG: ${{ inputs.tag || github.event.release.tag_name }}
+  # The npm CLI for `npm stage publish` (11.15.0 or later), pinned to its registry integrity
+  # (`npm view npm@11.21.2 dist.integrity`).
+  NPM_VERSION: 11.21.2
+  NPM_INTEGRITY: sha512-7HPApk+AflMUavSseL1Pm6CnYqMIHk53x+KmuhqmTDqPkjPMgxIpTPcTqsE91EKNw4gFBJV9fnXiSdGm1DXq9A==
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      dist-tag: ${{ steps.check.outputs.dist-tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.3
+          cache: pnpm
+      # The same guard for a release and a manual run: the tag must be ably-echo-<version>, the four
+      # versions and the adapters' peer range must agree, and the dist-tag follows from the version
+      # (a release candidate never gets latest). For a release event, a pre-release flag that
+      # disagrees with the version is a warning. Node built-ins only, before any install.
+      # The npm CLI for the stage job, fetched here, without `id-token`, and checked against the
+      # pinned integrity before anything is installed.
+      - name: Download and verify the npm CLI
+        run: |
+          mkdir npm-cli
+          npm pack "npm@$NPM_VERSION" --ignore-scripts --pack-destination npm-cli
+          tarball="npm-cli/npm-$NPM_VERSION.tgz"
+          actual="sha512-$(openssl dgst -sha512 -binary "$tarball" | base64 | tr -d '\n')"
+          if [ "$actual" != "$NPM_INTEGRITY" ]; then
+            echo "::error::$tarball has integrity $actual, not $NPM_INTEGRITY"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-cli
+          path: npm-cli/npm-${{ env.NPM_VERSION }}.tgz
+          if-no-files-found: error
+          retention-days: 1
+      - name: Check the tag matches the package versions
+        id: check
+        env:
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: node scripts/release.js check --tag "$TAG"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # Packs the four packages into release-tarballs/ and checks that every entry file is in
+      # each tarball, with no workspace: or catalog: ranges left.
+      - name: Pack and check the packages
+        run: node scripts/release.js check --pack
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-tarballs
+          path: release-tarballs/*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  stage:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write # lets npm exchange a GitHub OIDC token for publish rights
+    steps:
+      # release.js reads the versions from the checkout, so the stage job needs the tag's sources,
+      # but not its dependencies: release.js uses only Node built-ins.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.3
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-cli
+          path: npm-cli
+      # npm stage publish needs npm 11.15.0 or later. The tarball is checked again here, since the
+      # build job ran dependency scripts after downloading it, and installed offline without scripts.
+      - name: Install the verified npm CLI
+        run: |
+          tarball="npm-cli/npm-$NPM_VERSION.tgz"
+          actual="sha512-$(openssl dgst -sha512 -binary "$tarball" | base64 | tr -d '\n')"
+          if [ "$actual" != "$NPM_INTEGRITY" ]; then
+            echo "::error::$tarball has integrity $actual, not $NPM_INTEGRITY"
+            exit 1
+          fi
+          npm install -g --ignore-scripts --offline --no-audit --no-fund --no-update-notifier "./$tarball"
+          installed="$(npm --version)"
+          if [ "$installed" != "$NPM_VERSION" ]; then
+            echo "::error::npm $installed is installed, not $NPM_VERSION"
+            exit 1
+          fi
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-tarballs
+          path: release-tarballs
+      # Stages each checked tarball from its unpacked folder, the core first, and skips any
+      # package already on npm at this version.
+      - name: Stage the packages
+        env:
+          DIST_TAG: ${{ needs.build.outputs.dist-tag }}
+        run: node scripts/release.js publish --stage --tag "$DIST_TAG"

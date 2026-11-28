@@ -38,7 +38,7 @@
         "vite-plus": "catalog:"
     },
     "peerDependencies": {
-        "@ably/laravel-echo": "^2.0.0-rc.0",
+        "@ably/laravel-echo": "^2.0.0",
         "svelte": "^5.55.7"
     },
     "engines": {

@@ -1,5 +1,57 @@
 # Changelog
 
+## [v2.0.0](https://github.com/ably-forks/laravel-echo/tree/ably-echo-2.0.0)
+
+[Full Changelog](https://github.com/ably-forks/laravel-echo/compare/ably-echo-1.1.1...ably-echo-2.0.0)
+
+Echo 2.0.0 is a major release. It syncs the fork with upstream `laravel/echo` 2.x and adds React, Vue and Svelte packages. It works only with [laravel-broadcaster](https://github.com/ably/laravel-broadcaster) 2.0.0 or later, which always gives guests a client ID. The Echo API, the Ably channel names and the auth endpoint contract are unchanged, so most apps that use the `ably` broadcaster change only the install line.
+
+Please refer to [UPDATING.md](UPDATING.md#1x--200) for the full details, including every breaking change.
+
+### What you need to do
+
+1. **Upgrade laravel-broadcaster and Echo together:** laravel-broadcaster 2.0.0 and `@ably/laravel-echo` 2.0.0, deployed in the same release. Mixed versions are not supported. Apps that stay on laravel-broadcaster 1.x stay on Echo 1.1.x. See [Upgrade order](UPDATING.md#upgrade-order).
+2. **Install the new version:** run `npm install @ably/laravel-echo@^2`. Use Node.js 22 or later to install and build, and a bundler that understands ES2022 syntax.
+3. **Remove the MAU option from your server config:** laravel-broadcaster 2.x always issues guest client IDs.
+4. **Check the [breaking changes](UPDATING.md#breaking-changes)**, in particular if you use TypeScript, a custom connector, `socketId()`, deep imports, or the `pusher`, `reverb` or `socket.io` broadcasters.
+
+### New
+
+- **React, Vue and Svelte packages:** `@ably/laravel-echo-react`, `@ably/laravel-echo-vue` and `@ably/laravel-echo-svelte`, Ably's ports of upstream's framework packages. They use the native Ably connector by default (`configureEcho({})`) and have a peer dependency on `@ably/laravel-echo`. All four packages share one version number.
+- **Connection status:** `echo.connectionStatus()` maps Ably's connection state to `connected`, `connecting`, `reconnecting`, `disconnected` or `failed`. `echo.onConnectionChange(callback)` (specific to this fork) reports each change and keeps working after `echo.connect()`. The framework packages add `useConnectionStatus` and `useSocketId`.
+- **`broadcaster` is optional** and defaults to `"ably"`: `new Echo({})`.
+- **`leaveChannel(name, visibility)`** (specific to this fork) leaves a channel by the name your app used and its visibility, and **`connectorChannelName(name, visibility)`** returns the connector's full name for it (for example `private:orders` with Ably).
+- **Upstream sync:** the fork now includes upstream `laravel/echo` 2.x up to `fdba6fe` (v2.6.3 and 4 later commits): 374 upstream commits since `9eb317b`. This brings the TypeScript types, the `mercure` broadcaster and the upstream fixes.
+- **Troubleshooting hints:** Echo logs a console hint, once per page, when the auth endpoint refuses the connection token request (HTTP 403) or returns a Pusher-protocol response, the signs of Laravel's built-in `ably` broadcaster. See [Troubleshooting](https://github.com/ably-forks/laravel-echo/blob/2.x/packages/laravel-echo/README.md#troubleshooting).
+- **Packaging:** an `exports` map with `@ably/laravel-echo/iife`, a CommonJS build that `require()` can load (`dist/echo.common.cjs`), and an IIFE global `Echo` that also supports upstream's `Echo.default`.
+
+### Breaking changes
+
+See [UPDATING.md](UPDATING.md#breaking-changes) for each one and what to do.
+
+- Echo 2.0.0 works only with laravel-broadcaster 2.0.0 or later, and every connection, including a guest's, has a client ID.
+- `socketId()` returns `undefined` until the connection is up (1.1.1 returned a placeholder string).
+- The package is `"type": "module"` with an `exports` map, so deep imports no longer resolve. Types are at `dist/echo.d.ts`; `typings/` is no longer shipped. The build target is ES2022.
+- A custom `broadcaster` must be a class. Custom connectors must implement `connectionStatus()` and `onConnectionChange()`.
+- TypeScript: `Echo` and `Connector` are generic, channel methods return `this`, and `whisper()` takes an object.
+- `pusher-js` and `socket.io-client` are optional peer dependencies. The framework packages don't inject `Pusher`: `pusher` and `reverb` users pass `Pusher` or set `window.Pusher`.
+- `ably` means the native Ably connector, also in the framework packages. Laravel's built-in `ably` broadcaster is not supported.
+
+### Security
+
+- With the `ably` broadcaster, Echo copies `auth.headers` for each connector. A bearer token or CSRF header no longer leaks from one Echo instance to another: before, the previous user's bearer token could be sent after a logout followed by a new Echo instance. Echo also no longer changes your options object.
+
+### Bug fixes kept from the sync
+
+These fix upstream behaviour without changing the API:
+
+- The Turbo interceptor no longer sends `X-Socket-Id: undefined` before the connection is up.
+- The framework packages' `configureEcho()` no longer throws outside Vite (for example from the CommonJS build) because of an unguarded read of `VITE_MERCURE_HUB_URL`.
+- Svelte's `useChannel` subscribes to its channel once, not twice, so it now leaves the channel when the component is destroyed.
+- A hook that already left a channel (`leaveChannel()`) no longer releases, when it unmounts, the channel that another component subscribed to again.
+- `echo.onConnectionChange()` callbacks move to the new connector on `echo.connect()`, and a callback that throws no longer stops the others.
+- The CommonJS builds use `.cjs` files, so `require()` works under `"type": "module"`.
+
 ## [v1.1.1](https://github.com/ably-forks/laravel-echo/tree/ably-echo-1.1.1)
 
 [Full Changelog](https://github.com/ably-forks/laravel-echo/compare/ably-echo-1.1.0...ably-echo-1.1.1)
