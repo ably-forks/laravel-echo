@@ -11,7 +11,7 @@ import {
 import { setup, tearDown } from "./setup/sandbox";
 import Echo from "../../src/echo";
 import { MockAuthServer } from "./setup/mock-auth-server";
-import safeAssert from "./setup/utils";
+import safeAssert, { closeConnection } from "./setup/utils";
 import { AblyChannel, AblyPrivateChannel } from "../../src/channel";
 
 vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
@@ -40,14 +40,7 @@ describe("AblyPrivateChannel", () => {
         });
     });
 
-    afterEach(async () => {
-        await new Promise<void>((resolve) => {
-            echo.disconnect();
-            echo.connector.ably.connection.once("closed", () => {
-                resolve();
-            });
-        });
-    });
+    afterEach(() => closeConnection(echo));
 
     test("channel subscription", () =>
         new Promise<void>((resolve) => {

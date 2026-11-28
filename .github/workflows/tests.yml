@@ -1,36 +1,40 @@
 name: tests
 
-# Interim pnpm workflow: Phase 14 adds lint and folds the adapter job into `pnpm test`.
-
 on:
-  pull_request:
   push:
     branches:
       - master
+      # '*.x' also matches the 2.x branch.
       - '*.x'
+  pull_request:
+  schedule:
+    - cron: '0 0 * * *'
 
 permissions:
   contents: read
 
 jobs:
   tests:
+    # The core (@ably/laravel-echo) and the React, Vue and Svelte adapters: build, lint, format, type checks, unit tests, bundle smoke tests and the dependency audit.
     runs-on: ubuntu-latest
 
     strategy:
-      # The suite uses the live Ably sandbox (one sandbox app per leg); one flaky leg must not cancel the others.
+      # One failing Node version must not cancel the other.
       fail-fast: false
       matrix:
         node-version: [22, 24]
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install pnpm (version from packageManager)
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node-version }}
           # Vite+ needs Node ^22.18 or ^24.11: resolve the newest release, not an older cached one.
@@ -40,35 +44,60 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build the core (JS bundles and declarations)
-        run: pnpm --filter @ably/laravel-echo run build
+      # Before lint: the adapters' type-aware lint and compat files resolve the core's built declarations.
+      - name: Build the core, then the adapters (JS bundles and declarations)
+        run: pnpm build
 
-      - name: Type-check upstream laravel-echo 2.x usage against the built declarations
-        run: pnpm --filter @ably/laravel-echo run test:compat
+      - name: Lint and type check
+        run: pnpm run lint
 
-      - name: Execute the core tests (unit, Ably parity and local tests)
-        run: pnpm --filter @ably/laravel-echo run test
+      - name: Check formatting
+        run: pnpm exec vp fmt --check
 
-      - name: Smoke-test the built bundles (self-contained IIFE, ESM/CJS export surface)
-        run: pnpm --filter @ably/laravel-echo run test:bundles
+      - name: Type-check upstream laravel-echo and @laravel/echo-react, -vue and -svelte usage against the built declarations
+        run: pnpm -r --no-bail --if-present run test:compat
 
-  adapters:
-    # The React, Vue and Svelte packages: upstream's suites (ported in Phases 11-13) plus the fork's tests.
+      # Enforces the core's type-level tests (expectTypeOf, @ts-expect-error), which are no-ops at runtime.
+      - name: Type-check the core's sources and tests
+        run: pnpm --filter @ably/laravel-echo exec tsc --noEmit -p tsconfig.json
+
+      - name: Type-check the adapters' sources and tests
+        run: pnpm --filter "@ably/laravel-echo-*" exec tsc --noEmit -p tsconfig.json
+
+      # The root script runs every package with --no-bail, so one failing package does not hide the others' results.
+      - name: Execute the tests (core unit and Ably tests, React, Vue and Svelte)
+        run: pnpm test
+
+      - name: Smoke-test the built bundles (core and adapters)
+        run: pnpm -r --no-bail --if-present run test:bundles
+
+      - name: Audit dependencies
+        run: pnpm audit
+
+  sandbox:
+    # The core's live-sandbox suites. Each test file creates its own sandbox app, so no secrets or keys are needed.
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
         node-version: [22, 24]
 
+    env:
+      # mau.test.ts soft-skips outside CI; in CI it must run.
+      CI: true
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install pnpm (version from packageManager)
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node-version }}
           check-latest: true
@@ -77,34 +106,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build the core, then the adapters (JS bundles and declarations)
-        run: pnpm build
-
-      - name: Type-check upstream @laravel/echo-react, -vue and -svelte usage against the built declarations
-        run: pnpm --filter "@ably/laravel-echo-*" run test:compat
-
-      - name: Type-check the adapters' sources and tests
-        run: pnpm --filter "@ably/laravel-echo-*" exec tsc --noEmit -p tsconfig.json
-
-      - name: Execute the adapter unit tests (upstream suites and the fork's tests)
-        run: pnpm --filter "@ably/laravel-echo-*" run test --run
-
-      - name: Smoke-test the built adapter bundles (ESM, .cjs and IIFE exports, externals)
-        run: pnpm --filter "@ably/laravel-echo-*" run test:bundles
+      # The vitest `sandbox` project caps maxWorkers at 4 to limit the load on the sandbox.
+      - name: Execute the live-sandbox tests
+        run: pnpm --filter @ably/laravel-echo run test:sandbox
 
   browser-build:
-    # tests/ably against @ably/pubsub-device's browser build (dist/index.js), which users actually ship (R15).
+    # tests/ably against @ably/pubsub-device's browser build (dist/index.js), which browser users actually ship (D-09). It uses the live sandbox.
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install pnpm (version from packageManager)
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           check-latest: true

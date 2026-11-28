@@ -11,6 +11,7 @@ import {
 import { setup, tearDown } from "./setup/sandbox";
 import Echo from "../../src/echo";
 import { MockAuthServer } from "./setup/mock-auth-server";
+import { closeConnection } from "./setup/utils";
 import { AblyChannel, AblyPrivateChannel } from "../../src/channel";
 import waitForExpect from "wait-for-expect";
 import { fromBase64UrlEncoded } from "../../src/channel/ably/utils";
@@ -35,17 +36,7 @@ describe("AblyUserRestPublishing", () => {
     });
 
     afterEach(async () => {
-        let promises: Array<Promise<boolean>> = [];
-        for (const echo of echoInstances) {
-            echo.disconnect();
-            const promise = new Promise<boolean>((res) => {
-                echo.connector.ably.connection.once("closed", () => {
-                    res(true);
-                });
-            });
-            promises.push(promise);
-        }
-        await Promise.all(promises);
+        await Promise.all(echoInstances.map(closeConnection));
     });
 
     async function getGuestUserChannel(channelName: string) {

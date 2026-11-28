@@ -33,7 +33,9 @@ describe("Ably-Agent header", () => {
         port = (server.address() as AddressInfo).port;
     });
 
-    afterAll(() => server.close());
+    afterAll(async () => {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+    });
 
     test("options.agents carries laravel-echo, and the wire header carries laravel-echo/<ver> and ably-pubsub-device", async () => {
         const echo = new Echo({

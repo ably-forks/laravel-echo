@@ -10,3 +10,21 @@ updates:
       github-actions:
         patterns:
           - "*"
+  - package-ecosystem: npm
+    # The pnpm workspace root: pnpm-lock.yaml, the catalog in pnpm-workspace.yaml and the four packages.
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 5
+    groups:
+      npm:
+        patterns:
+          - "*"
+    versioning-strategy: increase
+    ignore:
+      # Vite+ stays pinned to upstream laravel/echo's version (P-14); only an upstream re-sync bumps it.
+      - dependency-name: "vite-plus"
+      - dependency-name: "@voidzero-dev/vite-plus-core"
+      # The catalog's `vite` entry is an alias of @voidzero-dev/vite-plus-core.
+      - dependency-name: "vite"

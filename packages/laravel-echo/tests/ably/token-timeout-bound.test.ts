@@ -12,9 +12,9 @@ beforeAll(async () => {
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     uri = `http://127.0.0.1:${(server.address() as AddressInfo).port}/auth`;
 });
-afterAll(() => {
+afterAll(async () => {
     server.closeAllConnections();
-    server.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 const fn = () =>
     httpRequestAsync({ uri, method: "POST", headers: {}, body: "{}" }, 400);

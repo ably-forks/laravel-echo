@@ -12,7 +12,7 @@ import { setup, tearDown } from "./setup/sandbox";
 import Echo from "../../src/echo";
 import { MockAuthServer } from "./setup/mock-auth-server";
 import { AblyChannel, AblyPresenceChannel } from "../../src/channel";
-import safeAssert, { execute } from "./setup/utils";
+import safeAssert, { closeConnection, execute } from "./setup/utils";
 import waitForExpect from "wait-for-expect";
 
 vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
@@ -39,14 +39,7 @@ describe("AblyChannel", () => {
         });
     });
 
-    afterEach(async () => {
-        await new Promise<void>((resolve) => {
-            echo.disconnect();
-            echo.connector.ably.connection.once("closed", () => {
-                resolve();
-            });
-        });
-    });
+    afterEach(() => closeConnection(echo));
 
     test("channel subscription", () =>
         new Promise<void>((resolve) => {

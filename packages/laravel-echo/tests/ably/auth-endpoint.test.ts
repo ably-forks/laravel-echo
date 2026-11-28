@@ -4,6 +4,7 @@ import {
     test,
     expect,
     beforeAll,
+    afterEach,
     afterAll,
 } from "vite-plus/test";
 import type { Mock } from "vite-plus/test";
@@ -14,10 +15,15 @@ import type { Mock } from "vite-plus/test";
 import * as http from "http";
 import type { AddressInfo } from "net";
 import Echo from "../../src/echo";
-import { AblyChannel, AblyPrivateChannel } from "../../src/channel";
+import {
+    AblyChannel,
+    AblyPresenceChannel,
+    AblyPrivateChannel,
+} from "../../src/channel";
 import waitForExpect from "wait-for-expect";
 import { setup, tearDown } from "./setup/sandbox";
 import { MockAuthServer } from "./setup/mock-auth-server";
+import { closeConnection, waitWithDiagnostics } from "./setup/utils";
 
 vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
 
@@ -76,19 +82,32 @@ describe("authEndpoint end to end", () => {
         authEndpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}/broadcasting/auth`;
     });
 
+    // Every client a test created. A test that fails or times out never reaches its own disconnect, and a client
+    // left connected keeps renewing its token against this file's server, also after the server has closed.
+    const clients: Echo<"ably">[] = [];
+    const closeClients = async () => {
+        await Promise.all(clients.splice(0).map(closeConnection));
+    };
+
+    afterEach(closeClients);
+
     afterAll(async () => {
-        server.close();
+        await closeClients();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
         await tearDown(testApp);
     });
 
-    const makeEcho = () =>
-        new Echo({
+    const makeEcho = () => {
+        const echo = new Echo({
             broadcaster: "ably",
             endpoint: "nonprod:sandbox",
             authEndpoint,
             csrfToken: "csrf-1",
             bearerToken: "bt-1",
         });
+        clients.push(echo);
+        return echo;
+    };
 
     test("private channel attaches through authEndpoint; CSRF and Authorization headers are sent", async () => {
         mode = "ok";
@@ -104,7 +123,6 @@ describe("authEndpoint end to end", () => {
         );
         expect(channelRequest!.headers["x-csrf-token"]).toBe("csrf-1");
         expect(channelRequest!.headers["authorization"]).toBe("Bearer bt-1");
-        echo.disconnect();
     });
 
     test("public channel receives a message with the connection token obtained through authEndpoint", async () => {
@@ -128,7 +146,6 @@ describe("authEndpoint end to end", () => {
         expect(
             requests.slice(before).some((r) => r.body.channel_name == null),
         ).toBe(true);
-        echo.disconnect();
     });
 
     test("user login through authEndpoint: guest -> user (40102) reconnects and re-attaches public and private channels", async () => {
@@ -168,14 +185,22 @@ describe("authEndpoint end to end", () => {
         }
     });
 
-    test("presence channel: here() receives the member list through authEndpoint", async () => {
+    test("presence channel: here() receives the member list through authEndpoint", async ({
+        task,
+    }) => {
         mode = "ok";
         const echo = makeEcho();
-        const members = await new Promise<any[]>((resolve, reject) =>
-            echo.join("r7p").here(resolve).error(reject),
+        const presenceChannel = echo.join("r7p") as AblyPresenceChannel;
+        const members = await waitWithDiagnostics(
+            new Promise<any[]>((resolve, reject) =>
+                presenceChannel.here(resolve).error(reject),
+            ),
+            "here() with the member list",
+            task,
+            echo,
+            presenceChannel,
         );
         expect(Array.isArray(members)).toBe(true);
-        echo.disconnect();
     });
 
     test("channel request returning {} -> error() gets code 50000 and the connection stays connected", async () => {
@@ -186,7 +211,6 @@ describe("authEndpoint end to end", () => {
         );
         expect(err).toMatchObject({ code: 50000, statusCode: 500 });
         expect(echo.connector.ably.connection.state).not.toBe("failed");
-        echo.disconnect();
     });
 
     test("channel request 403 -> error() gets {code: 40300, statusCode: 403}; connection unaffected", async () => {
@@ -197,7 +221,6 @@ describe("authEndpoint end to end", () => {
         );
         expect(err).toMatchObject({ code: 40300, statusCode: 403 });
         expect(echo.connector.ably.connection.state).not.toBe("failed");
-        echo.disconnect();
     });
 
     test.each([
