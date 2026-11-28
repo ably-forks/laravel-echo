@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - master
-      # '*.x' also matches 2.x, the long-lived v2 branch.
+      # '*.x' also matches the 2.x branch.
       - '*.x'
   pull_request:
   schedule:
