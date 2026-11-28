@@ -91,7 +91,7 @@ export class AblyAuth {
                 // Echo.disconnect() (or Echo.connect(), which replaces the client) ran while the token was requested:
                 // handing it over would make ably-js open the closed connection again (RTC8c)
                 callback(
-                    "laravel-echo: the connection was closed while a token was requested",
+                    "@ably/laravel-echo: the connection was closed while a token was requested",
                     null,
                 );
                 return;
@@ -284,7 +284,7 @@ export class AblyAuth {
                                 errorCallback(
                                     Object.assign(
                                         new Error(
-                                            "laravel-echo: the client was replaced while waiting for connected",
+                                            "@ably/laravel-echo: the client was replaced while waiting for connected",
                                         ),
                                         {
                                             code: 80000,
@@ -333,7 +333,7 @@ export class AblyAuth {
                 reason ??
                     Object.assign(
                         new Error(
-                            `laravel-echo: the connection is ${state}, the channel was not authorized`,
+                            `@ably/laravel-echo: the connection is ${state}, the channel was not authorized`,
                         ),
                         {
                             code: 80000,
@@ -508,7 +508,7 @@ export class AblyAuth {
         if (this.isClosedOrClosing(client)) {
             // a token request that finished after Echo.disconnect(): authorize() on a closed connection reconnects it
             callback?.(
-                new Error("laravel-echo: the connection is closed"),
+                new Error("@ably/laravel-echo: the connection is closed"),
                 null,
             );
             return;
@@ -531,7 +531,7 @@ export class AblyAuth {
             )
             .catch((e: unknown) =>
                 console.error(
-                    "laravel-echo: unexpected error after authorize",
+                    "@ably/laravel-echo: unexpected error after authorize",
                     e,
                 ),
             );
