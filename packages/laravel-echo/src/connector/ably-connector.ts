@@ -490,7 +490,7 @@ export class AblyConnector extends Connector<
             `presence:${name}`,
         ];
 
-        channels.forEach((name: string, index: number) => {
+        channels.forEach((name: string) => {
             this.leaveChannel(name);
         });
     }

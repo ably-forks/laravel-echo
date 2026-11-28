@@ -252,7 +252,7 @@ export class AblyAuth {
                             JSON.parse(capability),
                             channelName,
                         );
-                } catch (e) {
+                } catch {
                     tokenHasChannelCapability = false; // invalid capability JSON: request a new token
                 }
 
