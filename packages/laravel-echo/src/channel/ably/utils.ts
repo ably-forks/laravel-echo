@@ -14,7 +14,7 @@ export const safeInvoke = (
 ): void => {
     if (!fn) return;
     const report = (e: unknown) =>
-        console.error("laravel-echo: exception in user callback", e);
+        console.error("@ably/laravel-echo: exception in user callback", e);
     try {
         const result = fn(...args);
         if (result && typeof result.then === "function") {

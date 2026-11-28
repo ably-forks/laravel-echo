@@ -13,7 +13,7 @@ name: codeql
 
 on:
   push:
-    # master is the 1.x line; 2.x is the v2 line and the future default branch.
+    # master is the 1.x branch; the 2.x branch is the future default branch.
     branches: [master, "2.x"]
   pull_request:
   schedule:

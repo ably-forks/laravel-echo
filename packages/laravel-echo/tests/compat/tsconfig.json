@@ -8,8 +8,8 @@
         "module": "esnext",
         "moduleResolution": "bundler",
         "lib": ["es2022", "dom"],
-        "types": [],
-        "skipLibCheck": true,
+        "types": ["node"],
+        "skipLibCheck": false,
         "paths": {
             "laravel-echo": ["../../dist/echo.d.ts"],
             "laravel-echo/dist/connector": ["../../dist/connector/index.d.ts"]
