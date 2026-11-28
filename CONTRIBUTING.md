@@ -75,9 +75,13 @@ CI (`.github/workflows/tests.yml`) runs these steps. To run them locally, from t
 ```sh
 pnpm install --frozen-lockfile
 pnpm build
+pnpm run check:versions
+node --test scripts/release.test.js
+node scripts/release.js check --pack
 pnpm run lint
 pnpm exec vp fmt --check
 pnpm -r --no-bail --if-present run test:compat
+pnpm --filter @ably/laravel-echo exec tsc --noEmit -p tsconfig.json
 pnpm --filter "@ably/laravel-echo-*" exec tsc --noEmit -p tsconfig.json
 CI=true pnpm test
 pnpm -r --no-bail --if-present run test:bundles
