@@ -220,3 +220,48 @@ test("an unpacked tarball is re-checked like the packed one, including its name"
         fs.rmSync(folder, { recursive: true, force: true });
     }
 });
+
+test("release.yml keeps the token job offline and pins Node and npm", () => {
+    const workflow = fs.readFileSync(
+        path.join(__dirname, "../.github/workflows/release.yml"),
+        "utf8",
+    );
+    const stageAt = workflow.indexOf("\n  stage:\n");
+    assert.ok(stageAt > 0, "release.yml has a stage job");
+    const build = workflow.slice(0, stageAt);
+    const stage = workflow.slice(stageAt);
+
+    // The permission itself (not the comments that mention it) appears once, in the stage job.
+    assert.equal((workflow.match(/^ +id-token: write/gm) ?? []).length, 1);
+    assert.match(stage, /^ +id-token: write/m);
+    assert.ok(!workflow.includes("check-latest"));
+    const nodeVersions = [...workflow.matchAll(/node-version: (\S+)/g)].map(
+        (m) => m[1],
+    );
+    assert.equal(nodeVersions.length, 2);
+    for (const version of nodeVersions) {
+        assert.match(version, /^\d+\.\d+\.\d+$/);
+    }
+    assert.equal(new Set(nodeVersions).size, 1);
+
+    assert.match(workflow, /\n {2}NPM_INTEGRITY: sha512-[A-Za-z0-9+/]+=*\n/);
+    assert.ok(build.includes('npm pack "npm@$NPM_VERSION" --ignore-scripts'));
+    assert.ok(!stage.includes("npm pack"));
+    const installs = workflow
+        .split("\n")
+        .filter((line) => line.includes("npm install -g"));
+    assert.equal(installs.length, 1);
+    assert.ok(stage.includes(installs[0]));
+    for (const flag of ["--ignore-scripts", "--offline", '"./$tarball"']) {
+        assert.ok(installs[0].includes(flag), flag);
+    }
+    // The integrity is checked in both jobs.
+    assert.equal(
+        (build.match(/"\$actual" != "\$NPM_INTEGRITY"/g) ?? []).length,
+        1,
+    );
+    assert.equal(
+        (stage.match(/"\$actual" != "\$NPM_INTEGRITY"/g) ?? []).length,
+        1,
+    );
+});
