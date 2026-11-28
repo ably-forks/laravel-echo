@@ -129,8 +129,11 @@ function entryFiles(manifest) {
 }
 
 /** The problems with a packed manifest and its file list (paths relative to the package root). */
-function tarballProblems(manifest, files, version) {
+function tarballProblems(manifest, files, version, name) {
     const problems = [];
+    if (name !== undefined && manifest.name !== name) {
+        problems.push(`name is ${manifest.name}, not ${name}`);
+    }
     if (manifest.version !== version) {
         problems.push(`version is ${manifest.version}, not ${version}`);
     }
@@ -143,6 +146,15 @@ function tarballProblems(manifest, files, version) {
         problems.push("a workspace: or catalog: range was not rewritten");
     }
     return problems;
+}
+
+/** Every file under a folder, as paths relative to it with forward slashes. */
+function filesIn(folder) {
+    return fs
+        .readdirSync(folder, { recursive: true })
+        .map(String)
+        .filter((file) => fs.statSync(path.join(folder, file)).isFile())
+        .map((file) => file.split(path.sep).join("/"));
 }
 
 /** Every place a release version is recorded, with the value it must have. */
@@ -234,7 +246,12 @@ function pack(version) {
                 maxBuffer: 64 * 1024 * 1024,
             });
         const manifest = JSON.parse(read("package.json"));
-        const found = tarballProblems(manifest, files, version);
+        const found = tarballProblems(
+            manifest,
+            files,
+            version,
+            readJson(`${dir}/package.json`).name,
+        );
         // A dist built for another version (the 1.1.0 stale-dist lesson) embeds the wrong version.
         if (
             dir === packageDirs[0] &&
@@ -370,14 +387,22 @@ function publish(args) {
         fs.mkdirSync(entry.folder);
         execFileSync("tar", ["-xzf", entry.tarball, "-C", entry.folder]);
         entry.folder = path.join(entry.folder, "package");
-        // The tarball comes from `pnpm pack`, which rewrites workspace: and catalog: ranges; npm would not.
-        const unpacked = fs.readFileSync(
-            path.join(entry.folder, "package.json"),
-            "utf8",
+        // Re-check what will be staged, as check --pack did: name, version, entry files, and no workspace: or
+        // catalog: ranges (pnpm pack rewrites them; npm would not).
+        const problems = tarballProblems(
+            JSON.parse(
+                fs.readFileSync(
+                    path.join(entry.folder, "package.json"),
+                    "utf8",
+                ),
+            ),
+            filesIn(entry.folder),
+            version,
+            entry.name,
         );
-        if (/"(workspace|catalog):/.test(unpacked)) {
+        if (problems.length > 0) {
             fail(
-                `${entry.name}: the unpacked package.json still has a workspace: or catalog: range`,
+                `${entry.name}: the unpacked tarball is not publishable:\n  ${problems.join("\n  ")}`,
             );
         }
         console.log(`release: dry-run pack of ${entry.name}@${version}`);
@@ -440,6 +465,7 @@ function publish(args) {
 module.exports = {
     distTag,
     entryFiles,
+    filesIn,
     peerRange,
     releaseGuard,
     tarballProblems,

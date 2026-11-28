@@ -4,10 +4,14 @@
 /* oxlint-disable typescript/no-unsafe-argument, typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access, typescript/no-unsafe-return, typescript/no-floating-promises */
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const { test } = require("node:test");
 const {
     distTag,
     entryFiles,
+    filesIn,
     peerRange,
     releaseGuard,
     tarballProblems,
@@ -172,4 +176,47 @@ test("a pre-release flag that disagrees with the version only warns", () => {
         candidate.warning,
         /is a release candidate, but its GitHub release is not marked/,
     );
+});
+
+test("an unpacked tarball is re-checked like the packed one, including its name", () => {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), "release-test-"));
+    try {
+        for (const file of reactFiles) {
+            fs.mkdirSync(path.dirname(path.join(folder, file)), {
+                recursive: true,
+            });
+            fs.writeFileSync(path.join(folder, file), "");
+        }
+        const files = filesIn(folder);
+        assert.deepEqual(
+            [...files].sort((a, b) => a.localeCompare(b)),
+            [...reactFiles].sort((a, b) => a.localeCompare(b)),
+        );
+        const manifest = { ...reactManifest, name: "@ably/laravel-echo-react" };
+        assert.deepEqual(
+            tarballProblems(
+                manifest,
+                files,
+                "2.0.0",
+                "@ably/laravel-echo-react",
+            ),
+            [],
+        );
+        assert.deepEqual(
+            tarballProblems(manifest, files, "2.0.0", "@ably/laravel-echo-vue"),
+            ["name is @ably/laravel-echo-react, not @ably/laravel-echo-vue"],
+        );
+        fs.rmSync(path.join(folder, "dist/index.js"));
+        assert.deepEqual(
+            tarballProblems(
+                manifest,
+                filesIn(folder),
+                "2.0.0",
+                "@ably/laravel-echo-react",
+            ),
+            ["dist/index.js is missing (run 'pnpm build')"],
+        );
+    } finally {
+        fs.rmSync(folder, { recursive: true, force: true });
+    }
 });
