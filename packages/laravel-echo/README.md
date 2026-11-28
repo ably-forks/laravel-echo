@@ -161,6 +161,7 @@ console.log(presenceChannel.name); // presence:channel3
 - Use these names to [watch the channels in Ably's dev console](https://ably.com/docs/tools).
 - Use them to leave a channel: `window.Echo.leaveChannel(privateChannel.name)`.
 - Or pass the visibility instead (specific to this fork): `window.Echo.leaveChannel("channel2", "private")`.
+- To get the connector's full channel name for a name and a visibility (specific to this fork), use `window.Echo.connectorChannelName("channel2", "private")`. It returns `private:channel2` with the Ably connector, and `private-channel2` with the other connectors (a public channel keeps its bare name there).
 
 ## Whisper acknowledgements
 
