@@ -16,7 +16,9 @@ name: Release
 #
 # The build runs in its own job, without `id-token: write`, so no dependency install script or
 # build plugin can request the OIDC token that npm exchanges for publish rights. The stage job that
-# holds that permission installs no project dependencies and runs no project scripts.
+# holds that permission installs no project dependencies, runs no project scripts and fetches
+# nothing from the registry: the npm CLI it needs is downloaded and checked against a pinned
+# integrity in the build job, checked again, and installed offline without install scripts.
 
 on:
   release:
@@ -37,6 +39,10 @@ concurrency:
 env:
   # A release event carries no inputs, so its tag is the release's tag.
   TAG: ${{ inputs.tag || github.event.release.tag_name }}
+  # The npm CLI for `npm stage publish` (11.15.0 or later), pinned to its registry integrity
+  # (`npm view npm@11.21.2 dist.integrity`).
+  NPM_VERSION: 11.21.2
+  NPM_INTEGRITY: sha512-7HPApk+AflMUavSseL1Pm6CnYqMIHk53x+KmuhqmTDqPkjPMgxIpTPcTqsE91EKNw4gFBJV9fnXiSdGm1DXq9A==
 
 jobs:
   build:
@@ -53,13 +59,30 @@ jobs:
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
-          check-latest: true
+          node-version: 24.22.3
           cache: pnpm
       # The same guard for a release and a manual run: the tag must be ably-echo-<version>, the four
       # versions and the adapters' peer range must agree, and the dist-tag follows from the version
       # (a release candidate never gets latest). For a release event, a pre-release flag that
       # disagrees with the version is a warning. Node built-ins only, before any install.
+      # The npm CLI for the stage job, fetched here, without `id-token`, and checked against the
+      # pinned integrity before anything is installed.
+      - name: Download and verify the npm CLI
+        run: |
+          mkdir npm-cli
+          npm pack "npm@$NPM_VERSION" --ignore-scripts --pack-destination npm-cli
+          tarball="npm-cli/npm-$NPM_VERSION.tgz"
+          actual="sha512-$(openssl dgst -sha512 -binary "$tarball" | base64 | tr -d '\n')"
+          if [ "$actual" != "$NPM_INTEGRITY" ]; then
+            echo "::error::$tarball has integrity $actual, not $NPM_INTEGRITY"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-cli
+          path: npm-cli/npm-${{ env.NPM_VERSION }}.tgz
+          if-no-files-found: error
+          retention-days: 1
       - name: Check the tag matches the package versions
         id: check
         env:
@@ -94,10 +117,27 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
-          check-latest: true
-      # npm stage publish needs npm 11.15.0 or later.
-      - run: npm install -g npm@11.21.2
+          node-version: 24.22.3
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-cli
+          path: npm-cli
+      # npm stage publish needs npm 11.15.0 or later. The tarball is checked again here, since the
+      # build job ran dependency scripts after downloading it, and installed offline without scripts.
+      - name: Install the verified npm CLI
+        run: |
+          tarball="npm-cli/npm-$NPM_VERSION.tgz"
+          actual="sha512-$(openssl dgst -sha512 -binary "$tarball" | base64 | tr -d '\n')"
+          if [ "$actual" != "$NPM_INTEGRITY" ]; then
+            echo "::error::$tarball has integrity $actual, not $NPM_INTEGRITY"
+            exit 1
+          fi
+          npm install -g --ignore-scripts --offline --no-audit --no-fund --no-update-notifier "./$tarball"
+          installed="$(npm --version)"
+          if [ "$installed" != "$NPM_VERSION" ]; then
+            echo "::error::npm $installed is installed, not $NPM_VERSION"
+            exit 1
+          fi
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-tarballs
