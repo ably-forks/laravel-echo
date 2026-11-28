@@ -57,6 +57,10 @@ jobs:
       - name: Type-check upstream laravel-echo and @laravel/echo-react, -vue and -svelte usage against the built declarations
         run: pnpm -r --no-bail --if-present run test:compat
 
+      # Enforces the core's type-level tests (expectTypeOf, @ts-expect-error), which are no-ops at runtime.
+      - name: Type-check the core's sources and tests
+        run: pnpm --filter @ably/laravel-echo exec tsc --noEmit -p tsconfig.json
+
       - name: Type-check the adapters' sources and tests
         run: pnpm --filter "@ably/laravel-echo-*" exec tsc --noEmit -p tsconfig.json
 
