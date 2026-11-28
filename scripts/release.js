@@ -370,6 +370,16 @@ function publish(args) {
         fs.mkdirSync(entry.folder);
         execFileSync("tar", ["-xzf", entry.tarball, "-C", entry.folder]);
         entry.folder = path.join(entry.folder, "package");
+        // The tarball comes from `pnpm pack`, which rewrites workspace: and catalog: ranges; npm would not.
+        const unpacked = fs.readFileSync(
+            path.join(entry.folder, "package.json"),
+            "utf8",
+        );
+        if (/"(workspace|catalog):/.test(unpacked)) {
+            fail(
+                `${entry.name}: the unpacked package.json still has a workspace: or catalog: range`,
+            );
+        }
         console.log(`release: dry-run pack of ${entry.name}@${version}`);
         execFileSync("npm", ["publish", "--dry-run", "--tag", tag], {
             cwd: entry.folder,
