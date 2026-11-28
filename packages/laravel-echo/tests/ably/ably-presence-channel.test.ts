@@ -14,7 +14,9 @@ import { MockAuthServer } from "./setup/mock-auth-server";
 import { AblyPresenceChannel } from "../../src/channel";
 import safeAssert, {
     closeConnection,
+    createAblyLogTail,
     waitWithDiagnostics,
+    watchPresence,
 } from "./setup/utils";
 import type { PresenceMessage } from "../../src/types/ably";
 
@@ -29,6 +31,8 @@ describe("AblyPresenceChannel", () => {
     let testApp: any;
     let mockAuthServer: MockAuthServer;
     let echo: Echo<"ably">;
+    // Diagnostics only (F-531): the Ably log tail and presence state reported when a presence wait times out.
+    let logTail: ReturnType<typeof createAblyLogTail>;
 
     beforeAll(async () => {
         testApp = await setup();
@@ -40,11 +44,13 @@ describe("AblyPresenceChannel", () => {
     });
 
     beforeEach(() => {
+        logTail = createAblyLogTail();
         echo = new Echo({
             broadcaster: "ably",
             useTls: true,
             endpoint: "nonprod:sandbox",
             requestTokenFn: mockAuthServer.getSignedToken,
+            ...logTail.clientOptions,
         });
     });
 
@@ -54,6 +60,7 @@ describe("AblyPresenceChannel", () => {
         const presenceChannel = echo.join(
             uniqueChannel("subscription"),
         ) as AblyPresenceChannel;
+        const watch = watchPresence(presenceChannel);
         return waitWithDiagnostics(
             new Promise<void>((resolve) => {
                 presenceChannel.subscribed(() => {
@@ -65,6 +72,7 @@ describe("AblyPresenceChannel", () => {
             task,
             echo,
             presenceChannel,
+            { ...watch, logTail: logTail.lines },
         );
     });
 
@@ -72,6 +80,7 @@ describe("AblyPresenceChannel", () => {
         const presenceChannel = echo.join(
             uniqueChannel("list"),
         ) as AblyPresenceChannel;
+        const watch = watchPresence(presenceChannel);
         return waitWithDiagnostics(
             new Promise<void>((resolve, reject) => {
                 presenceChannel.here(
@@ -100,6 +109,7 @@ describe("AblyPresenceChannel", () => {
             task,
             echo,
             presenceChannel,
+            { ...watch, logTail: logTail.lines },
         );
     });
 
@@ -107,6 +117,7 @@ describe("AblyPresenceChannel", () => {
         const presenceChannel = echo.join(
             uniqueChannel("joined"),
         ) as AblyPresenceChannel;
+        const watch = watchPresence(presenceChannel);
         return waitWithDiagnostics(
             new Promise<void>((resolve, reject) => {
                 presenceChannel.joining(
@@ -134,6 +145,7 @@ describe("AblyPresenceChannel", () => {
             task,
             echo,
             presenceChannel,
+            { ...watch, logTail: logTail.lines },
         );
     });
 
@@ -141,6 +153,7 @@ describe("AblyPresenceChannel", () => {
         const presenceChannel = echo.join(
             uniqueChannel("left"),
         ) as AblyPresenceChannel;
+        const watch = watchPresence(presenceChannel);
         return waitWithDiagnostics(
             new Promise<void>((resolve, reject) => {
                 presenceChannel.leaving(
@@ -172,6 +185,7 @@ describe("AblyPresenceChannel", () => {
             task,
             echo,
             presenceChannel,
+            { ...watch, logTail: logTail.lines },
         );
     });
 });
