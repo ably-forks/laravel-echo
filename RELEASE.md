@@ -35,6 +35,15 @@ If staging fails partway, npm refuses to stage the same version twice: reject wh
 - Release `2.0.0-rc.N` first (dist-tag `next`) and test it with a laravel-broadcaster 2.x build before releasing `2.0.0` (dist-tag `latest`).
 - At the 2.0.0 release, make `2.x` the repository's default branch on GitHub; `master` stays the 1.x line.
 
+## First release candidate
+
+Confirm on `2.0.0-rc.0`, and record the outcome here:
+
+- staging each package from its unpacked, checked tarball works with OIDC (`npm stage publish` in the unpacked folder), and the staged versions show provenance once approved;
+- the trusted publishers for the three new packages (see "One-time setup");
+- the approval order, `@ably/laravel-echo` first;
+- the types, in particular of the `require` (CommonJS) entry points, with [are-the-types-wrong](https://github.com/arethetypeswrong/arethetypeswrong.github.io) (`attw --pack`) on each package. attw is not part of CI yet; adding it as a devDependency is a follow-up for the maintainers.
+
 ## 1.x maintenance releases
 
 1.x releases (`@ably/laravel-echo` 1.x only) are made by hand from the `master` branch, following the release process documented there, under the npm dist-tag `latest-1`. Their GitHub releases are created with `--latest=false`. A GitHub release runs the workflows as they are at the tagged commit, and `master` has no release workflow, so a 1.x release never starts this one.
