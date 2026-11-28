@@ -46,12 +46,11 @@ const creatNewApp = async (options: SetupOptions = {}) => {
     }
 };
 
-const DELETE_TIMEOUT_MS = 5000;
-
 /**
  * Deletes a sandbox app. Teardown only: when setup() failed there is no app (or no key) and nothing is deleted, and a
  * failed or timed-out delete is reported as a warning, not an error, so it cannot fail a file whose tests passed.
- * The delete is bounded well inside every suite's hook timeout. Creation failures stay fatal (setup() throws).
+ * The delete keeps httpRequestAsync's default 10 s timeout, inside every suite's hook timeout. Creation failures stay
+ * fatal (setup() throws).
  */
 const deleteApp = async (
     app:
@@ -68,11 +67,7 @@ const deleteApp = async (
     }
     const headers = { Authorization: "Basic " + toBase64UrlEncoded(authKey) };
     try {
-        return await httpDeleteAsync(
-            `${sandboxUrl}/${app.appId}`,
-            headers,
-            DELETE_TIMEOUT_MS,
-        );
+        return await httpDeleteAsync(`${sandboxUrl}/${app.appId}`, headers);
     } catch (err: any) {
         process.emitWarning(
             `Sandbox app ${app.appId} was not deleted: ${err?.message ?? String(err)}`,
