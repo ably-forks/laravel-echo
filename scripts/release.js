@@ -11,7 +11,8 @@
  * check: the four versions agree, the version is X.Y.Z or X.Y.Z-rc.N, and the React, Vue and Svelte peer range on
  * @ably/laravel-echo matches it (^X.Y.Z for a release, ^X.Y.Z-rc.0 for a release candidate). --tag also requires
  * the git tag to be ably-echo-<version>. It prints the npm dist-tag for the version (`next` for a release candidate,
- * `latest` otherwise) and writes it to $GITHUB_OUTPUT when that is set. --pack then packs the four packages with
+ * `latest` otherwise) and writes it to $GITHUB_OUTPUT when that is set. If $RELEASE_PRERELEASE (the GitHub release's
+ * pre-release flag, set for a release event only) disagrees with the version, it emits a ::warning:: annotation. --pack then packs the four packages with
  * `pnpm pack` into release-tarballs/ (run `pnpm build` first) and checks each tarball: its version, every file its
  * main/module/types/exports fields name (npm pack silently omits missing files: 1.1.0 shipped a stale dist this
  * way), no workspace: or catalog: ranges, and the core's embedded version.
@@ -80,6 +81,34 @@ function peerRange(version) {
 /** The npm dist-tag for a release version: a release candidate never goes to `latest`. */
 function distTag(version) {
     return version.includes("-") ? "next" : "latest";
+}
+
+/**
+ * The release guard, the same for a release event and a manual run: the tag (when given) must be ably-echo-<version>,
+ * and the dist-tag follows from the version, so a release candidate never gets `latest`. `prerelease` is the GitHub
+ * release's pre-release flag ('true' or 'false'; empty or undefined on a manual run): when it disagrees with the
+ * version, that is only a warning, because the dist-tag comes from the version either way.
+ */
+function releaseGuard(version, tag, prerelease) {
+    const npmTag = distTag(version);
+    if (tag !== null && tag !== undefined && tag !== tagPrefix + version) {
+        return {
+            distTag: npmTag,
+            problem: `the tag ${tag} does not match the package version ${version}`,
+            warning: null,
+        };
+    }
+    const candidate = version.includes("-");
+    let warning = null;
+    if (
+        (prerelease === "true" || prerelease === "false") &&
+        (prerelease === "true") !== candidate
+    ) {
+        warning =
+            `${version} is ${candidate ? "a release candidate" : "a release"}, but its GitHub release is ` +
+            `${prerelease === "true" ? "" : "not "}marked as a pre-release; staging it with the dist-tag ${npmTag}`;
+    }
+    return { distTag: npmTag, problem: null, warning };
 }
 
 /** Every file a manifest's entry points name: main, module, types, svelte and every exports target. */
@@ -154,11 +183,19 @@ function check(args = []) {
         );
     }
 
-    const tag = flagValue(args, "--tag", /^\S+$/);
-    if (tag !== null && tag !== tagPrefix + version) {
-        fail(`the tag ${tag} does not match the package version ${version}`);
+    const guard = releaseGuard(
+        version,
+        flagValue(args, "--tag", /^\S+$/),
+        process.env.RELEASE_PRERELEASE,
+    );
+    if (guard.problem) {
+        fail(guard.problem);
     }
-    const npmTag = distTag(version);
+    const npmTag = guard.distTag;
+    if (guard.warning) {
+        // GitHub Actions shows this as a warning annotation; it does not fail the run.
+        console.log(`::warning::${guard.warning}`);
+    }
     console.log(
         `release: all ${sites.length} version sites agree on ${version}; npm dist-tag ${npmTag}`,
     );
@@ -390,7 +427,14 @@ function publish(args) {
     );
 }
 
-module.exports = { distTag, entryFiles, peerRange, tarballProblems, versionRe };
+module.exports = {
+    distTag,
+    entryFiles,
+    peerRange,
+    releaseGuard,
+    tarballProblems,
+    versionRe,
+};
 
 if (require.main === module) {
     const [, , command, ...rest] = process.argv;

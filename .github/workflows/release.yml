@@ -56,10 +56,14 @@ jobs:
           node-version: 24
           check-latest: true
           cache: pnpm
-      # The tag must be ably-echo-<version>, the four versions and the adapters' peer range must
-      # agree, and the dist-tag follows from the version. Node built-ins only, before any install.
+      # The same guard for a release and a manual run: the tag must be ably-echo-<version>, the four
+      # versions and the adapters' peer range must agree, and the dist-tag follows from the version
+      # (a release candidate never gets latest). For a release event, a pre-release flag that
+      # disagrees with the version is a warning. Node built-ins only, before any install.
       - name: Check the tag matches the package versions
         id: check
+        env:
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
         run: node scripts/release.js check --tag "$TAG"
       - run: pnpm install --frozen-lockfile
       - run: pnpm build

@@ -9,6 +9,7 @@ const {
     distTag,
     entryFiles,
     peerRange,
+    releaseGuard,
     tarballProblems,
 } = require("./release.js");
 
@@ -119,4 +120,56 @@ test("a missing entry file, another version or a workspace: range is a problem",
     assert.deepEqual(tarballProblems(unrewritten, reactFiles, "2.0.0"), [
         "a workspace: or catalog: range was not rewritten",
     ]);
+});
+
+test("the release guard is the same for a manual run and a release event", () => {
+    // workflow_dispatch: no pre-release flag.
+    assert.deepEqual(releaseGuard("2.0.0-rc.0", "ably-echo-2.0.0-rc.0", ""), {
+        distTag: "next",
+        problem: null,
+        warning: null,
+    });
+    assert.deepEqual(releaseGuard("2.0.0", "ably-echo-2.0.0", undefined), {
+        distTag: "latest",
+        problem: null,
+        warning: null,
+    });
+    // Release events whose pre-release flag matches the version.
+    assert.equal(
+        releaseGuard("2.0.0", "ably-echo-2.0.0", "false").warning,
+        null,
+    );
+    assert.equal(
+        releaseGuard("2.0.0-rc.1", "ably-echo-2.0.0-rc.1", "true").warning,
+        null,
+    );
+    // A tag that is not ably-echo-<version> fails either way.
+    for (const tag of ["v2.0.0", "2.0.0", "ably-echo-2.0.1"]) {
+        assert.match(releaseGuard("2.0.0", tag, "").problem, /does not match/);
+        assert.match(
+            releaseGuard("2.0.0", tag, "false").problem,
+            /does not match/,
+        );
+    }
+});
+
+test("a pre-release flag that disagrees with the version only warns", () => {
+    const final = releaseGuard("2.0.0", "ably-echo-2.0.0", "true");
+    assert.equal(final.distTag, "latest");
+    assert.equal(final.problem, null);
+    assert.match(
+        final.warning,
+        /2\.0\.0 is a release, but its GitHub release is marked as a pre-release/,
+    );
+    const candidate = releaseGuard(
+        "2.0.0-rc.1",
+        "ably-echo-2.0.0-rc.1",
+        "false",
+    );
+    assert.equal(candidate.distTag, "next");
+    assert.equal(candidate.problem, null);
+    assert.match(
+        candidate.warning,
+        /is a release candidate, but its GitHub release is not marked/,
+    );
 });
